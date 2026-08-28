@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MarkEase Preview</title>
+    <link rel="stylesheet" href="css/github-markdown.css">
+    <link rel="stylesheet" href="css/highlight-github.min.css">
+    <style>
+        /* 强制基础样式，浅色为默认 */
+        html, body {
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff !important;
+            color: #1e1e1e !important;
+        }
+        .markdown-body {
+            box-sizing: border-box;
+            min-width: 200px;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 45px;
+            background-color: transparent !important;
+            color: inherit !important;
+        }
+        @media (max-width: 767px) {
+            .markdown-body { padding: 15px; }
+        }
+
+        /* 深色模式下的样式 */
+        html.dark, body.dark {
+            background-color: #1e1e1e !important;
+            color: #dcdcdc !important;
+        }
+        body.dark .markdown-body {
+            color: #dcdcdc !important;
+        }
+
+        /* 浅色模式元素颜色 */
+        body:not(.dark) h1, body:not(.dark) h2, body:not(.dark) h3,
+        body:not(.dark) h4, body:not(.dark) h5, body:not(.dark) h6 {
+            color: #1e1e1e !important;
+        }
+        body:not(.dark) blockquote {
+            color: #6a737d !important;
+            border-left-color: #dfe2e5 !important;
+        }
+        body:not(.dark) code {
+            color: #c7254e !important;
+            background-color: #f6f8fa !important;
+        }
+        body:not(.dark) pre {
+            background-color: #f6f8fa !important;
+        }
+        body:not(.dark) pre code {
+            color: #333333 !important;
+            background-color: transparent !important;
+        }
+        body:not(.dark) a {
+            color: #0366d6 !important;
+        }
+        body:not(.dark) table tr {
+            background-color: #ffffff !important;
+        }
+        body:not(.dark) table tr:nth-child(2n) {
+            background-color: #f6f8fa !important;
+        }
+
+        /* 深色模式元素颜色 */
+        body.dark h1, body.dark h2, body.dark h3,
+        body.dark h4, body.dark h5, body.dark h6 {
+            color: #dcdcdc !important;
+        }
+        body.dark blockquote {
+            color: #9ecbff !important;
+            border-left-color: #444444 !important;
+        }
+        body.dark code {
+            color: #ff7b72 !important;
+            background-color: #2a2a2a !important;
+        }
+        body.dark pre {
+            background-color: #2a2a2a !important;
+        }
+        body.dark pre code {
+            color: #e6e6e6 !important;
+            background-color: transparent !important;
+        }
+        body.dark a {
+            color: #58a6ff !important;
+        }
+        body.dark table tr {
+            background-color: #1e1e1e !important;
+        }
+        body.dark table tr:nth-child(2n) {
+            background-color: #2d2d2d !important;
+        }
+    </style>
+</head>
+<body>
+    <article class="markdown-body" id="markdown-content"></article>
+
+    <script src="js/marked.min.js"></script>
+    <script src="js/highlight.min.js"></script>
+    <script src="js/qwebchannel.js"></script>
+
+    <script>
+        // 配置 marked
+        if (typeof marked !== 'undefined') {
+            marked.setOptions({
+                highlight: function(code, lang) {
+                    if (typeof hljs !== 'undefined') {
+                        if (lang && hljs.getLanguage(lang)) {
+                            return hljs.highlight(code, { language: lang }).value;
+                        } else {
+                            return hljs.highlightAuto(code).value;
+                        }
+                    }
+                    return code;
+                },
+                breaks: true,
+                gfm: true
+            });
+        }
+
+        // 主题切换函数
+        function setTheme(theme) {
+            var html = document.documentElement;
+            var body = document.body;
+            if (theme === 'dark') {
+                html.classList.add('dark');
+                body.classList.add('dark');
+                html.style.backgroundColor = '#1e1e1e';
+                body.style.backgroundColor = '#1e1e1e';
+                body.style.color = '#dcdcdc';
+            } else {
+                html.classList.remove('dark');
+                body.classList.remove('dark');
+                html.style.backgroundColor = '#ffffff';
+                body.style.backgroundColor = '#ffffff';
+                body.style.color = '#1e1e1e';
+            }
+            // 强制重绘
+            document.body.offsetHeight;
+        }
+
+        // 缩放函数
+        function setZoomPercent(percent) {
+            document.body.style.zoom = percent / 100;
+        }
+
+        // 渲染 Markdown
+        function renderMarkdown(markdownText, headingsArray) {
+            var contentElement = document.getElementById('markdown-content');
+            if (!contentElement) return;
+            try {
+                if (typeof marked !== 'undefined') {
+                    var html = marked.parse(markdownText);
+                    contentElement.innerHTML = html;
+                    if (typeof hljs !== 'undefined') {
+                        document.querySelectorAll('pre code').forEach((block) => {
+                            hljs.highlightElement(block);
+                        });
+                    }
+                } else {
+                    contentElement.textContent = markdownText;
+                }
+            } catch (e) {
+                contentElement.textContent = markdownText;
+                console.error("渲染失败", e);
+            }
+
+            if (headingsArray && Array.isArray(headingsArray)) {
+                headingsArray.forEach(function(item) {
+                    var headingElements = document.querySelectorAll('h1,h2,h3,h4,h5,h6');
+                    for (var i = 0; i < headingElements.length; i++) {
+                        var el = headingElements[i];
+                        if (el.textContent.trim() === item.text && parseInt(el.tagName.substring(1)) === item.level) {
+                            el.setAttribute('data-line', item.line);
+                            break;
+                        }
+                    }
+                });
+            }
+            document.body.offsetHeight;
+        }
+
+        function getScrollRatio() {
+            var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+            if (docHeight <= 0) return 0;
+            return window.scrollY / docHeight;
+        }
+
+        var isProgrammaticScroll = false;
+
+        function scrollToLine(line) {
+            var target = document.querySelector('[data-line="' + line + '"]');
+            if (target) {
+                isProgrammaticScroll = true;
+                target.scrollIntoView({ behavior: 'auto', block: 'center' });
+                setTimeout(function() { isProgrammaticScroll = false; }, 100);
+            }
+        }
+
+        function scrollToRatio(ratio) {
+            isProgrammaticScroll = true;
+            var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+            window.scrollTo(0, docHeight * ratio);
+            setTimeout(function() { isProgrammaticScroll = false; }, 100);
+        }
+
+        // QWebChannel 桥接
+        if (typeof QWebChannel !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function(channel) {
+                window.bridge = channel.objects.bridge;
+                window.addEventListener('scroll', function() {
+                    if (window.bridge && !isProgrammaticScroll) {
+                        var headings = document.querySelectorAll('[data-line]');
+                        var viewportTop = window.scrollY;
+                        var viewportHeight = window.innerHeight;
+                        var center = viewportTop + viewportHeight / 2;
+                        var closest = -1;
+                        var closestDist = Infinity;
+                        for (var i = 0; i < headings.length; i++) {
+                            var rect = headings[i].getBoundingClientRect();
+                            var top = rect.top + window.scrollY;
+                            var dist = Math.abs(top - center);
+                            if (dist < closestDist) {
+                                closestDist = dist;
+                                closest = parseInt(headings[i].getAttribute('data-line'), 10);
+                            }
+                        }
+                        window.bridge.on_scroll();
+                        window.bridge.report_scroll_ratio(getScrollRatio());
+                        window.bridge.report_heading(closest);
+                    }
+                });
+            });
+        }
+    </script>
+</body>
+</html>
