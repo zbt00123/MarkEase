@@ -13,10 +13,10 @@ def main():
     window = MainWindow()
     window.show()
 
-    # 处理命令行参数：如果有文件路径，则打开该文件
+    # 处理命令行参数：如果有文件路径，则直接打开（不询问保存空白文档）
     if len(sys.argv) > 1:
         file_path = sys.argv[1]
-        window.open_file_from_path(file_path)
+        window.open_file_from_path(file_path, ignore_unsaved=True)
 
     sys.exit(app.exec())
 

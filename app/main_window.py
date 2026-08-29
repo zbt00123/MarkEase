@@ -726,6 +726,10 @@ class MainWindow(QMainWindow):
             return
 
         try:
+            # 设置应用程序友好名称（显示在打开方式列表中）
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Applications\MarkEase.exe") as key:
+                winreg.SetValue(key, "FriendlyAppName", winreg.REG_SZ, "MarkEase")
+
             # 设置 .md 关联
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.md") as key:
                 winreg.SetValue(key, "", winreg.REG_SZ, "MarkEase.md")
@@ -961,15 +965,18 @@ class MainWindow(QMainWindow):
         if file_path:
             self.open_file_from_path(file_path)
 
-    def open_file_from_path(self, path: str):
+    def open_file_from_path(self, path: str, ignore_unsaved: bool = False):
         """通过命令行参数或文件关联打开文件"""
-        if self.doc_manager.is_modified:
+        if not ignore_unsaved and self.doc_manager.is_modified:
             choice = self._show_unsaved_dialog()
             if choice == "save":
                 if not self.save_document():
                     return
             elif choice == "cancel":
                 return
+        elif ignore_unsaved and self.doc_manager.is_modified:
+            # 强制清除修改标志，因为初始空白文档无需保存
+            self.doc_manager.mark_saved()
 
         try:
             content = FileManager.read_file(path)

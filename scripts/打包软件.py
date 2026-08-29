@@ -1,1 +1,1 @@
-python -m PyInstaller --noconfirm --onedir --windowed --noupx --exclude-module tkinter --exclude-module unittest --exclude-module pydoc --name MarkEase --add-data "web;web" --add-data "resources;resources" --icon "resources/icons/图标.ico" main.py
+python -m PyInstaller --noconfirm --onedir --windowed --noupx --uac-admin --name MarkEase --version-file version_info.txt --add-data "web;web" --add-data "resources;resources" --icon "resources/icons/图标.ico" --exclude-module tkinter --exclude-module unittest --exclude-module pydoc main.py
