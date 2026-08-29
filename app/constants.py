@@ -6,8 +6,13 @@ MarkEase 常量定义模块
 
 # 应用信息
 APP_NAME = "MarkEase"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
+
+# GitHub 仓库信息（用于检查更新）
+GITHUB_REPO = "zbt00123/MarkEase"
+GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+GITHUB_RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
 # 显示模式常量
 MODE_EDIT = "edit"

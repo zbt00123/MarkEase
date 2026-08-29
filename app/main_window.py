@@ -7,6 +7,11 @@ MarkEase 主窗口模块
 import sys
 import os
 import subprocess
+import json
+import urllib.request
+import webbrowser
+import ctypes
+import winreg
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QVBoxLayout, QHBoxLayout,
     QPushButton, QMenuBar, QMenu, QStatusBar, QFileDialog, QMessageBox,
@@ -16,8 +21,8 @@ from PySide6.QtCore import Qt, QSize, Signal, QTimer, QPoint
 from PySide6.QtGui import QAction, QKeySequence, QCloseEvent, QActionGroup, QColor, QIcon
 
 from app.constants import (
-    APP_TITLE, MODE_EDIT, MODE_PREVIEW, MODE_SPLIT, MODE_LABELS,
-    DEFAULT_WIDTH, DEFAULT_HEIGHT, MARKDOWN_FILE_FILTER
+    APP_TITLE, APP_VERSION, MODE_EDIT, MODE_PREVIEW, MODE_SPLIT, MODE_LABELS,
+    DEFAULT_WIDTH, DEFAULT_HEIGHT, MARKDOWN_FILE_FILTER, GITHUB_REPO, GITHUB_API_URL
 )
 from document.document_manager import DocumentManager
 from document.file_manager import FileManager
@@ -110,7 +115,8 @@ class MainWindow(QMainWindow):
 
         # 语言改变时刷新 UI 文本
         self.language_manager.language_changed.connect(self._retranslate_ui)
-        self._retranslate_ui()
+        # 延迟刷新，确保所有控件已创建
+        QTimer.singleShot(0, self._retranslate_ui)
 
         # 更新工具栏提示
         self._update_toolbar_tooltips()
@@ -164,6 +170,8 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.editor = MarkdownEditor()
         self.preview = PreviewWidget()
+        # 注入语言管理器到预览控件，用于翻译右键菜单
+        self.preview.set_language_manager(self.language_manager)
         self.splitter.addWidget(self.editor)
         self.splitter.addWidget(self.preview)
         self.splitter.setSizes([int(self.width() * self.settings.splitter_ratio),
@@ -249,7 +257,8 @@ class MainWindow(QMainWindow):
         self.btn_split = QPushButton(MODE_LABELS[MODE_SPLIT])
 
         for btn in (self.btn_edit, self.btn_preview, self.btn_split):
-            btn.setFixedSize(100, 32)
+            btn.setMinimumWidth(100)      # 允许按钮根据文本扩展
+            btn.setFixedHeight(32)
             btn.setCheckable(True)
             btn.setAutoExclusive(True)
             btn.setStyleSheet("")
@@ -460,6 +469,17 @@ class MainWindow(QMainWindow):
         self.language_ja_jp_action.setChecked(self.settings.language == "ja_JP")
         self.language_menu.addAction(self.language_ja_jp_action)
 
+        # 更新菜单项
+        self.help_menu.addSeparator()
+        self.check_update_action = QAction(self.language_manager.tr("check_update"), self)
+        self.check_update_action.triggered.connect(self.check_for_updates)
+        self.help_menu.addAction(self.check_update_action)
+
+        # 设置为默认程序
+        self.set_default_program_action = QAction(self.language_manager.tr("set_default_program"), self)
+        self.set_default_program_action.triggered.connect(self.set_as_default_program)
+        self.help_menu.addAction(self.set_default_program_action)
+
         self.help_menu.addSeparator()
         self.about_action = QAction(self.language_manager.tr("about"), self)
         self.about_action.triggered.connect(self.show_about_dialog)
@@ -531,14 +551,11 @@ class MainWindow(QMainWindow):
     def _apply_theme_to_widgets(self):
         theme = self.theme_manager.get_current_theme()
         is_dark = theme == "dark"
-        # 应用编辑器主题（包括语法高亮器）
         self.editor.apply_theme(is_dark)
-        # 应用目录主题
         if is_dark:
             self.toc_panel.set_theme(QColor("#1a5276"), QColor("#353535"))
         else:
             self.toc_panel.set_theme(QColor("#cce5ff"), QColor("#f0f0f0"))
-        # 应用预览主题
         if hasattr(self, 'preview'):
             self.preview.set_theme(theme)
 
@@ -574,6 +591,8 @@ class MainWindow(QMainWindow):
         self.help_menu.setTitle(self.language_manager.tr("help"))
         self.theme_menu.setTitle(self.language_manager.tr("theme"))
         self.language_menu.setTitle(self.language_manager.tr("language"))
+        self.check_update_action.setText(self.language_manager.tr("check_update"))
+        self.set_default_program_action.setText(self.language_manager.tr("set_default_program"))
         self.about_action.setText(self.language_manager.tr("about"))
 
         self.theme_system_action.setText(self.language_manager.tr("system"))
@@ -615,7 +634,8 @@ class MainWindow(QMainWindow):
             )
 
     def _update_toolbar_tooltips(self):
-        pass
+        if hasattr(self, 'toolbar'):
+            self.toolbar.update_tooltips(self.language_manager)
 
     # ---------- 主题切换 ----------
     def change_theme(self, theme: str):
@@ -646,6 +666,94 @@ class MainWindow(QMainWindow):
         self.language_manager.set_language(lang)
         self.settings.language = lang
         self._retranslate_ui()
+
+    # ---------- 更新检查 ----------
+    def _get_latest_release_info(self):
+        try:
+            with urllib.request.urlopen(GITHUB_API_URL, timeout=5) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                tag = data.get('tag_name', '')
+                version = tag.lstrip('v')
+                notes = data.get('body', '')
+                html_url = data.get('html_url', '')
+                return version, notes, html_url
+        except Exception:
+            return None
+
+    def _version_tuple(self, v):
+        try:
+            return tuple(map(int, v.split('.')))
+        except:
+            return (0, 0, 0)
+
+    def _is_newer_version(self, latest: str) -> bool:
+        return self._version_tuple(latest) > self._version_tuple(APP_VERSION)
+
+    def check_for_updates(self):
+        info = self._get_latest_release_info()
+        if not info:
+            QMessageBox.warning(self,
+                                self.language_manager.tr("update_error_title"),
+                                self.language_manager.tr("update_error_message"))
+            return
+        latest, notes, url = info
+        if self._is_newer_version(latest):
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(self.language_manager.tr("update_available_title"))
+            msg_box.setText(self.language_manager.tr("update_available_message").format(
+                version=latest, notes=notes))
+            download_btn = msg_box.addButton(self.language_manager.tr("open_download_page"),
+                                             QMessageBox.ButtonRole.AcceptRole)
+            later_btn = msg_box.addButton(self.language_manager.tr("later"),
+                                          QMessageBox.ButtonRole.RejectRole)
+            msg_box.exec()
+            if msg_box.clickedButton() == download_btn:
+                webbrowser.open(url)
+        else:
+            QMessageBox.information(self,
+                                    self.language_manager.tr("update_latest_title"),
+                                    self.language_manager.tr("update_latest_message").format(version=APP_VERSION))
+
+    # ---------- 设置为默认程序 ----------
+    def set_as_default_program(self):
+        """将 MarkEase 设置为 .md 和 .markdown 文件的默认打开程序"""
+        exe_path = sys.executable
+        # 对于源码运行，提示用户必须使用打包后的版本
+        if not exe_path.lower().endswith("markease.exe"):
+            QMessageBox.warning(self,
+                                self.language_manager.tr("set_default_failed_title"),
+                                self.language_manager.tr("set_default_failed_message"))
+            return
+
+        try:
+            # 设置 .md 关联
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.md") as key:
+                winreg.SetValue(key, "", winreg.REG_SZ, "MarkEase.md")
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.markdown") as key:
+                winreg.SetValue(key, "", winreg.REG_SZ, "MarkEase.md")
+
+            # 创建 MarkEase.md 文件类型
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\MarkEase.md") as key:
+                winreg.SetValue(key, "", winreg.REG_SZ, "Markdown 文件")
+
+            # 设置默认图标
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\MarkEase.md\DefaultIcon") as key:
+                winreg.SetValue(key, "", winreg.REG_SZ, f'"{exe_path}",0')
+
+            # 设置打开命令
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\MarkEase.md\shell\open\command") as key:
+                winreg.SetValue(key, "", winreg.REG_SZ, f'"{exe_path}" "%1"')
+
+            # 刷新文件关联
+            ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
+
+            QMessageBox.information(self,
+                                    self.language_manager.tr("set_default_success_title"),
+                                    self.language_manager.tr("set_default_success_message"))
+        except Exception as e:
+            QMessageBox.critical(self,
+                                 self.language_manager.tr("set_default_failed_title"),
+                                 self.language_manager.tr("set_default_failed_message") + f"\n{str(e)}")
 
     # ---------- 模式切换 ----------
     def _on_mode_button_clicked(self):
@@ -851,16 +959,29 @@ class MainWindow(QMainWindow):
             self, self.language_manager.tr("open"), "", MARKDOWN_FILE_FILTER
         )
         if file_path:
-            try:
-                content = FileManager.read_file(file_path)
-                self.editor.setPlainText(content)
-                self.doc_manager.open_document(file_path)
-                self._update_preview()
-                self._update_toc()
-                self._update_stats_label()
-            except Exception as e:
-                QMessageBox.critical(self, self.language_manager.tr("open_failed"),
-                                    f"{self.language_manager.tr('open_failed')}: {e}")
+            self.open_file_from_path(file_path)
+
+    def open_file_from_path(self, path: str):
+        """通过命令行参数或文件关联打开文件"""
+        if self.doc_manager.is_modified:
+            choice = self._show_unsaved_dialog()
+            if choice == "save":
+                if not self.save_document():
+                    return
+            elif choice == "cancel":
+                return
+
+        try:
+            content = FileManager.read_file(path)
+            self.editor.setPlainText(content)
+            self.doc_manager.open_document(path)
+            self._update_preview()
+            self._update_toc()
+            self._update_stats_label()
+            self.set_mode(MODE_EDIT)
+        except Exception as e:
+            QMessageBox.critical(self, self.language_manager.tr("open_failed"),
+                                f"{self.language_manager.tr('open_failed')}: {e}")
 
     def save_document(self) -> bool:
         if not self.doc_manager.file_path:
@@ -875,8 +996,18 @@ class MainWindow(QMainWindow):
             return False
 
     def save_document_as(self) -> bool:
+        # 如果文档未保存过，尝试将第一行作为默认文件名
+        default_name = ""
+        if not self.doc_manager.file_path:
+            first_line = self.editor.toPlainText().split('\n', 1)[0].strip()
+            if first_line:
+                # 移除 Markdown 标题标记和非法字符
+                default_name = first_line.lstrip('#').strip()
+                import re
+                default_name = re.sub(r'[\\/:*?"<>|]', '', default_name)[:50]
+                default_name += ".md"
         file_path, _ = QFileDialog.getSaveFileName(
-            self, self.language_manager.tr("save_as"), "", MARKDOWN_FILE_FILTER
+            self, self.language_manager.tr("save_as"), default_name, MARKDOWN_FILE_FILTER
         )
         if file_path:
             try:
@@ -935,6 +1066,8 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         if hasattr(self, 'floating_toc_btn'):
             self._update_floating_toc_button_position()
+        # 强制刷新所有 UI 文本，确保语言正确显示（解决启动时语言不刷新的问题）
+        self._retranslate_ui()
 
     def closeEvent(self, event: QCloseEvent):
         self.settings.window_size = (self.width(), self.height())
@@ -968,7 +1101,7 @@ class MainWindow(QMainWindow):
         about_html = f"""
         {style}
         <h3>MarkEase</h3>
-        <p><b>{self.language_manager.tr('about_version')}:</b> v1.0.0</p>
+        <p><b>{self.language_manager.tr('about_version')}:</b> {APP_VERSION}</p>
         <p><b>{self.language_manager.tr('about_author')}:</b> ZBT Studio<br>
         <a href="https://github.com/zbt00123/">https://github.com/zbt00123/</a></p>
         <p><b>{self.language_manager.tr('about_outline')}:</b> ChatGPT<br>

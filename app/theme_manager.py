@@ -87,6 +87,10 @@ class ThemeManager:
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
         width: 0px;
     }
+    /* 工具栏所有按钮文字颜色（浅色模式） */
+    QToolBar QToolButton {
+        color: black;
+    }
     """
 
     # 全局样式表（深色）
@@ -129,6 +133,10 @@ class ThemeManager:
     }
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
         width: 0px;
+    }
+    /* 工具栏所有按钮文字颜色（深色模式） */
+    QToolBar QToolButton {
+        color: white;
     }
     """
 

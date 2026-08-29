@@ -2,15 +2,17 @@
 """
 Markdown 预览控件
 基于 QWebEngineView，加载本地 HTML 页面并注入 Markdown 内容
-支持主题切换、目录跳转和滚动同步
+支持主题切换、目录跳转、滚动同步、自定义右键菜单和复制快捷键
 """
 
 import os
 import json
 from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWebEngineCore import QWebEnginePage
 from PySide6.QtWebChannel import QWebChannel
-from PySide6.QtCore import QUrl, QObject, Slot, Signal, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QUrl, QObject, Slot, Signal, QTimer, Qt
+from PySide6.QtGui import QColor, QKeySequence, QAction, QContextMenuEvent
+from PySide6.QtWidgets import QMenu
 
 
 class PreviewBridge(QObject):
@@ -49,6 +51,7 @@ class PreviewWidget(QWebEngineView):
         self._pending_theme = "light"
         self._pending_scroll_line = None
         self._zoom_percent = 100
+        self.language_manager = None  # 由外部设置
 
         # 设置页面背景色为白色，作为加载时的后备
         self.page().setBackgroundColor(QColor("#ffffff"))
@@ -74,12 +77,17 @@ class PreviewWidget(QWebEngineView):
         self._scroll_debounce_timer.setSingleShot(True)
         self._scroll_debounce_timer.timeout.connect(self._fetch_scroll_info)
 
+        # 设置焦点策略，允许接收键盘事件
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def set_language_manager(self, lm):
+        """注入语言管理器，用于翻译右键菜单"""
+        self.language_manager = lm
+
     def _on_load_finished(self, ok: bool):
         self._loaded = ok
         if ok:
-            # 应用主题
             self.page().runJavaScript(f"setTheme('{self._pending_theme}');")
-            # 应用缩放
             self.setZoomFactor(self._zoom_percent / 100.0)
             if self._pending_markdown is not None:
                 self.set_markdown(self._pending_markdown, self._pending_headings, self._pending_theme)
@@ -96,13 +104,11 @@ class PreviewWidget(QWebEngineView):
             self._pending_headings = headings_map
             return
 
-        # 确保主题已应用
         self.page().runJavaScript(f"setTheme('{theme}');")
 
         headings_json = json.dumps(headings_map) if headings_map else "[]"
         js_code = f"window.renderMarkdown({markdown_text!r}, {headings_json});"
         self.page().runJavaScript(js_code)
-        # 强制刷新
         self.page().runJavaScript("document.body.offsetHeight;")
 
     def set_theme(self, theme: str):
@@ -171,3 +177,44 @@ class PreviewWidget(QWebEngineView):
         ratio = data.get("ratio", 0.0)
         self.scroll_ratio_changed.emit(ratio)
         self.heading_changed.emit(line)
+
+    # ---------- 键盘事件处理 ----------
+    def keyPressEvent(self, event):
+        """支持 Ctrl+C 复制选中内容"""
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self.page().triggerAction(QWebEnginePage.WebAction.Copy)
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    # ---------- 自定义右键菜单 ----------
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        """使用自定义菜单，支持翻译"""
+        menu = QMenu(self)
+
+        # 复制
+        copy_action = QAction(self._tr("copy"), self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.triggered.connect(lambda: self.page().triggerAction(QWebEnginePage.WebAction.Copy))
+        menu.addAction(copy_action)
+
+        # 全选
+        select_all_action = QAction(self._tr("select_all"), self)
+        select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
+        select_all_action.triggered.connect(lambda: self.page().triggerAction(QWebEnginePage.WebAction.SelectAll))
+        menu.addAction(select_all_action)
+
+        menu.addSeparator()
+
+        # 重新加载
+        reload_action = QAction(self._tr("reload"), self)
+        reload_action.triggered.connect(self.reload)
+        menu.addAction(reload_action)
+
+        menu.exec(event.globalPos())
+
+    def _tr(self, key: str, default: str = "") -> str:
+        """使用外部语言管理器翻译，若不可用则返回默认值"""
+        if self.language_manager:
+            return self.language_manager.tr(key, default)
+        return default if default else key

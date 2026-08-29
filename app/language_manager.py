@@ -8,11 +8,12 @@
 import json
 import os
 from PySide6.QtCore import QLocale, QObject, Signal
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QApplication
 
 class LanguageManager(QObject):
     """管理应用语言，提供翻译"""
 
-    # 语言代码映射
     LANGUAGE_SYSTEM = "system"
     LANGUAGE_ZH_CN = "zh_CN"
     LANGUAGE_ZH_TW = "zh_TW"
@@ -20,19 +21,17 @@ class LanguageManager(QObject):
     LANGUAGE_KO_KR = "ko_KR"
     LANGUAGE_JA_JP = "ja_JP"
 
-    # 信号：语言改变
     language_changed = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_language = self.LANGUAGE_SYSTEM
-        self.translations = {}  # 当前翻译字典
+        self.translations = {}
         self._load_translations(self._get_system_language_code())
 
     def _get_system_language_code(self) -> str:
-        """获取系统语言代码（映射到我们的支持列表）"""
         locale = QLocale.system()
-        lang = locale.name()  # 例如 "zh_CN", "en_US"
+        lang = locale.name()
         if lang.startswith("zh_CN"):
             return self.LANGUAGE_ZH_CN
         elif lang.startswith("zh_TW") or lang.startswith("zh_HK"):
@@ -45,7 +44,6 @@ class LanguageManager(QObject):
             return self.LANGUAGE_EN_US
 
     def _load_translations(self, lang_code: str):
-        """从 JSON 文件加载翻译"""
         base_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources", "translations")
         file_path = os.path.join(base_dir, f"{lang_code}.json")
         try:
@@ -57,15 +55,27 @@ class LanguageManager(QObject):
                 self.translations = json.load(f)
 
     def set_language(self, lang_code: str):
-        """设置语言（若为 system 则自动检测）"""
         if lang_code == self.LANGUAGE_SYSTEM:
             lang_code = self._get_system_language_code()
         self._load_translations(lang_code)
         self.current_language = lang_code
+        self._apply_font_for_language(lang_code)
         self.language_changed.emit(lang_code)
 
+    def _apply_font_for_language(self, lang_code: str):
+        """根据语言设置合适的字体（韩语使用 Malgun Gothic，避免过粗）"""
+        app = QApplication.instance()
+        if not app:
+            return
+        if lang_code == self.LANGUAGE_KO_KR:
+            font = QFont("Malgun Gothic", 9)
+            font.setWeight(QFont.Weight.Normal)
+            app.setFont(font)
+        else:
+            # 恢复系统默认字体
+            app.setFont(QFont())  # 默认字体
+
     def tr(self, key: str, default: str = "") -> str:
-        """翻译函数：根据 key 返回对应语言文本"""
         return self.translations.get(key, default if default else key)
 
     def get_current_language(self) -> str:
