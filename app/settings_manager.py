@@ -25,21 +25,22 @@ class SettingsManager:
             "toc_width": 200,
             "zoom_percent": 100,
             "sync_scroll": False,
+            "auto_check_updates": True,
         }
         for key, value in defaults.items():
             if not self.settings.contains(key):
                 self.settings.setValue(key, value)
 
-    # ====================== 通用读写 ======================
-
-    def get(self, key: str, default=None):
+    # 通用读写，支持类型转换
+    def get(self, key: str, default=None, value_type=None):
+        if value_type:
+            return self.settings.value(key, default, type=value_type)
         return self.settings.value(key, default)
 
     def set(self, key: str, value):
         self.settings.setValue(key, value)
 
-    # ====================== 具体设置项 ======================
-
+    # 具体设置项
     @property
     def theme(self) -> str:
         return self.get("theme", "system")
@@ -77,7 +78,8 @@ class SettingsManager:
 
     @property
     def toc_visible(self) -> bool:
-        return bool(self.get("toc_visible", False))
+        # 强制读取为布尔值，避免字符串误判
+        return self.get("toc_visible", False, value_type=bool)
 
     @toc_visible.setter
     def toc_visible(self, value: bool):
@@ -101,8 +103,16 @@ class SettingsManager:
 
     @property
     def sync_scroll(self) -> bool:
-        return bool(self.get("sync_scroll", False))
+        return self.get("sync_scroll", False, value_type=bool)
 
     @sync_scroll.setter
     def sync_scroll(self, value: bool):
         self.set("sync_scroll", value)
+
+    @property
+    def auto_check_updates(self) -> bool:
+        return self.get("auto_check_updates", True, value_type=bool)
+
+    @auto_check_updates.setter
+    def auto_check_updates(self, value: bool):
+        self.set("auto_check_updates", value)

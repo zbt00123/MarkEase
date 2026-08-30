@@ -95,6 +95,66 @@
         body.dark table tr:nth-child(2n) {
             background-color: #2d2d2d !important;
         }
+
+        /* ================= 任务列表 checkbox 自定义 ================= */
+        .markdown-body input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            background: #fff;
+            cursor: pointer;
+            vertical-align: middle;
+            margin: 0 4px;
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        /* 浅色模式：未完成 → 浅灰色边框和背景 */
+        body:not(.dark) .markdown-body input[type="checkbox"]:not(:checked) {
+            border-color: #cccccc;
+            background: #fafafa;
+        }
+
+        /* 深色模式：未完成 → 深色背景，浅色边框 */
+        body.dark .markdown-body input[type="checkbox"]:not(:checked) {
+            border-color: #555555;
+            background: #2a2a2a;
+        }
+
+        /* 已完成：绿色背景 (#58d68e) + 白色对勾 */
+        .markdown-body input[type="checkbox"]:checked {
+            background: #58d68e;
+            border-color: #58d68e;
+        }
+
+        .markdown-body input[type="checkbox"]:checked::after {
+            content: "✓";
+            color: white;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        /* 修复任务列表项的对齐 */
+        .markdown-body .task-list-item {
+            list-style: none;
+            display: flex;
+            align-items: flex-start;
+        }
+        .markdown-body .task-list-item input[type="checkbox"] {
+            margin-right: 6px;
+            margin-top: 4px;
+        }
+        /* 确保嵌套列表正常 */
+        .markdown-body .task-list-item .task-list-item {
+            margin-left: 20px;
+        }
     </style>
 </head>
 <body>

@@ -3,13 +3,15 @@
 语言管理器
 加载翻译文件，提供翻译函数 tr()
 支持跟随系统、简中、繁中、英、韩、日
+韩语强制使用 Malgun Gothic 字体，不加粗
 """
 
 import json
 import os
 from PySide6.QtCore import QLocale, QObject, Signal
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget, QMenuBar, QMenu
+
 
 class LanguageManager(QObject):
     """管理应用语言，提供翻译"""
@@ -50,7 +52,6 @@ class LanguageManager(QObject):
             with open(file_path, "r", encoding="utf-8") as f:
                 self.translations = json.load(f)
         except FileNotFoundError:
-            # 回退到英文
             with open(os.path.join(base_dir, "en_US.json"), "r", encoding="utf-8") as f:
                 self.translations = json.load(f)
 
@@ -63,17 +64,36 @@ class LanguageManager(QObject):
         self.language_changed.emit(lang_code)
 
     def _apply_font_for_language(self, lang_code: str):
-        """根据语言设置合适的字体（韩语使用 Malgun Gothic，避免过粗）"""
+        """根据语言设置合适的字体（韩语使用 Malgun Gothic，不加粗）"""
         app = QApplication.instance()
         if not app:
             return
+
         if lang_code == self.LANGUAGE_KO_KR:
+            # 使用 Malgun Gothic，正常字重
             font = QFont("Malgun Gothic", 9)
             font.setWeight(QFont.Weight.Normal)
-            app.setFont(font)
+            font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
         else:
-            # 恢复系统默认字体
-            app.setFont(QFont())  # 默认字体
+            # 其他语言使用系统默认字体
+            font = QFont()
+            font.setWeight(QFont.Weight.Normal)
+
+        # 设置全局默认字体
+        app.setFont(font)
+
+        # 专门为菜单设置字体（确保菜单继承）
+        menu_font = QFont(font)
+        app.setFont(menu_font, "QMenuBar")
+        app.setFont(menu_font, "QMenu")
+        app.setFont(menu_font, "QMenuBarItem")
+
+        # 更新所有现有窗口的字体
+        for widget in app.allWidgets():
+            if isinstance(widget, (QMenuBar, QMenu)):
+                widget.setFont(menu_font)
+            else:
+                widget.setFont(font)
 
     def tr(self, key: str, default: str = "") -> str:
         return self.translations.get(key, default if default else key)

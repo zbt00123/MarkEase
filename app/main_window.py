@@ -12,12 +12,13 @@ import urllib.request
 import webbrowser
 import ctypes
 import winreg
+import time
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QVBoxLayout, QHBoxLayout,
     QPushButton, QMenuBar, QMenu, QStatusBar, QFileDialog, QMessageBox,
     QSizePolicy, QSplitter, QToolBar, QDockWidget, QSlider
 )
-from PySide6.QtCore import Qt, QSize, Signal, QTimer, QPoint
+from PySide6.QtCore import Qt, QSize, Signal, QTimer, QPoint, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QAction, QKeySequence, QCloseEvent, QActionGroup, QColor, QIcon
 
 from app.constants import (
@@ -115,19 +116,18 @@ class MainWindow(QMainWindow):
 
         # 语言改变时刷新 UI 文本
         self.language_manager.language_changed.connect(self._retranslate_ui)
-        # 延迟刷新，确保所有控件已创建
         QTimer.singleShot(0, self._retranslate_ui)
 
         # 更新工具栏提示
         self._update_toolbar_tooltips()
 
+        # 启动每月后台检查更新定时器
+        self._start_update_check_timer()
+
     # ---------- UI 初始化 ----------
     def _init_window(self):
-        """初始化窗口基本属性"""
         self.resize(*self.settings.window_size)
         self.setWindowTitle(APP_TITLE)
-
-        # 设置窗口图标
         icon_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "resources", "icons", "图标.ico"
@@ -136,13 +136,12 @@ class MainWindow(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
 
     def _init_central_widget(self):
-        """初始化中央区域：左侧目录面板（可选）+ 右侧主区域（模式栏+工具栏+分割器）"""
         central = QWidget()
         central_layout = QHBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
 
-        # 左侧目录面板容器
+        # 左侧目录容器
         self.toc_container = QWidget()
         self.toc_layout = QVBoxLayout(self.toc_container)
         self.toc_layout.setContentsMargins(0, 0, 0, 0)
@@ -150,8 +149,8 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(self.toc_container)
 
         # 右侧主区域
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
+        self.right_widget = QWidget()
+        right_layout = QVBoxLayout(self.right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
@@ -170,7 +169,6 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.editor = MarkdownEditor()
         self.preview = PreviewWidget()
-        # 注入语言管理器到预览控件，用于翻译右键菜单
         self.preview.set_language_manager(self.language_manager)
         self.splitter.addWidget(self.editor)
         self.splitter.addWidget(self.preview)
@@ -178,73 +176,109 @@ class MainWindow(QMainWindow):
                                 int(self.width() * (1 - self.settings.splitter_ratio))])
         right_layout.addWidget(self.splitter, 1)
 
-        central_layout.addWidget(right_widget, 1)
+        central_layout.addWidget(self.right_widget, 1)
         self.setCentralWidget(central)
 
     def _init_toc_panel(self):
-        """初始化目录面板（放入左侧容器）"""
         self.toc_panel = TocPanel()
         self.toc_layout.addWidget(self.toc_panel)
-        self.toc_panel.setVisible(False)
         self.toc_panel.heading_clicked.connect(self._on_toc_heading_clicked)
 
     def _init_floating_toc_button(self):
-        """创建目录悬浮按钮，父控件设为中央控件"""
         central = self.centralWidget()
         self.floating_toc_btn = FloatingTocButton(central)
-        self.floating_toc_btn.dragged.connect(self._on_floating_toc_btn_dragged)
         self.floating_toc_btn.clicked.connect(self.toggle_toc_panel)
-        # 延迟更新位置，确保布局完成
+        self.floating_toc_btn.mouse_entered.connect(self._on_button_enter)
+        self.floating_toc_btn.mouse_left.connect(self._on_button_leave)
+
+        self._button_anim = QPropertyAnimation(self.floating_toc_btn, b"pos", self)
+        self._button_anim.setDuration(500)
+        self._button_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.timeout.connect(self._hide_if_not_under_mouse)
+
+        # 初始 Y 位置计算（偏移20像素）
+        mode_bar_height = 48
+        toolbar_height = self.toolbar_container.height() if self.toolbar_container.isVisible() else 0
+        top_limit = mode_bar_height + toolbar_height + 10
+        btn_h = self.floating_toc_btn.height()
+        available_height = self.height() - self.statusBar().height() - btn_h - top_limit
+        initial_y = top_limit + available_height // 5 + 20
+
+        self.floating_toc_btn.move(0, initial_y)
+
+        self._update_button_targets()
+        self.floating_toc_btn.move(self._hide_target)
+        self._update_button_layering()
+
         QTimer.singleShot(0, self._update_floating_toc_button_position)
 
-    def _on_floating_toc_btn_dragged(self, global_pos: QPoint):
-        """处理悬浮按钮拖动，应用位置约束"""
-        parent = self.floating_toc_btn.parentWidget()
-        if not parent:
-            return
-        local_pos = parent.mapFromGlobal(global_pos)
-        self._constrain_floating_button(local_pos)
+    def _on_button_enter(self):
+        self._hide_timer.stop()
+        self._update_button_targets()
+        self._animate_button_to(self._full_target)
+        self.floating_toc_btn.raise_()
 
-    def _constrain_floating_button(self, local_pos: QPoint):
-        """根据目录状态和窗口布局约束按钮位置"""
+    def _on_button_leave(self):
+        self._hide_timer.start(500)
+
+    def _hide_if_not_under_mouse(self):
+        if not self.floating_toc_btn.underMouse():
+            self._update_button_targets()
+            self._animate_button_to(self._hide_target)
+            self._button_anim.finished.connect(self._update_button_layering)
+
+    def _update_button_layering(self):
+        """调整按钮、目录面板、右侧区域之间的层级"""
+        if self.toc_panel.isVisible():
+            self.right_widget.lower()
+            self.floating_toc_btn.stackUnder(self.toc_container)
+            self.toc_container.raise_()
+        else:
+            self.right_widget.lower()
+            self.floating_toc_btn.raise_()
+
+    def _animate_button_to(self, target: QPoint):
+        self._button_anim.stop()
+        self._button_anim.setStartValue(self.floating_toc_btn.pos())
+        self._button_anim.setEndValue(target)
+        self._button_anim.start()
+
+    def _update_button_targets(self):
         btn = self.floating_toc_btn
-        parent = btn.parentWidget()
-        if not parent:
-            return
-        btn_w = btn.width()
-        btn_h = btn.height()
-
-        # 确定 X 位置
+        y = self._get_button_y()
         if self.toc_panel.isVisible():
             toc_right = self.toc_container.width()
-            x = toc_right + 10
+            self._full_target = QPoint(toc_right, y)
+            self._hide_target = QPoint(toc_right - btn.width() // 2, y)
         else:
-            x = 10
+            self._full_target = QPoint(0, y)
+            self._hide_target = QPoint(-btn.width() // 2, y)
 
-        # 确定 Y 范围：工具栏底部 到 状态栏顶部
+    def _get_button_y(self):
+        btn = self.floating_toc_btn
         mode_bar_height = 48
         toolbar_height = self.toolbar_container.height() if self.toolbar_container.isVisible() else 0
         top_limit = mode_bar_height + toolbar_height + 10
         status_bar_height = self.statusBar().height()
-        bottom_limit = parent.height() - status_bar_height - btn_h - 10
-
-        y = local_pos.y()
-        if y < top_limit:
-            y = top_limit
-        elif y > bottom_limit:
-            y = bottom_limit
-
-        btn.move(x, y)
-        btn.raise_()
+        bottom_limit = self.height() - status_bar_height - btn.height() - 10
+        current_y = btn.y()
+        if current_y < top_limit:
+            current_y = top_limit
+        elif current_y > bottom_limit:
+            current_y = bottom_limit
+        return current_y
 
     def _update_floating_toc_button_position(self):
-        """根据当前状态更新按钮位置"""
         if hasattr(self, 'floating_toc_btn'):
-            current_pos = self.floating_toc_btn.pos()
-            self._constrain_floating_button(current_pos)
+            self._update_button_targets()
+            if self._button_anim.state() != QPropertyAnimation.State.Running:
+                self.floating_toc_btn.move(self._hide_target)
+                self._update_button_layering()
 
     def _create_mode_bar(self):
-        """创建模式切换标签栏：固定大小，左对齐，不随窗口宽度变化"""
         mode_bar = QWidget()
         mode_bar.setFixedHeight(48)
         layout = QHBoxLayout(mode_bar)
@@ -257,7 +291,7 @@ class MainWindow(QMainWindow):
         self.btn_split = QPushButton(MODE_LABELS[MODE_SPLIT])
 
         for btn in (self.btn_edit, self.btn_preview, self.btn_split):
-            btn.setMinimumWidth(100)      # 允许按钮根据文本扩展
+            btn.setMinimumWidth(100)
             btn.setFixedHeight(32)
             btn.setCheckable(True)
             btn.setAutoExclusive(True)
@@ -270,12 +304,10 @@ class MainWindow(QMainWindow):
         return mode_bar
 
     def _init_toolbar(self):
-        """初始化工具栏并添加到容器"""
         self.toolbar = MarkdownToolBar(self.editor)
         self.toolbar_layout.addWidget(self.toolbar)
 
     def _init_menu_bar(self):
-        """初始化菜单栏"""
         menu_bar = self.menuBar()
 
         # 文件菜单
@@ -366,8 +398,7 @@ class MainWindow(QMainWindow):
         self.window_menu.addAction(self.split_mode_action)
 
         self.window_menu.addSeparator()
-        self.toggle_toc_action = QAction(self.language_manager.tr("show_hide_toc"), self)
-        self.toggle_toc_action.setCheckable(True)
+        self.toggle_toc_action = QAction(self.language_manager.tr("show_toc"), self)
         self.toggle_toc_action.triggered.connect(self.toggle_toc_panel)
         self.window_menu.addAction(self.toggle_toc_action)
 
@@ -475,7 +506,6 @@ class MainWindow(QMainWindow):
         self.check_update_action.triggered.connect(self.check_for_updates)
         self.help_menu.addAction(self.check_update_action)
 
-        # 设置为默认程序
         self.set_default_program_action = QAction(self.language_manager.tr("set_default_program"), self)
         self.set_default_program_action.triggered.connect(self.set_as_default_program)
         self.help_menu.addAction(self.set_default_program_action)
@@ -486,7 +516,6 @@ class MainWindow(QMainWindow):
         self.help_menu.addAction(self.about_action)
 
     def _init_status_bar(self):
-        """初始化状态栏"""
         status_bar = QStatusBar()
         self.setStatusBar(status_bar)
 
@@ -582,7 +611,7 @@ class MainWindow(QMainWindow):
         self.edit_mode_action.setText(self.language_manager.tr("edit_mode"))
         self.preview_mode_action.setText(self.language_manager.tr("preview_mode"))
         self.split_mode_action.setText(self.language_manager.tr("split_mode"))
-        self.toggle_toc_action.setText(self.language_manager.tr("show_hide_toc"))
+        self._update_toc_action_text()
         self.zoom_in_action.setText(self.language_manager.tr("zoom_in"))
         self.zoom_out_action.setText(self.language_manager.tr("zoom_out"))
         self.zoom_reset_action.setText(self.language_manager.tr("reset_zoom"))
@@ -624,6 +653,12 @@ class MainWindow(QMainWindow):
         self._update_toolbar_tooltips()
         self._update_theme_toggle_icon()
 
+    def _update_toc_action_text(self):
+        if self.toc_panel.isVisible():
+            self.toggle_toc_action.setText(self.language_manager.tr("close_toc"))
+        else:
+            self.toggle_toc_action.setText(self.language_manager.tr("show_toc"))
+
     def _update_stats_label(self):
         if hasattr(self, 'editor'):
             text = self.editor.toPlainText()
@@ -646,6 +681,7 @@ class MainWindow(QMainWindow):
         self.editor.viewport().update()
         self.editor._line_number_area.update()
         self._update_preview()
+        self._update_theme_menu_checked(theme)
 
     def toggle_theme_quick(self):
         current = self.theme_manager.get_current_theme()
@@ -661,6 +697,14 @@ class MainWindow(QMainWindow):
         else:
             self.theme_toggle_button.setText("🌙")
 
+    def _update_theme_menu_checked(self, theme: str):
+        if theme == "system":
+            self.theme_system_action.setChecked(True)
+        elif theme == "light":
+            self.theme_light_action.setChecked(True)
+        elif theme == "dark":
+            self.theme_dark_action.setChecked(True)
+
     # ---------- 语言切换 ----------
     def change_language(self, lang: str):
         self.language_manager.set_language(lang)
@@ -668,6 +712,35 @@ class MainWindow(QMainWindow):
         self._retranslate_ui()
 
     # ---------- 更新检查 ----------
+    def _start_update_check_timer(self):
+        self.update_check_timer = QTimer(self)
+        self.update_check_timer.timeout.connect(self._silent_check_for_updates)
+        self.update_check_timer.start(60 * 60 * 1000)
+        self._last_update_check = time.time()
+
+    def _silent_check_for_updates(self):
+        now = time.time()
+        if now - self._last_update_check >= 30 * 24 * 60 * 60:
+            self._last_update_check = now
+            info = self._get_latest_release_info()
+            if info:
+                latest, notes, url = info
+                if self._is_newer_version(latest):
+                    self._show_update_available(latest, notes, url)
+
+    def _show_update_available(self, latest, notes, url):
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(self.language_manager.tr("update_available_title"))
+        msg_box.setText(self.language_manager.tr("update_available_message").format(
+            version=latest, notes=notes))
+        download_btn = msg_box.addButton(self.language_manager.tr("open_download_page"),
+                                         QMessageBox.ButtonRole.AcceptRole)
+        later_btn = msg_box.addButton(self.language_manager.tr("later"),
+                                      QMessageBox.ButtonRole.RejectRole)
+        msg_box.exec()
+        if msg_box.clickedButton() == download_btn:
+            webbrowser.open(url)
+
     def _get_latest_release_info(self):
         try:
             with urllib.request.urlopen(GITHUB_API_URL, timeout=5) as response:
@@ -698,27 +771,15 @@ class MainWindow(QMainWindow):
             return
         latest, notes, url = info
         if self._is_newer_version(latest):
-            msg_box = QMessageBox(self)
-            msg_box.setWindowTitle(self.language_manager.tr("update_available_title"))
-            msg_box.setText(self.language_manager.tr("update_available_message").format(
-                version=latest, notes=notes))
-            download_btn = msg_box.addButton(self.language_manager.tr("open_download_page"),
-                                             QMessageBox.ButtonRole.AcceptRole)
-            later_btn = msg_box.addButton(self.language_manager.tr("later"),
-                                          QMessageBox.ButtonRole.RejectRole)
-            msg_box.exec()
-            if msg_box.clickedButton() == download_btn:
-                webbrowser.open(url)
+            self._show_update_available(latest, notes, url)
         else:
             QMessageBox.information(self,
                                     self.language_manager.tr("update_latest_title"),
                                     self.language_manager.tr("update_latest_message").format(version=APP_VERSION))
 
-    # ---------- 设置为默认程序 ----------
+    # ---------- 设置默认程序 ----------
     def set_as_default_program(self):
-        """将 MarkEase 设置为 .md 和 .markdown 文件的默认打开程序"""
         exe_path = sys.executable
-        # 对于源码运行，提示用户必须使用打包后的版本
         if not exe_path.lower().endswith("markease.exe"):
             QMessageBox.warning(self,
                                 self.language_manager.tr("set_default_failed_title"),
@@ -726,31 +787,19 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            # 设置应用程序友好名称（显示在打开方式列表中）
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\Applications\MarkEase.exe") as key:
                 winreg.SetValue(key, "FriendlyAppName", winreg.REG_SZ, "MarkEase")
-
-            # 设置 .md 关联
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.md") as key:
                 winreg.SetValue(key, "", winreg.REG_SZ, "MarkEase.md")
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.markdown") as key:
                 winreg.SetValue(key, "", winreg.REG_SZ, "MarkEase.md")
-
-            # 创建 MarkEase.md 文件类型
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\MarkEase.md") as key:
                 winreg.SetValue(key, "", winreg.REG_SZ, "Markdown 文件")
-
-            # 设置默认图标
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\MarkEase.md\DefaultIcon") as key:
                 winreg.SetValue(key, "", winreg.REG_SZ, f'"{exe_path}",0')
-
-            # 设置打开命令
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\MarkEase.md\shell\open\command") as key:
                 winreg.SetValue(key, "", winreg.REG_SZ, f'"{exe_path}" "%1"')
-
-            # 刷新文件关联
             ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
-
             QMessageBox.information(self,
                                     self.language_manager.tr("set_default_success_title"),
                                     self.language_manager.tr("set_default_success_message"))
@@ -785,12 +834,15 @@ class MainWindow(QMainWindow):
             self.preview.setVisible(True)
             self.toolbar_container.setVisible(False)
             self.splitter.setSizes([0, 1])
+            # 强制刷新预览，避免黑色
+            QTimer.singleShot(0, self.preview.update)
         elif mode == MODE_SPLIT:
             self.editor.setVisible(True)
             self.preview.setVisible(True)
             self.toolbar_container.setVisible(True)
             total = self.splitter.width()
             self.splitter.setSizes([total // 2, total // 2])
+            QTimer.singleShot(0, self.preview.update)
 
         if mode == MODE_SPLIT:
             self.scroll_sync_manager.set_sync_enabled(self.sync_scroll_button.isChecked())
@@ -804,7 +856,12 @@ class MainWindow(QMainWindow):
     def toggle_toc_panel(self):
         visible = not self.toc_panel.isVisible()
         self.toc_panel.setVisible(visible)
-        self._update_floating_toc_button_position()
+        self._button_anim.stop()
+        self._hide_timer.stop()
+        self._update_button_targets()
+        self.floating_toc_btn.move(self._hide_target)
+        self._update_button_layering()
+        self._update_toc_action_text()
 
     def _update_toc(self):
         markdown_text = self.editor.toPlainText()
@@ -966,7 +1023,6 @@ class MainWindow(QMainWindow):
             self.open_file_from_path(file_path)
 
     def open_file_from_path(self, path: str, ignore_unsaved: bool = False):
-        """通过命令行参数或文件关联打开文件"""
         if not ignore_unsaved and self.doc_manager.is_modified:
             choice = self._show_unsaved_dialog()
             if choice == "save":
@@ -975,7 +1031,6 @@ class MainWindow(QMainWindow):
             elif choice == "cancel":
                 return
         elif ignore_unsaved and self.doc_manager.is_modified:
-            # 强制清除修改标志，因为初始空白文档无需保存
             self.doc_manager.mark_saved()
 
         try:
@@ -1003,12 +1058,10 @@ class MainWindow(QMainWindow):
             return False
 
     def save_document_as(self) -> bool:
-        # 如果文档未保存过，尝试将第一行作为默认文件名
         default_name = ""
         if not self.doc_manager.file_path:
             first_line = self.editor.toPlainText().split('\n', 1)[0].strip()
             if first_line:
-                # 移除 Markdown 标题标记和非法字符
                 default_name = first_line.lstrip('#').strip()
                 import re
                 default_name = re.sub(r'[\\/:*?"<>|]', '', default_name)[:50]
@@ -1073,7 +1126,6 @@ class MainWindow(QMainWindow):
         super().showEvent(event)
         if hasattr(self, 'floating_toc_btn'):
             self._update_floating_toc_button_position()
-        # 强制刷新所有 UI 文本，确保语言正确显示（解决启动时语言不刷新的问题）
         self._retranslate_ui()
 
     def closeEvent(self, event: QCloseEvent):

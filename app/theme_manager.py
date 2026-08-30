@@ -87,9 +87,11 @@ class ThemeManager:
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
         width: 0px;
     }
-    /* 工具栏所有按钮文字颜色（浅色模式） */
-    QToolBar QToolButton {
-        color: black;
+    /* 菜单分割线：50% 灰色 */
+    QMenu::separator {
+        background-color: #808080;
+        height: 1px;
+        margin: 4px 8px;
     }
     """
 
@@ -134,9 +136,11 @@ class ThemeManager:
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
         width: 0px;
     }
-    /* 工具栏所有按钮文字颜色（深色模式） */
-    QToolBar QToolButton {
-        color: white;
+    /* 菜单分割线：50% 灰色 */
+    QMenu::separator {
+        background-color: #808080;
+        height: 1px;
+        margin: 4px 8px;
     }
     """
 
@@ -154,7 +158,6 @@ class ThemeManager:
         app.setStyle("Fusion")
 
         if theme == self.THEME_SYSTEM:
-            # 检测系统深色模式
             if self._is_system_dark():
                 self._apply_dark()
             else:
@@ -168,21 +171,19 @@ class ThemeManager:
         app = QApplication.instance()
         app.setPalette(self.LIGHT_PALETTE)
         app.setStyleSheet(self.LIGHT_QSS)
-        self.current_theme = self.THEME_LIGHT  # 实际应用为浅色
+        self.current_theme = self.THEME_LIGHT
 
     def _apply_dark(self):
         app = QApplication.instance()
         app.setPalette(self.DARK_PALETTE)
         app.setStyleSheet(self.DARK_QSS)
-        self.current_theme = self.THEME_DARK  # 实际应用为深色
+        self.current_theme = self.THEME_DARK
 
     def _is_system_dark(self) -> bool:
-        """检测系统是否为深色模式（Qt 6.5+ 支持）"""
         app = QApplication.instance()
         if hasattr(app.styleHints(), 'colorScheme'):
             scheme = app.styleHints().colorScheme()
             return scheme == Qt.ColorScheme.Dark
-        # 回退：默认浅色
         return False
 
     def get_current_theme(self) -> str:
