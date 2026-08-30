@@ -953,10 +953,16 @@ class MainWindow(QMainWindow):
         self.find_replace_panel.activateWindow()
 
     def _on_find_next(self, text, case, whole):
-        self.editor.find_text(text, case, whole, backward=False)
+        if self.current_mode == MODE_PREVIEW or (self.current_mode == MODE_SPLIT and self.preview.hasFocus()):
+            self.preview.find_text(text, backward=False, case_sensitive=case)
+        else:
+            self.editor.find_text(text, case, whole, backward=False)
 
     def _on_find_prev(self, text, case, whole):
-        self.editor.find_text(text, case, whole, backward=True)
+        if self.current_mode == MODE_PREVIEW or (self.current_mode == MODE_SPLIT and self.preview.hasFocus()):
+            self.preview.find_text(text, backward=True, case_sensitive=case)
+        else:
+            self.editor.find_text(text, case, whole, backward=True)
 
     def _on_replace(self, find_text, replace_text, case, whole):
         if self.editor.replace_current(find_text, replace_text, case, whole):
@@ -967,8 +973,12 @@ class MainWindow(QMainWindow):
 
     def _on_replace_all(self, find_text, replace_text, case, whole):
         count = self.editor.replace_all(find_text, replace_text, case, whole)
+        # 临时隐藏查找面板，防止遮挡消息框
+        self.find_replace_panel.setVisible(False)
         QMessageBox.information(self, self.language_manager.tr("replace_done"),
                                 self.language_manager.tr("replaced_count").format(count=count))
+        self.find_replace_panel.setVisible(True)
+        self.find_replace_panel.raise_()
 
     # ---------- 缩放控制 ----------
     def _show_zoom_menu(self):

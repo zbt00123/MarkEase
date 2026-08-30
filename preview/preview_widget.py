@@ -12,7 +12,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtCore import QUrl, QObject, Slot, Signal, QTimer, Qt
-from PySide6.QtGui import QColor, QKeySequence, QAction, QContextMenuEvent
+from PySide6.QtGui import QColor, QKeySequence, QAction, QContextMenuEvent, QShortcut
 from PySide6.QtWidgets import QMenu
 
 
@@ -46,8 +46,6 @@ class PreviewPage(QWebEnginePage):
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
-        # 可选：清空缓存强制重新加载
-        # self.profile().clearHttpCache()
         # ======================================================================
 
     def acceptNavigationRequest(self, url: QUrl, navigation_type: QWebEnginePage.NavigationType, is_main_frame: bool):
@@ -127,6 +125,16 @@ class PreviewWidget(QWebEngineView):
         # 设置焦点策略，允许接收键盘事件
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
+        # ========== 修复快捷键 Ctrl+C 复制 ==========
+        self.copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, self)
+        self.copy_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.copy_shortcut.activated.connect(self._on_copy_shortcut)
+
+    def _on_copy_shortcut(self):
+        """处理 Ctrl+C 复制选中内容"""
+        if self.hasFocus() or self.isActiveWindow():
+            self.page().triggerAction(QWebEnginePage.WebAction.Copy)
+
     def set_language_manager(self, lm):
         """注入语言管理器，用于翻译右键菜单"""
         self.language_manager = lm
@@ -181,6 +189,18 @@ class PreviewWidget(QWebEngineView):
         if self._loaded:
             self.setZoomFactor(percent / 100.0)
 
+    # ========== 新增：预览查找功能 ==========
+    def find_text(self, text: str, backward: bool = False, case_sensitive: bool = False):
+        """在预览中查找文本，并高亮显示，滚动到第一个匹配项"""
+        if not text:
+            return
+        flags = QWebEnginePage.FindFlag(0)
+        if backward:
+            flags |= QWebEnginePage.FindFlag.FindBackward
+        if case_sensitive:
+            flags |= QWebEnginePage.FindFlag.FindCaseSensitively
+        self.page().findText(text, flags)
+
     def _on_bridge_scroll(self):
         if not self.qwebchannel_available:
             return
@@ -227,11 +247,12 @@ class PreviewWidget(QWebEngineView):
 
     # ---------- 键盘事件处理 ----------
     def keyPressEvent(self, event):
-        """支持 Ctrl+C 复制选中内容"""
+        """支持 Ctrl+C 复制选中内容（备用，但已由 QShortcut 处理）"""
         if event.matches(QKeySequence.StandardKey.Copy):
-            self.page().triggerAction(QWebEnginePage.WebAction.Copy)
-            event.accept()
-            return
+            if self.hasFocus():
+                self.page().triggerAction(QWebEnginePage.WebAction.Copy)
+                event.accept()
+                return
         super().keyPressEvent(event)
 
     # ---------- 自定义右键菜单 ----------
