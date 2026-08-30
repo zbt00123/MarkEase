@@ -1,188 +1,178 @@
+好的，以下是适用于 GitHub README 的 MarkEase 完整介绍，整合了 v1.2.2 版本的所有新特性：
+
+---
+
 # 📝 MarkEase
 
-**MarkEase** 是一款运行于 Windows 平台、完全离线、轻量级的 **GitHub 风格 Markdown 编辑器**。  
-它专注于提供简单直观的 Markdown 编辑体验，以及高质量的 GitHub 风格预览效果。
+> 一款运行于 Windows 平台、完全离线、轻量级的 GitHub 风格 Markdown 编辑器
 
-![License](https://img.shields.io/badge/license-MIT-blue) ![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey) ![Version](https://img.shields.io/badge/version-1.0.0-green)
-
----
-
-## ✨ 功能特性
-
-- ✅ **完全离线**：所有核心功能本地运行，不依赖网络。
-- ✅ **三种显示模式**：编辑、预览、分屏自由切换。
-- ✅ **GitHub 风格预览**：高度还原 GitHub Markdown 渲染效果，支持 GFM、代码高亮、表格、任务列表等。
-- ✅ **语法高亮**：编辑模式提供轻量 Markdown 语法高亮，提高源码可读性。
-- ✅ **自动目录**：根据标题自动生成目录，支持跳转、当前章节高亮、宽度调整。
-- ✅ **智能同步滚动**：分屏模式下，编辑器和预览可双向滚动同步，基于标题锚点映射，位置更准确。
-- ✅ **查找与替换**：支持区分大小写、全词匹配、全部替换等。
-- ✅ **多主题**：跟随系统 / 浅色 / 深色，全局即时切换。
-- ✅ **多语言**：简体中文、繁体中文、English、한국어、日本語，界面文字随语言即时更新。
-- ✅ **缩放控制**：编辑器和预览均可独立缩放（10%～500%），支持快捷键和滑块。
-- ✅ **悬浮目录按钮**：可拖动的半透明按钮，快速显示/隐藏目录。
-- ✅ **文件管理**：新建、打开、保存、另存为、打开文件所在位置、未保存提醒。
-- ✅ **统计信息**：状态栏实时显示字数、行数。
-- ✅ **便携版**：解压即用，无需安装，可放在任意目录运行。
+[![Version](https://img.shields.io/badge/version-1.2.2-blue.svg)](https://github.com/zbt00123/MarkEase/releases)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Windows](https://img.shields.io/badge/platform-Windows-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
 
 ---
 
-## 📸 软件截图
+## ✨ 核心特性
 
-### 编辑模式
-<img width="2022" height="1243" alt="PixPin_2026-08-29_02-18-49" src="https://github.com/user-attachments/assets/6489d6ad-53ad-4d0b-a085-fa71fd3d5514" />
+### 📝 编辑体验
+- **三种编辑模式**：编辑 / 预览 / 分屏，随心切换
+- **任务列表交互**（v1.2.0）：点击 `- [ ]` / `- [x]` 一键切换任务状态，支持多行批量处理
+- **多行格式编辑**（v1.2.0）：选中多行时，引用、列表、任务列表自动为每行添加前缀，代码块包裹整个选区
+- **智能格式工具栏**：一键插入标题、加粗、斜体、链接、表格等
+- **实时字数统计**：随时掌握文档规模
 
-### 预览模式
-<img width="2022" height="1243" alt="PixPin_2026-08-29_02-19-22" src="https://github.com/user-attachments/assets/260dce0a-1959-4e48-90b7-d1a4b1d0ea24" />
+### 🎨 视觉与主题
+- **多主题支持**：浅色 / 深色 / 跟随系统，护眼舒适
+- **字体优化**（v1.2.2）：中文统一使用微软雅黑，韩文使用 Malgun Gothic，在任何语言环境下均正确显示
+- **菜单栏字号统一**（v1.2.2）：菜单栏标题与下拉菜单项统一为 12pt，阅读更舒适
+- **编辑器显示优化**（v1.2.2）：100% 缩放时编辑窗口实际显示为 150% 字体大小，编辑更轻松
 
-### 分屏模式
-<img width="2022" height="1243" alt="PixPin_2026-08-29_02-19-42" src="https://github.com/user-attachments/assets/a506cc80-69cd-43d4-9900-92672de7f81f" />
+### 🌍 多语言支持
+- 简体中文、繁体中文、English、한국어、日本語
+- 界面语言切换时，UI 字体自动适配（中文用微软雅黑，韩文用 Malgun Gothic）
 
-### 深色主题
-<img width="2022" height="1243" alt="PixPin_2026-08-29_02-20-06" src="https://github.com/user-attachments/assets/77ebe96c-7f5d-4296-9e58-f0ddb219a26d" />
+### 📑 文档导航
+- **智能目录**：自动解析标题，支持悬浮按钮快速呼出
+- **同步滚动**：编辑与预览区域滚动同步，精准定位
+- **目录高亮**：当前章节在目录中自动高亮
+
+### 🔍 查找与预览
+- **查找替换**：支持大小写匹配、全词匹配，编辑器和预览均支持查找（v1.2.2）
+- **预览快捷键复制**（v1.2.2）：预览窗口中直接使用 `Ctrl+C` 复制选中内容
+- **预览外部链接**（v1.2.2）：所有超链接在系统默认浏览器中打开，不占用软件内部窗口
+- **GitHub 徽章支持**（v1.2.2）：联网状态下完美渲染 `img.shields.io` 等在线徽章
+
+### 📐 缩放与布局
+- **缩放控制**：10%–500%，编辑器和预览同步缩放
+- **分屏比例可调**：自由拖拽分割器调整编辑/预览区域比例
+- **目录面板**：可展开/收起，宽度可调
+
+### 🔔 更新与集成
+- **自动更新检查**（v1.2.0）：启动后每月自动检查新版本
+- **手动检查更新**：随时检查 GitHub 最新版本
+- **文件关联**：支持设为 `.md` / `.markdown` 默认程序
+
+### 💻 完全离线
+- 不依赖网络，保护隐私
+- 所有资源本地加载，无需联网即可使用
 
 ---
 
-## 📥 下载与安装
+## 🖼️ 界面预览
 
-### 下载
-前往 [Releases](https://github.com/你的用户名/MarkEase/releases) 页面下载最新版本：
+| 编辑模式 | 分屏模式 | 预览模式 |
+|:---:|:---:|:---:|
+| ![编辑模式](screenshots/edit.png) | ![分屏模式](screenshots/split.png) | ![预览模式](screenshots/preview.png) |
 
-- **绿色免安装版**：`MarkEase_v1.0.0_Windows_x64_portable.7z`  
-  解压后运行 `MarkEase.exe` 即可。
-
-### 运行要求
-- Windows 10 / 11（64 位）
-- 无需安装 Python 或其他依赖
-
-> ⚠️ **提示**：由于程序使用 PyInstaller 打包，部分杀毒软件可能误报。请将程序文件夹添加到杀毒软件信任区（白名单）后使用。
+*(请将截图放置于 `screenshots/` 目录)*
 
 ---
 
 ## 🚀 快速开始
 
-1. 下载并解压 `MarkEase_v1.0.0_Windows_x64_portable.7z`。
-2. 双击 `MarkEase.exe` 启动。
-3. 点击“打开”选择 Markdown 文件，或直接新建文档开始编辑。
-4. 使用顶部标签切换 **编辑 / 预览 / 分屏** 模式。
-5. 通过工具栏快速插入 Markdown 格式（标题、加粗、链接、图片、表格等）。
-6. 点击悬浮目录按钮（左侧边缘）或使用“窗口”菜单显示目录。
+### 下载安装
 
----
+1. 前往 [Releases](https://github.com/zbt00123/MarkEase/releases) 下载最新版本
+2. 解压 `MarkEase_vX.X.X_Windows_x64_portable.7z`
+3. 双击运行 `MarkEase.exe` 即可使用
 
-## ⌨️ 快捷键
+### 从源码运行
 
-| 功能         | 快捷键            |
-|--------------|-------------------|
-| 新建         | `Ctrl + N`        |
-| 打开         | `Ctrl + O`        |
-| 保存         | `Ctrl + S`        |
-| 另存为       | `Ctrl + Shift + S`|
-| 撤销         | `Ctrl + Z`        |
-| 重做         | `Ctrl + Y` / `Ctrl + Shift + Z` |
-| 查找         | `Ctrl + F`        |
-| 替换         | `Ctrl + H`        |
-| 放大         | `Ctrl + =`        |
-| 缩小         | `Ctrl + -`        |
-| 重置缩放     | `Ctrl + 0`        |
+```bash
+# 克隆仓库
+git clone https://github.com/zbt00123/MarkEase.git
+cd MarkEase
 
----
+# 安装依赖
+pip install -r requirements.txt
 
-## 🎨 主题与语言
-
-- **主题**：帮助菜单 → 主题，或状态栏右侧快速切换按钮（☀️/🌙）。
-- **语言**：帮助菜单 → 语言，支持即时切换。
-
----
-
-## 🛠 技术栈
-
-- **Python 3.8+**
-- **PySide6**（Qt for Python）
-- **QWebEngine**（预览渲染）
-- **marked.js**（Markdown 解析）
-- **highlight.js**（代码高亮）
-- **github-markdown-css**（GitHub 风格样式）
-
----
-
-## 📁 项目结构
-
-```
-MarkEase/
-├── app/                    # 主程序模块
-├── editor/                 # Markdown 编辑器
-├── preview/                # Markdown 预览系统
-├── toc/                    # 目录系统
-├── ui/                     # UI 组件
-├── document/               # 文档管理
-├── web/                    # 本地 WebEngine 资源
-├── resources/              # 图标、翻译、主题
-├── scripts/                # 一键脚本
-├── main.py                 # 入口文件
-└── requirements.txt
+# 运行
+python main.py
 ```
 
----
+### 从源码打包
 
-## 🧪 从源码运行
-
-如果您希望从源码运行或进行二次开发：
-
-1. 克隆仓库：
-   ```bash
-   git clone https://github.com/你的用户名/MarkEase.git
-   cd MarkEase
-   ```
-
-2. 安装依赖：
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. 运行：
-   ```bash
-   python main.py
-   ```
+双击运行 `scripts/打包软件.py` 即可一键打包（自动清理缓存）。
 
 ---
 
-## 📦 打包
+## 🛠️ 技术栈
 
-项目提供了 `scripts/打包软件.py` 一键打包脚本，支持生成绿色版和安装版。
-
-- **生成绿色版文件夹**：运行 `python scripts/打包软件.py`，结束后 `dist/MarkEase/` 即为绿色版。
-- **生成安装程序**：需安装 [Inno Setup](https://jrsoftware.org/isinfo.php)，脚本会自动调用并生成 `Setup.exe`。
-
----
-
-## 🤝 参与贡献
-
-欢迎提交 Issue 和 Pull Request！  
-如果您发现 bug 或有新功能建议，请在 [Issues](https://github.com/你的用户名/MarkEase/issues) 中提出。
+| 组件 | 技术 |
+|------|------|
+| GUI 框架 | PySide6 (Qt for Python) |
+| 预览渲染 | QWebEngineView |
+| Markdown 解析 | marked.js |
+| 代码高亮 | highlight.js |
+| 样式主题 | github-markdown-css |
+| 打包工具 | PyInstaller + Inno Setup |
 
 ---
 
-## 📄 版权说明
+## 📦 版本历史
 
-> 仅供学习使用，可以任意修改、复制、发布代码，严禁商用。
-
----
-
-## 🙏 鸣谢
-
-- [PySide6](https://pypi.org/project/PySide6/) (LGPL)
-- [marked.js](https://marked.js.org/) (MIT)
-- [highlight.js](https://highlightjs.org/) (BSD-3-Clause)
-- [github-markdown-css](https://github.com/sindresorhus/github-markdown-css) (MIT)
-- [QWebChannel.js](https://doc.qt.io/qt-6/qtwebchannel-index.html) (LGPL)
-- Emoji icons from system emoji fonts
+| 版本 | 主要更新 |
+|------|----------|
+| **v1.2.2** | 预览快捷键复制、预览查找、替换提示遮挡修复、字体全面优化、菜单栏字号统一、编辑器缩放比例优化、打包脚本增强 |
+| **v1.2.0** | 任务列表点击切换、多行格式批量编辑、自动更新检查、韩语字体修复 |
+| v1.1.0 | 基础功能完善，悬浮目录按钮 |
+| v1.0.0 | 首次发布 |
 
 ---
 
-## 👨‍💻 作者
+## 📖 使用技巧
 
-**ZBT Studio**  
-GitHub: [zbt00123](https://github.com/zbt00123/)
+### 任务列表快速切换
+- 在编辑器中点击 `- [ ]` 或 `- [x]` 标记，一键切换任务状态
+- 选中多行任务后，点击任意一行的标记，所有选中行统一切换状态
 
-大纲：ChatGPT (https://chatgpt.com/)  
-编码：DeepSeek (https://chat.deepseek.com/)
+### 多行格式批量操作
+选中多行文本后，点击工具栏按钮：
+- **引用**：每行自动添加 `> ` 前缀
+- **无序列表**：每行自动添加 `- ` 前缀
+- **有序列表**：每行自动添加 `1. 2. 3. ...` 前缀
+- **任务列表**：每行自动添加 `- [ ] ` 前缀
+- **代码块**：用三个反引号包裹整个选中区域
+
+### 预览快捷键
+- 预览模式下，直接按 `Ctrl+C` 复制选中内容
+- 所有超链接自动在系统浏览器中打开
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+1. Fork 本仓库
+2. 创建您的特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交您的更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 打开一个 Pull Request
+
+---
+
+## 📄 许可证
+
+本项目仅供学习使用，采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+
+---
+
+## 🙏 致谢
+
+- [PySide6](https://pypi.org/project/PySide6/) — Qt for Python (LGPL)
+- [marked.js](https://marked.js.org/) — Markdown 解析器 (MIT)
+- [highlight.js](https://highlightjs.org/) — 代码高亮 (BSD-3-Clause)
+- [github-markdown-css](https://github.com/sindresorhus/github-markdown-css) — GitHub 风格样式 (MIT)
+- QWebChannel.js — Qt Web 通信组件 (LGPL)
+
+---
+
+## 📧 联系
+
+- 作者：ZBT Studio
+- GitHub：[zbt00123](https://github.com/zbt00123/)
+
+---
+
+**如果觉得不错，请给个 ⭐ Star 支持一下！**
