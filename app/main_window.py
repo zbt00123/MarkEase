@@ -68,6 +68,9 @@ class MainWindow(QMainWindow):
         self._init_menu_bar()
         self._init_toolbar()
 
+        # 菜单栏字号统一（12pt）
+        self._apply_menu_font()
+
         # 缩放状态
         self.zoom_percent = self.settings.zoom_percent
 
@@ -588,6 +591,59 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'preview'):
             self.preview.set_theme(theme)
 
+    # ---------- 菜单栏字号统一（修正版） ----------
+    def _apply_menu_font(self):
+        """将菜单栏标题和所有下拉菜单项的字号统一设为 12pt"""
+        if not hasattr(self, 'menuBar'):
+            return
+        menu_bar = self.menuBar()
+        font = menu_bar.font()
+        font.setPointSize(12)
+        menu_bar.setFont(font)
+
+        # 递归设置所有菜单（包括子菜单）的字体
+        def set_menu_font(menu):
+            if menu is None:
+                return
+            menu.setFont(font)
+            for action in menu.actions():
+                sub_menu = action.menu()
+                if sub_menu:
+                    set_menu_font(sub_menu)
+
+        # 遍历所有顶级菜单（通过 actions 获取）
+        for action in menu_bar.actions():
+            sub_menu = action.menu()
+            if sub_menu:
+                set_menu_font(sub_menu)
+
+    # ---------- UI 字体设置（中文用微软雅黑） ----------
+    def _apply_ui_font(self):
+        """
+        根据当前界面语言设置主窗口字体：
+        简体中文或繁体中文 → 微软雅黑 (12pt)
+        其他语言 → 恢复系统默认字体（保留字号12pt）
+        """
+        lang = self.language_manager.current_language
+        if lang in ("zh_CN", "zh_TW"):
+            font = QFont("Microsoft YaHei")
+            font.setPointSize(12)
+            self.setFont(font)
+        else:
+            font = QFont()
+            font.setPointSize(12)
+            self.setFont(font)
+
+    # ---------- 韩语菜单项特殊字体 ----------
+    def _apply_font_to_korean_menu_item(self):
+        """为语言菜单中的韩语子菜单项单独设置 Malgun Gothic 字体"""
+        if hasattr(self, 'language_ko_kr_action'):
+            font = QFont("Malgun Gothic")
+            # 使用菜单栏的当前字号，保持一致
+            menu_font = self.menuBar().font()
+            font.setPointSizeF(menu_font.pointSizeF())
+            self.language_ko_kr_action.setFont(font)
+
     # ---------- 语言更新 ----------
     def _retranslate_ui(self):
         self.file_menu.setTitle(self.language_manager.tr("file"))
@@ -653,9 +709,10 @@ class MainWindow(QMainWindow):
         self._update_toolbar_tooltips()
         self._update_theme_toggle_icon()
 
-        # ========== 新增：每次刷新 UI 时对韩语菜单项应用 Malgun Gothic 字体 ==========
+        # 刷新字体：先统一菜单栏字号，再单独设置韩语菜单项字体
+        self._apply_menu_font()
         self._apply_font_to_korean_menu_item()
-        # ========================================================================
+        self._apply_ui_font()
 
     def _update_toc_action_text(self):
         if self.toc_panel.isVisible():
@@ -675,15 +732,6 @@ class MainWindow(QMainWindow):
     def _update_toolbar_tooltips(self):
         if hasattr(self, 'toolbar'):
             self.toolbar.update_tooltips(self.language_manager)
-
-    # ---------- 新增：为韩语菜单项设置字体 ----------
-    def _apply_font_to_korean_menu_item(self):
-        """为语言菜单中的韩语子菜单项单独设置 Malgun Gothic 字体"""
-        if hasattr(self, 'language_ko_kr_action'):
-            font = QFont("Malgun Gothic")
-            font.setPointSizeF(self.font().pointSizeF())  # 保持与主窗口字号一致
-            self.language_ko_kr_action.setFont(font)
-    # -------------------------------------------------
 
     # ---------- 主题切换 ----------
     def change_theme(self, theme: str):

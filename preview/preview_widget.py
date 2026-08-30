@@ -7,8 +7,9 @@ Markdown 预览控件
 
 import os
 import json
+import webbrowser
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWebEngineCore import QWebEnginePage
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtCore import QUrl, QObject, Slot, Signal, QTimer, Qt
 from PySide6.QtGui import QColor, QKeySequence, QAction, QContextMenuEvent
@@ -34,6 +35,51 @@ class PreviewBridge(QObject):
         self.heading_reported.emit(line)
 
 
+class PreviewPage(QWebEnginePage):
+    """自定义 QWebEnginePage，允许本地页面访问远程资源，并拦截链接在外部浏览器打开"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        # ========== 关键设置：允许本地文件加载远程资源（如徽章图片） ==========
+        settings = self.profile().settings()
+        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
+        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
+        # 可选：清空缓存强制重新加载
+        # self.profile().clearHttpCache()
+        # ======================================================================
+
+    def acceptNavigationRequest(self, url: QUrl, navigation_type: QWebEnginePage.NavigationType, is_main_frame: bool):
+        """
+        拦截所有导航请求。
+        - 本地文件（file://）放行。
+        - 用户点击链接（LinkClicked）→ 系统浏览器打开，阻止加载。
+        - 主框架跳转（JS 重定向等）→ 系统浏览器打开，阻止加载。
+        - 子资源请求（图片、CSS、JS 等）→ 允许加载（保证徽章等图片正常显示）。
+        """
+        # 放行本地文件、about:blank、data:image 等
+        if url.scheme() in ("file", "about", "data"):
+            return True
+
+        # 如果是用户点击链接触发的导航，在系统浏览器中打开并阻止
+        if navigation_type == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
+            webbrowser.open(url.toString())
+            return False
+
+        # 如果是主框架导航（例如 JS 跳转、地址栏输入等），在系统浏览器中打开并阻止
+        if is_main_frame:
+            webbrowser.open(url.toString())
+            return False
+
+        # 子资源请求（图片、CSS、JS 等）—— 允许加载
+        return True
+
+    def createWindow(self, navigation_type: QWebEnginePage.WebWindowType):
+        """当页面请求创建新窗口时（如 target="_blank"），返回 None 以阻止创建"""
+        return None
+
+
 class PreviewWidget(QWebEngineView):
     """Markdown 预览控件"""
 
@@ -54,7 +100,8 @@ class PreviewWidget(QWebEngineView):
         self.language_manager = None  # 由外部设置
 
         # 设置页面背景色为白色，作为加载时的后备
-        self.page().setBackgroundColor(QColor("#ffffff"))
+        self._page = PreviewPage(self)
+        self.setPage(self._page)
 
         qwebchannel_path = os.path.join(self.web_dir, "js", "qwebchannel.js")
         self.qwebchannel_available = os.path.exists(qwebchannel_path)
@@ -63,7 +110,7 @@ class PreviewWidget(QWebEngineView):
             self.channel = QWebChannel(self)
             self.bridge = PreviewBridge()
             self.channel.registerObject("bridge", self.bridge)
-            self.page().setWebChannel(self.channel)
+            self._page.setWebChannel(self.channel)
             self.bridge.on_scroll_called.connect(self._on_bridge_scroll)
             self.bridge.scroll_ratio_reported.connect(self.scroll_ratio_changed)
             self.bridge.heading_reported.connect(self.heading_changed)

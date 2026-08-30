@@ -21,7 +21,7 @@ VSVersionInfo(
            StringStruct(u'LegalCopyright', u'仅供学习使用'),
            StringStruct(u'OriginalFilename', u'MarkEase.exe'),
            StringStruct(u'ProductName', u'MarkEase'),
-           StringStruct(u'ProductVersion', u'1.2.1')]
+           StringStruct(u'ProductVersion', u'1.2.2')]
         )
       ]
     )

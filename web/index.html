@@ -155,6 +155,20 @@
         .markdown-body .task-list-item .task-list-item {
             margin-left: 20px;
         }
+
+        /* ========== 内联图片（如徽章）样式优化 ========== */
+        .markdown-body img {
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+        .markdown-body a img {
+            border: none;
+        }
+        /* 针对 shields.io 徽章，使图片与文字垂直居中 */
+        .markdown-body img[src*="img.shields.io"] {
+            display: inline-block;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>

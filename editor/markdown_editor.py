@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QPlainTextEdit, QTextEdit
 from PySide6.QtCore import Qt, QRect, QSize, QPoint
 from PySide6.QtGui import (
     QPainter, QColor, QTextFormat, QTextCursor,
-    QTextDocument, QFont, QPalette, QMouseEvent
+    QTextDocument, QFont, QPalette
 )
 
 from editor.line_number_area import LineNumberArea
@@ -33,8 +33,17 @@ class MarkdownEditor(QPlainTextEdit):
         self.line_number_current_fg = QColor("#000000")
         self.current_line_highlight = QColor("#f0f0f0")
 
-        # 默认字体大小
+        # ========== 设置默认字体：中文用微软雅黑，韩文用 Malgun Gothic ==========
         self.default_font_size = self.fontInfo().pointSizeF()
+        font = self.font()
+        font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])
+        font.setPointSizeF(self.default_font_size)
+        self.setFont(font)
+        # =========================================================================
+
+        # ========== 新增：基础缩放系数（使编辑器在 100% 时显示为 120%） ==========
+        self.base_font_scale = 1.5
+        # =========================================================================
 
         # 连接信号
         self.blockCountChanged.connect(self._update_line_number_area_width)
@@ -306,30 +315,24 @@ class MarkdownEditor(QPlainTextEdit):
         self.setTextCursor(cursor)
 
     # ====================== 鼠标点击切换任务列表状态 ======================
-    def mousePressEvent(self, event: QMouseEvent):
-        # 保存当前选区信息（在父类处理之前）
+    def mousePressEvent(self, event):
         cursor_before = self.textCursor()
         has_selection = cursor_before.hasSelection()
         sel_start = cursor_before.selectionStart() if has_selection else -1
         sel_end = cursor_before.selectionEnd() if has_selection else -1
 
-        # 调用父类处理默认行为（会改变光标位置，可能清除选区）
         super().mousePressEvent(event)
 
-        # 只处理左键点击
         if event.button() != Qt.MouseButton.LeftButton:
             return
 
-        # 获取点击位置对应的光标
         cursor = self.cursorForPosition(event.pos())
         if cursor.isNull():
             return
 
-        # 获取点击所在行的文本
         block = cursor.block()
         line_text = block.text()
 
-        # 检查该行是否以任务列表标记开头（允许行首空格）
         stripped = line_text.lstrip()
         prefix_len = len(line_text) - len(stripped)
         marker_start = prefix_len
@@ -343,41 +346,31 @@ class MarkdownEditor(QPlainTextEdit):
             is_checked = True
             marker_end = prefix_len + len("- [x] ")
 
-        # 如果该行是任务列表，且点击位置在标记区域内
         if is_checked is not None and marker_start <= cursor.positionInBlock() <= marker_end:
-            # 判断是否要批量处理：检查之前是否有选区，且点击位置是否在选区范围内
-            # 注意：父类处理后，可能已经移动光标并清除了选区，但我们保存了选区信息
             if has_selection and sel_start <= cursor.position() <= sel_end:
-                # 使用保存的选区进行批量切换
                 self._toggle_task_lines(sel_start, sel_end, new_state=not is_checked)
             else:
-                # 只切换当前行
                 self._toggle_single_task_line_by_cursor(cursor, new_state=not is_checked)
 
     def _toggle_task_lines(self, start_pos: int, end_pos: int, new_state: bool):
-        """批量切换选中区域内的所有任务行"""
         doc = self.document()
         start_block = doc.findBlock(start_pos)
         end_block = doc.findBlock(end_pos)
-        # 如果 end_pos 恰好在块开头，则 end_block 可能是下一块，但选中内容不包含该块，所以向前调整
         if end_pos == end_block.position() and end_block != start_block:
             end_block = end_block.previous()
 
-        # 收集选中区域内所有块的内容
         lines = []
         block = start_block
         while block.isValid() and block.blockNumber() <= end_block.blockNumber():
             lines.append(block.text())
             block = block.next()
 
-        # 逐行处理，仅对任务行进行切换，非任务行保持不变
         new_lines = []
         for line in lines:
             new_lines.append(self._toggle_single_task_line(line, new_state))
 
         replacement = '\n'.join(new_lines)
 
-        # 用新文本替换整个选区
         cursor = self.textCursor()
         cursor.setPosition(start_pos)
         cursor.setPosition(end_pos, QTextCursor.MoveMode.KeepAnchor)
@@ -387,7 +380,6 @@ class MarkdownEditor(QPlainTextEdit):
         cursor.endEditBlock()
 
     def _toggle_single_task_line_by_cursor(self, cursor: QTextCursor, new_state: bool):
-        """切换光标所在行的任务状态"""
         block = cursor.block()
         line_text = block.text()
         new_line = self._toggle_single_task_line(line_text, new_state)
@@ -398,7 +390,6 @@ class MarkdownEditor(QPlainTextEdit):
         cursor.endEditBlock()
 
     def _toggle_single_task_line(self, line: str, new_state: bool) -> str:
-        """切换单行任务列表标记，返回新行"""
         stripped = line.lstrip()
         if stripped.startswith("- [ ] "):
             prefix = line[:len(line)-len(stripped)]
@@ -415,7 +406,7 @@ class MarkdownEditor(QPlainTextEdit):
             else:
                 return prefix + "- [ ] " + rest
         else:
-            return line  # 不是任务列表，原样返回
+            return line
 
     # ====================== 查找与跳转辅助方法 ======================
 
@@ -536,7 +527,7 @@ class MarkdownEditor(QPlainTextEdit):
                 break
         return -1, 0
 
-    # ====================== 缩放功能 ======================
+    # ====================== 缩放功能（带基础偏移系数） ======================
 
     def zoom_in(self):
         self.zoomIn(1)
@@ -545,13 +536,16 @@ class MarkdownEditor(QPlainTextEdit):
         self.zoomOut(1)
 
     def reset_zoom(self):
-        font = self.font()
-        font.setPointSizeF(self.default_font_size)
-        self.setFont(font)
+        self.set_zoom_percent(100)
 
     def set_zoom_percent(self, percent: int):
+        """
+        设置编辑器缩放百分比。
+        实际字体大小为 default_font_size * (percent/100) * base_font_scale
+        这样当 percent=100 时，实际显示为 120% 字体大小。
+        """
         percent = max(10, min(500, percent))
-        new_size = self.default_font_size * percent / 100.0
+        new_size = self.default_font_size * (percent / 100.0) * self.base_font_scale
         font = self.font()
         font.setPointSizeF(new_size)
         self.setFont(font)
