@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QSplitter, QToolBar, QDockWidget, QSlider
 )
 from PySide6.QtCore import Qt, QSize, Signal, QTimer, QPoint, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QAction, QKeySequence, QCloseEvent, QActionGroup, QColor, QIcon
+from PySide6.QtGui import QAction, QKeySequence, QCloseEvent, QActionGroup, QColor, QIcon, QFont
 
 from app.constants import (
     APP_TITLE, APP_VERSION, MODE_EDIT, MODE_PREVIEW, MODE_SPLIT, MODE_LABELS,
@@ -653,6 +653,10 @@ class MainWindow(QMainWindow):
         self._update_toolbar_tooltips()
         self._update_theme_toggle_icon()
 
+        # ========== 新增：每次刷新 UI 时对韩语菜单项应用 Malgun Gothic 字体 ==========
+        self._apply_font_to_korean_menu_item()
+        # ========================================================================
+
     def _update_toc_action_text(self):
         if self.toc_panel.isVisible():
             self.toggle_toc_action.setText(self.language_manager.tr("close_toc"))
@@ -671,6 +675,15 @@ class MainWindow(QMainWindow):
     def _update_toolbar_tooltips(self):
         if hasattr(self, 'toolbar'):
             self.toolbar.update_tooltips(self.language_manager)
+
+    # ---------- 新增：为韩语菜单项设置字体 ----------
+    def _apply_font_to_korean_menu_item(self):
+        """为语言菜单中的韩语子菜单项单独设置 Malgun Gothic 字体"""
+        if hasattr(self, 'language_ko_kr_action'):
+            font = QFont("Malgun Gothic")
+            font.setPointSizeF(self.font().pointSizeF())  # 保持与主窗口字号一致
+            self.language_ko_kr_action.setFont(font)
+    # -------------------------------------------------
 
     # ---------- 主题切换 ----------
     def change_theme(self, theme: str):
