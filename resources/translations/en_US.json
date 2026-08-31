@@ -104,5 +104,6 @@
     "set_default_success_title": "Success",
     "set_default_success_message": "MarkEase has been set as the default program for .md and .markdown files.",
     "set_default_failed_title": "Failed",
-    "set_default_failed_message": "Unable to set file associations. Please try running as administrator or modify the registry manually."
+    "set_default_failed_message": "Unable to set file associations. Please try running as administrator or modify the registry manually.",
+    "delete": "Delete"
 }

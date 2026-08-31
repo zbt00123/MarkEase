@@ -18,7 +18,7 @@
     "preview_mode": "预览模式",
     "split_mode": "分屏模式",
     "show_toc": "显示目录",
-    "close_toc": "关闭目录", 
+    "close_toc": "关闭目录",
     "zoom_in": "放大",
     "zoom_out": "缩小",
     "reset_zoom": "重置缩放",
@@ -104,5 +104,6 @@
     "set_default_success_title": "设置成功",
     "set_default_success_message": "MarkEase 已设置为 .md 和 .markdown 文件的默认打开程序。",
     "set_default_failed_title": "设置失败",
-    "set_default_failed_message": "无法设置文件关联，请尝试以管理员身份运行程序，或手动修改注册表。"
+    "set_default_failed_message": "无法设置文件关联，请尝试以管理员身份运行程序，或手动修改注册表。",
+    "delete": "删除"
 }

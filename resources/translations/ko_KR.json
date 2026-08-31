@@ -18,10 +18,11 @@
     "preview_mode": "미리보기 모드",
     "split_mode": "분할 모드",
     "show_hide_toc": "목차 표시/숨기기",
-    "zoom_in": "확대",
-    "zoom_out": "축소",
     "show_toc": "목차 표시",
     "close_toc": "목차 닫기",
+    "zoom_in": "확대",
+    "zoom_out": "축소",
+    "reset_zoom": "확대/축소 재설정",
     "sync_scroll": "동기화 스크롤",
     "help": "도움말",
     "about": "정보",
@@ -104,5 +105,6 @@
     "set_default_success_title": "설정 성공",
     "set_default_success_message": "MarkEase가 .md 및 .markdown 파일의 기본 프로그램으로 설정되었습니다.",
     "set_default_failed_title": "설정 실패",
-    "set_default_failed_message": "파일 연결을 설정할 수 없습니다. 관리자 권한으로 실행하거나 레지스트리를 수동으로 수정하세요."
+    "set_default_failed_message": "파일 연결을 설정할 수 없습니다. 관리자 권한으로 실행하거나 레지스트리를 수동으로 수정하세요.",
+    "delete": "삭제"
 }

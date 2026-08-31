@@ -68,8 +68,8 @@ class MainWindow(QMainWindow):
         self._init_menu_bar()
         self._init_toolbar()
 
-        # 菜单栏字号统一（12pt）
-        self._apply_menu_font()
+        # 设置统一字体（包含中韩文）
+        self._apply_unified_font()
 
         # 缩放状态
         self.zoom_percent = self.settings.zoom_percent
@@ -171,6 +171,7 @@ class MainWindow(QMainWindow):
         # 编辑/预览分割器
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.editor = MarkdownEditor()
+        self.editor.set_language_manager(self.language_manager)
         self.preview = PreviewWidget()
         self.preview.set_language_manager(self.language_manager)
         self.splitter.addWidget(self.editor)
@@ -591,58 +592,33 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'preview'):
             self.preview.set_theme(theme)
 
-    # ---------- 菜单栏字号统一（修正版） ----------
-    def _apply_menu_font(self):
-        """将菜单栏标题和所有下拉菜单项的字号统一设为 12pt"""
-        if not hasattr(self, 'menuBar'):
-            return
-        menu_bar = self.menuBar()
-        font = menu_bar.font()
-        font.setPointSize(12)
-        menu_bar.setFont(font)
-
-        # 递归设置所有菜单（包括子菜单）的字体
-        def set_menu_font(menu):
-            if menu is None:
-                return
-            menu.setFont(font)
-            for action in menu.actions():
+    # ---------- 统一字体设置（中韩文自动适配） ----------
+    def _apply_unified_font(self):
+        """为整个应用程序设置统一的字体族列表，确保中文用微软雅黑，韩文用Malgun Gothic"""
+        font = QFont()
+        font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])
+        font.setPointSize(12)  # 统一字号
+        self.setFont(font)  # 应用于主窗口
+        # 同时设置菜单栏（但菜单栏独立，需额外设置）
+        if hasattr(self, 'menuBar'):
+            menu_bar = self.menuBar()
+            menu_font = QFont()
+            menu_font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])
+            menu_font.setPointSize(12)
+            menu_bar.setFont(menu_font)
+            # 递归设置所有子菜单
+            def set_menu_font(menu):
+                if menu is None:
+                    return
+                menu.setFont(menu_font)
+                for action in menu.actions():
+                    sub_menu = action.menu()
+                    if sub_menu:
+                        set_menu_font(sub_menu)
+            for action in menu_bar.actions():
                 sub_menu = action.menu()
                 if sub_menu:
                     set_menu_font(sub_menu)
-
-        # 遍历所有顶级菜单（通过 actions 获取）
-        for action in menu_bar.actions():
-            sub_menu = action.menu()
-            if sub_menu:
-                set_menu_font(sub_menu)
-
-    # ---------- UI 字体设置（中文用微软雅黑） ----------
-    def _apply_ui_font(self):
-        """
-        根据当前界面语言设置主窗口字体：
-        简体中文或繁体中文 → 微软雅黑 (12pt)
-        其他语言 → 恢复系统默认字体（保留字号12pt）
-        """
-        lang = self.language_manager.current_language
-        if lang in ("zh_CN", "zh_TW"):
-            font = QFont("Microsoft YaHei")
-            font.setPointSize(12)
-            self.setFont(font)
-        else:
-            font = QFont()
-            font.setPointSize(12)
-            self.setFont(font)
-
-    # ---------- 韩语菜单项特殊字体 ----------
-    def _apply_font_to_korean_menu_item(self):
-        """为语言菜单中的韩语子菜单项单独设置 Malgun Gothic 字体"""
-        if hasattr(self, 'language_ko_kr_action'):
-            font = QFont("Malgun Gothic")
-            # 使用菜单栏的当前字号，保持一致
-            menu_font = self.menuBar().font()
-            font.setPointSizeF(menu_font.pointSizeF())
-            self.language_ko_kr_action.setFont(font)
 
     # ---------- 语言更新 ----------
     def _retranslate_ui(self):
@@ -709,10 +685,11 @@ class MainWindow(QMainWindow):
         self._update_toolbar_tooltips()
         self._update_theme_toggle_icon()
 
-        # 刷新字体：先统一菜单栏字号，再单独设置韩语菜单项字体
-        self._apply_menu_font()
-        self._apply_font_to_korean_menu_item()
-        self._apply_ui_font()
+        # 刷新统一字体（确保菜单栏和主窗口字体不变）
+        self._apply_unified_font()
+
+        # 重新应用编辑器缩放（保持缩放比例，不改变字体族）
+        self.editor.set_zoom_percent(self.zoom_percent)
 
     def _update_toc_action_text(self):
         if self.toc_panel.isVisible():

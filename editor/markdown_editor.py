@@ -4,11 +4,11 @@ Markdown 编辑器控件
 继承 QPlainTextEdit，集成行号显示、语法高亮、查找替换、缩放、主题适配
 """
 
-from PySide6.QtWidgets import QPlainTextEdit, QTextEdit
+from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QMenu
 from PySide6.QtCore import Qt, QRect, QSize, QPoint
 from PySide6.QtGui import (
     QPainter, QColor, QTextFormat, QTextCursor,
-    QTextDocument, QFont, QPalette
+    QTextDocument, QFont, QPalette, QAction, QContextMenuEvent, QKeySequence
 )
 
 from editor.line_number_area import LineNumberArea
@@ -33,17 +33,21 @@ class MarkdownEditor(QPlainTextEdit):
         self.line_number_current_fg = QColor("#000000")
         self.current_line_highlight = QColor("#f0f0f0")
 
-        # ========== 设置默认字体：中文用微软雅黑，韩文用 Malgun Gothic ==========
+        # ========== 设置默认字体：固定使用中韩文列表 ==========
         self.default_font_size = self.fontInfo().pointSizeF()
         font = self.font()
         font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])
         font.setPointSizeF(self.default_font_size)
         self.setFont(font)
-        # =========================================================================
+        # ======================================================
 
-        # ========== 新增：基础缩放系数（使编辑器在 100% 时显示为 120%） ==========
+        # ========== 基础缩放系数（使编辑器在 100% 时显示为 150%） ==========
         self.base_font_scale = 1.5
         # =========================================================================
+
+        # ========== 语言管理器（用于右键菜单翻译） ==========
+        self.language_manager = None
+        # ====================================================
 
         # 连接信号
         self.blockCountChanged.connect(self._update_line_number_area_width)
@@ -53,6 +57,11 @@ class MarkdownEditor(QPlainTextEdit):
         # 初始化
         self._update_line_number_area_width()
         self._highlight_current_line()
+
+    # ====================== 语言管理器设置 ======================
+    def set_language_manager(self, lm):
+        """注入语言管理器，用于翻译右键菜单"""
+        self.language_manager = lm
 
     # ====================== 主题应用 ======================
     def apply_theme(self, is_dark: bool):
@@ -151,6 +160,74 @@ class MarkdownEditor(QPlainTextEdit):
         selection.cursor = self.textCursor()
         selection.cursor.clearSelection()
         self.setExtraSelections([selection])
+
+    # ====================== 自定义右键菜单（多语言支持） ======================
+    def contextMenuEvent(self, event: QContextMenuEvent):
+        """自定义右键菜单，支持多语言"""
+        menu = QMenu(self)
+
+        def tr(key, default=""):
+            if self.language_manager:
+                return self.language_manager.tr(key, default)
+            return default if default else key
+
+        # 撤销
+        undo_action = QAction(tr("undo", "Undo"), self)
+        undo_action.setShortcut(QKeySequence.StandardKey.Undo)
+        undo_action.triggered.connect(self.undo)
+        undo_action.setEnabled(self.document().isUndoAvailable())
+        menu.addAction(undo_action)
+
+        # 重做
+        redo_action = QAction(tr("redo", "Redo"), self)
+        redo_action.setShortcut(QKeySequence.StandardKey.Redo)
+        redo_action.triggered.connect(self.redo)
+        redo_action.setEnabled(self.document().isRedoAvailable())
+        menu.addAction(redo_action)
+
+        menu.addSeparator()
+
+        # 剪切
+        cut_action = QAction(tr("cut", "Cut"), self)
+        cut_action.setShortcut(QKeySequence.StandardKey.Cut)
+        cut_action.triggered.connect(self.cut)
+        cut_action.setEnabled(self.textCursor().hasSelection())
+        menu.addAction(cut_action)
+
+        # 复制
+        copy_action = QAction(tr("copy", "Copy"), self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.triggered.connect(self.copy)
+        copy_action.setEnabled(self.textCursor().hasSelection())
+        menu.addAction(copy_action)
+
+        # 粘贴
+        paste_action = QAction(tr("paste", "Paste"), self)
+        paste_action.setShortcut(QKeySequence.StandardKey.Paste)
+        paste_action.triggered.connect(self.paste)
+        menu.addAction(paste_action)
+
+        # 删除
+        delete_action = QAction(tr("delete", "Delete"), self)
+        delete_action.triggered.connect(self._delete_selected)
+        delete_action.setEnabled(self.textCursor().hasSelection())
+        menu.addAction(delete_action)
+
+        menu.addSeparator()
+
+        # 全选
+        select_all_action = QAction(tr("select_all", "Select All"), self)
+        select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
+        select_all_action.triggered.connect(self.selectAll)
+        menu.addAction(select_all_action)
+
+        menu.exec(event.globalPos())
+
+    def _delete_selected(self):
+        """删除选中的文本"""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            cursor.removeSelectedText()
 
     # ====================== Markdown 格式化辅助方法 ======================
 
@@ -542,10 +619,11 @@ class MarkdownEditor(QPlainTextEdit):
         """
         设置编辑器缩放百分比。
         实际字体大小为 default_font_size * (percent/100) * base_font_scale
-        这样当 percent=100 时，实际显示为 120% 字体大小。
+        同时保留字体族列表不变。
         """
         percent = max(10, min(500, percent))
         new_size = self.default_font_size * (percent / 100.0) * self.base_font_scale
         font = self.font()
+        font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])  # 确保保留列表
         font.setPointSizeF(new_size)
         self.setFont(font)

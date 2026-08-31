@@ -18,7 +18,7 @@
     "preview_mode": "預覽模式",
     "split_mode": "分割模式",
     "show_toc": "顯示目錄",
-    "close_toc": "關閉目錄", 
+    "close_toc": "關閉目錄",
     "zoom_in": "放大",
     "zoom_out": "縮小",
     "reset_zoom": "重設縮放",
@@ -104,5 +104,6 @@
     "set_default_success_title": "設定成功",
     "set_default_success_message": "MarkEase 已設定為 .md 和 .markdown 檔案的預設開啟程式。",
     "set_default_failed_title": "設定失敗",
-    "set_default_failed_message": "無法設定檔案關聯，請嘗試以系統管理員身分執行程式，或手動修改登錄檔。"
+    "set_default_failed_message": "無法設定檔案關聯，請嘗試以系統管理員身分執行程式，或手動修改登錄檔。",
+    "delete": "刪除"
 }

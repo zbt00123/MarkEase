@@ -6,7 +6,7 @@ MarkEase 常量定义模块
 
 # 应用信息
 APP_NAME = "MarkEase"
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 
 # GitHub 仓库信息（用于检查更新）
