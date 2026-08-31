@@ -1,4 +1,4 @@
-好的，以下是适用于 GitHub README 的 MarkEase 完整介绍，整合了 v1.2.2 版本的所有新特性：
+### 杀毒软件可能会误报，请将 `MarkEase.exe` 添加信任
 
 ---
 
