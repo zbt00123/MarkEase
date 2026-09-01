@@ -6,7 +6,7 @@
 
 > 一款运行于 Windows 平台、完全离线、轻量级的 GitHub 风格 Markdown 编辑器
 
-[![Version](https://img.shields.io/badge/version-1.2.2-blue.svg)](https://github.com/zbt00123/MarkEase/releases)
+[![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)](https://github.com/zbt00123/MarkEase/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Windows](https://img.shields.io/badge/platform-Windows-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
 
