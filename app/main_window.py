@@ -43,6 +43,24 @@ from toc.floating_toc_button import FloatingTocButton
 class MainWindow(QMainWindow):
     """MarkEase 主窗口"""
 
+    # 语言字体映射表（用于界面全局字体）
+    LANGUAGE_FONTS = {
+        "zh_CN": "Microsoft YaHei",
+        "zh_TW": "Microsoft YaHei",
+        "ko_KR": "Malgun Gothic",
+        "en_US": "",   # 空表示系统默认
+        "ja_JP": "",   # 空表示系统默认
+        "system": "",  # 系统默认
+    }
+
+    # 语言菜单项专用字体映射（固定，不随界面语言变化）
+    LANGUAGE_MENU_FONTS = {
+        "zh_CN": "Microsoft YaHei",
+        "zh_TW": "Microsoft YaHei",
+        "ko_KR": "Malgun Gothic",
+        # en_US, ja_JP, system 不强制指定，沿用界面字体
+    }
+
     def __init__(self):
         super().__init__()
         self.current_mode = MODE_EDIT
@@ -67,9 +85,6 @@ class MainWindow(QMainWindow):
         self._init_toc_panel()
         self._init_menu_bar()
         self._init_toolbar()
-
-        # 设置统一字体（包含中韩文）
-        self._apply_unified_font()
 
         # 缩放状态
         self.zoom_percent = self.settings.zoom_percent
@@ -462,7 +477,9 @@ class MainWindow(QMainWindow):
         self.language_group = QActionGroup(self)
         self.language_group.setExclusive(True)
 
+        # 创建语言动作，并保存语言代码到 data 中以便后续识别
         self.language_system_action = QAction(self.language_manager.tr("system"), self)
+        self.language_system_action.setData("system")
         self.language_system_action.setCheckable(True)
         self.language_system_action.setActionGroup(self.language_group)
         self.language_system_action.triggered.connect(lambda: self.change_language("system"))
@@ -470,6 +487,7 @@ class MainWindow(QMainWindow):
         self.language_menu.addAction(self.language_system_action)
 
         self.language_zh_cn_action = QAction(self.language_manager.tr("zh_CN"), self)
+        self.language_zh_cn_action.setData("zh_CN")
         self.language_zh_cn_action.setCheckable(True)
         self.language_zh_cn_action.setActionGroup(self.language_group)
         self.language_zh_cn_action.triggered.connect(lambda: self.change_language("zh_CN"))
@@ -477,6 +495,7 @@ class MainWindow(QMainWindow):
         self.language_menu.addAction(self.language_zh_cn_action)
 
         self.language_zh_tw_action = QAction(self.language_manager.tr("zh_TW"), self)
+        self.language_zh_tw_action.setData("zh_TW")
         self.language_zh_tw_action.setCheckable(True)
         self.language_zh_tw_action.setActionGroup(self.language_group)
         self.language_zh_tw_action.triggered.connect(lambda: self.change_language("zh_TW"))
@@ -484,6 +503,7 @@ class MainWindow(QMainWindow):
         self.language_menu.addAction(self.language_zh_tw_action)
 
         self.language_en_us_action = QAction(self.language_manager.tr("en_US"), self)
+        self.language_en_us_action.setData("en_US")
         self.language_en_us_action.setCheckable(True)
         self.language_en_us_action.setActionGroup(self.language_group)
         self.language_en_us_action.triggered.connect(lambda: self.change_language("en_US"))
@@ -491,6 +511,7 @@ class MainWindow(QMainWindow):
         self.language_menu.addAction(self.language_en_us_action)
 
         self.language_ko_kr_action = QAction(self.language_manager.tr("ko_KR"), self)
+        self.language_ko_kr_action.setData("ko_KR")
         self.language_ko_kr_action.setCheckable(True)
         self.language_ko_kr_action.setActionGroup(self.language_group)
         self.language_ko_kr_action.triggered.connect(lambda: self.change_language("ko_KR"))
@@ -498,6 +519,7 @@ class MainWindow(QMainWindow):
         self.language_menu.addAction(self.language_ko_kr_action)
 
         self.language_ja_jp_action = QAction(self.language_manager.tr("ja_JP"), self)
+        self.language_ja_jp_action.setData("ja_JP")
         self.language_ja_jp_action.setCheckable(True)
         self.language_ja_jp_action.setActionGroup(self.language_group)
         self.language_ja_jp_action.triggered.connect(lambda: self.change_language("ja_JP"))
@@ -592,33 +614,74 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'preview'):
             self.preview.set_theme(theme)
 
-    # ---------- 统一字体设置（中韩文自动适配） ----------
-    def _apply_unified_font(self):
-        """为整个应用程序设置统一的字体族列表，确保中文用微软雅黑，韩文用Malgun Gothic"""
-        font = QFont()
-        font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])
-        font.setPointSize(12)  # 统一字号
-        self.setFont(font)  # 应用于主窗口
-        # 同时设置菜单栏（但菜单栏独立，需额外设置）
+    # ========== 统一字体管理 ==========
+    def _apply_ui_font(self):
+        """
+        根据当前语言设置所有 UI 控件的字体族和字号（12pt）。
+        包括主窗口、菜单栏、所有菜单、模式按钮等。
+        语言菜单中的各个语言名称项，根据其对应语言设置固定字体。
+        """
+        lang = self.language_manager.current_language
+        font_family = self.LANGUAGE_FONTS.get(lang, "")
+
+        # 构建主字体对象
+        main_font = QFont()
+        main_font.setPointSize(12)
+        if font_family:
+            main_font.setFamily(font_family)
+        else:
+            main_font.setFamily(QFont().family())  # 系统默认
+
+        # 1. 设置主窗口字体（所有子部件默认继承）
+        self.setFont(main_font)
+
+        # 2. 设置菜单栏及所有菜单的字体
         if hasattr(self, 'menuBar'):
             menu_bar = self.menuBar()
-            menu_font = QFont()
-            menu_font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])
-            menu_font.setPointSize(12)
-            menu_bar.setFont(menu_font)
+            menu_bar.setFont(main_font)
+
             # 递归设置所有子菜单
             def set_menu_font(menu):
                 if menu is None:
                     return
-                menu.setFont(menu_font)
+                menu.setFont(main_font)
+                # 强制样式表确保字体生效
+                menu.setStyleSheet(f"QMenu {{ font-family: '{main_font.family()}'; font-size: 12pt; }}")
                 for action in menu.actions():
                     sub_menu = action.menu()
                     if sub_menu:
                         set_menu_font(sub_menu)
+
             for action in menu_bar.actions():
                 sub_menu = action.menu()
                 if sub_menu:
                     set_menu_font(sub_menu)
+
+        # 3. 显式设置模式按钮的字体
+        if hasattr(self, 'btn_edit'):
+            self.btn_edit.setFont(main_font)
+        if hasattr(self, 'btn_preview'):
+            self.btn_preview.setFont(main_font)
+        if hasattr(self, 'btn_split'):
+            self.btn_split.setFont(main_font)
+
+        # 4. 特殊处理：语言菜单中的各项，根据其语言代码强制设置字体
+        if hasattr(self, 'language_menu'):
+            for action in self.language_menu.actions():
+                lang_code = action.data()
+                if not lang_code:
+                    continue
+                # 获取该语言对应的字体族
+                fixed_family = self.LANGUAGE_MENU_FONTS.get(lang_code, None)
+                if fixed_family:
+                    # 如果设置了固定字体，则单独设置
+                    font = QFont()
+                    font.setPointSize(12)
+                    font.setFamily(fixed_family)
+                    action.setFont(font)
+                else:
+                    # 否则使用主字体
+                    action.setFont(main_font)
 
     # ---------- 语言更新 ----------
     def _retranslate_ui(self):
@@ -685,10 +748,10 @@ class MainWindow(QMainWindow):
         self._update_toolbar_tooltips()
         self._update_theme_toggle_icon()
 
-        # 刷新统一字体（确保菜单栏和主窗口字体不变）
-        self._apply_unified_font()
+        # ========== 应用界面字体（根据当前语言，并固定语言菜单项） ==========
+        self._apply_ui_font()
 
-        # 重新应用编辑器缩放（保持缩放比例，不改变字体族）
+        # ========== 重新应用编辑器缩放（保证编辑器字体固定） ==========
         self.editor.set_zoom_percent(self.zoom_percent)
 
     def _update_toc_action_text(self):
@@ -720,6 +783,10 @@ class MainWindow(QMainWindow):
         self.editor._line_number_area.update()
         self._update_preview()
         self._update_theme_menu_checked(theme)
+
+        # ========== 重要：切换主题后重新应用 UI 字体，防止菜单栏字号变小 ==========
+        self._apply_ui_font()
+        # ========================================================================
 
     def toggle_theme_quick(self):
         current = self.theme_manager.get_current_theme()

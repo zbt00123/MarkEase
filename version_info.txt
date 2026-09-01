@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1,2,3,0),
-    prodvers=(1,2,3,0),
+    filevers=(1,2,4,0),
+    prodvers=(1,2,4,0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
           u'080404b0',
           [StringStruct(u'CompanyName', u'ZBT Studio'),
            StringStruct(u'FileDescription', u'MarkEase'),
-           StringStruct(u'FileVersion', u'1.2.3'),
+           StringStruct(u'FileVersion', u'1.2.4'),
            StringStruct(u'InternalName', u'MarkEase'),
            StringStruct(u'LegalCopyright', u'仅供学习使用'),
            StringStruct(u'OriginalFilename', u'MarkEase.exe'),
            StringStruct(u'ProductName', u'MarkEase'),
-           StringStruct(u'ProductVersion', u'1.2.3')]
+           StringStruct(u'ProductVersion', u'1.2.4')]
         )
       ]
     )

@@ -4,6 +4,7 @@ Markdown 编辑器控件
 继承 QPlainTextEdit，集成行号显示、语法高亮、查找替换、缩放、主题适配
 """
 
+import re
 from PySide6.QtWidgets import QPlainTextEdit, QTextEdit, QMenu
 from PySide6.QtCore import Qt, QRect, QSize, QPoint
 from PySide6.QtGui import (
@@ -18,52 +19,48 @@ from editor.syntax_highlighter import MarkdownSyntaxHighlighter
 class MarkdownEditor(QPlainTextEdit):
     """Markdown 编辑器，带有行号和语法高亮"""
 
+    TASK_PATTERN = re.compile(r'^(\s*)(- +)*\[([ xX])\] (.*)')
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._line_number_area = LineNumberArea(self)
         self._highlighter = MarkdownSyntaxHighlighter(self.document())
 
-        # 设置编辑器属性
-        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)  # 自动换行
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.setTabStopDistance(40)
 
-        # 默认颜色（浅色）
         self.line_number_bg_color = QColor("#f5f5f5")
         self.line_number_fg_color = QColor("#999999")
         self.line_number_current_fg = QColor("#000000")
         self.current_line_highlight = QColor("#f0f0f0")
 
-        # ========== 设置默认字体：固定使用中韩文列表 ==========
+        # 编辑器字体固定
         self.default_font_size = self.fontInfo().pointSizeF()
         font = self.font()
         font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])
         font.setPointSizeF(self.default_font_size)
         self.setFont(font)
-        # ======================================================
 
-        # ========== 基础缩放系数（使编辑器在 100% 时显示为 150%） ==========
         self.base_font_scale = 1.5
-        # =========================================================================
-
-        # ========== 语言管理器（用于右键菜单翻译） ==========
         self.language_manager = None
-        # ====================================================
 
-        # 连接信号
         self.blockCountChanged.connect(self._update_line_number_area_width)
         self.updateRequest.connect(self._update_line_number_area)
         self.cursorPositionChanged.connect(self._highlight_current_line)
 
-        # 初始化
         self._update_line_number_area_width()
         self._highlight_current_line()
 
-    # ====================== 语言管理器设置 ======================
+    # ====================== 语言管理器 ======================
     def set_language_manager(self, lm):
-        """注入语言管理器，用于翻译右键菜单"""
         self.language_manager = lm
 
-    # ====================== 主题应用 ======================
+    def _tr(self, key: str, default: str) -> str:
+        if self.language_manager:
+            return self.language_manager.tr(key, default)
+        return default
+
+    # ====================== 主题 ======================
     def apply_theme(self, is_dark: bool):
         if is_dark:
             editor_bg = "#2a2a2a"
@@ -91,11 +88,10 @@ class MarkdownEditor(QPlainTextEdit):
         self.current_line_highlight = QColor(current_line_bg)
 
         self._highlighter.set_dark_mode(is_dark)
-
         self._line_number_area.update()
         self._highlight_current_line()
 
-    # ====================== 行号区域相关 ======================
+    # ====================== 行号区域 ======================
     def line_number_area_width(self) -> int:
         digits = 1
         max_num = max(1, self.blockCount())
@@ -113,7 +109,6 @@ class MarkdownEditor(QPlainTextEdit):
             self._line_number_area.scroll(0, dy)
         else:
             self._line_number_area.update(0, rect.y(), self._line_number_area.width(), rect.height())
-
         if rect.contains(self.viewport().rect()):
             self._update_line_number_area_width()
 
@@ -132,22 +127,17 @@ class MarkdownEditor(QPlainTextEdit):
         block_number = block.blockNumber()
         top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
         bottom = top + self.blockBoundingRect(block).height()
-
         current_line = self.textCursor().blockNumber()
 
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 number = str(block_number + 1)
-                if block_number == current_line:
-                    painter.setPen(self.line_number_current_fg)
-                else:
-                    painter.setPen(self.line_number_fg_color)
+                painter.setPen(self.line_number_current_fg if block_number == current_line else self.line_number_fg_color)
                 painter.drawText(
                     0, int(top), self._line_number_area.width() - 5,
                     self.fontMetrics().height(),
                     Qt.AlignmentFlag.AlignRight, number
                 )
-
             block = block.next()
             top = bottom
             bottom = top + self.blockBoundingRect(block).height()
@@ -161,24 +151,19 @@ class MarkdownEditor(QPlainTextEdit):
         selection.cursor.clearSelection()
         self.setExtraSelections([selection])
 
-    # ====================== 自定义右键菜单（多语言支持） ======================
+    # ====================== 右键菜单 ======================
     def contextMenuEvent(self, event: QContextMenuEvent):
-        """自定义右键菜单，支持多语言"""
         menu = QMenu(self)
 
-        def tr(key, default=""):
-            if self.language_manager:
-                return self.language_manager.tr(key, default)
-            return default if default else key
+        def tr(key, default):
+            return self._tr(key, default)
 
-        # 撤销
         undo_action = QAction(tr("undo", "Undo"), self)
         undo_action.setShortcut(QKeySequence.StandardKey.Undo)
         undo_action.triggered.connect(self.undo)
         undo_action.setEnabled(self.document().isUndoAvailable())
         menu.addAction(undo_action)
 
-        # 重做
         redo_action = QAction(tr("redo", "Redo"), self)
         redo_action.setShortcut(QKeySequence.StandardKey.Redo)
         redo_action.triggered.connect(self.redo)
@@ -187,35 +172,29 @@ class MarkdownEditor(QPlainTextEdit):
 
         menu.addSeparator()
 
-        # 剪切
         cut_action = QAction(tr("cut", "Cut"), self)
         cut_action.setShortcut(QKeySequence.StandardKey.Cut)
         cut_action.triggered.connect(self.cut)
         cut_action.setEnabled(self.textCursor().hasSelection())
         menu.addAction(cut_action)
 
-        # 复制
         copy_action = QAction(tr("copy", "Copy"), self)
         copy_action.setShortcut(QKeySequence.StandardKey.Copy)
         copy_action.triggered.connect(self.copy)
         copy_action.setEnabled(self.textCursor().hasSelection())
         menu.addAction(copy_action)
 
-        # 粘贴
         paste_action = QAction(tr("paste", "Paste"), self)
         paste_action.setShortcut(QKeySequence.StandardKey.Paste)
         paste_action.triggered.connect(self.paste)
         menu.addAction(paste_action)
 
-        # 删除
         delete_action = QAction(tr("delete", "Delete"), self)
         delete_action.triggered.connect(self._delete_selected)
         delete_action.setEnabled(self.textCursor().hasSelection())
         menu.addAction(delete_action)
 
         menu.addSeparator()
-
-        # 全选
         select_all_action = QAction(tr("select_all", "Select All"), self)
         select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
         select_all_action.triggered.connect(self.selectAll)
@@ -224,13 +203,11 @@ class MarkdownEditor(QPlainTextEdit):
         menu.exec(event.globalPos())
 
     def _delete_selected(self):
-        """删除选中的文本"""
         cursor = self.textCursor()
         if cursor.hasSelection():
             cursor.removeSelectedText()
 
-    # ====================== Markdown 格式化辅助方法 ======================
-
+    # ====================== 格式化方法（支持多语言预设文本） ======================
     def insert_text(self, text: str):
         self.insertPlainText(text)
 
@@ -275,7 +252,8 @@ class MarkdownEditor(QPlainTextEdit):
 
     def make_heading(self, level: int):
         prefix = "#" * level + " "
-        self.insert_block(prefix, "标题")
+        placeholder = self._tr(f"heading_{level}_placeholder", "标题")
+        self.insert_block(prefix, placeholder)
 
     def make_quote(self):
         cursor = self.textCursor()
@@ -300,7 +278,8 @@ class MarkdownEditor(QPlainTextEdit):
             cursor.insertText(replacement)
             cursor.endEditBlock()
         else:
-            self.insert_block("> ", "引用内容")
+            placeholder = self._tr("quote_placeholder", "引用内容")
+            self.insert_block("> ", placeholder)
 
     def make_code_block(self):
         cursor = self.textCursor()
@@ -310,9 +289,10 @@ class MarkdownEditor(QPlainTextEdit):
             replacement = f"```\n{selected}\n```"
             cursor.insertText(replacement)
         else:
+            placeholder = self._tr("code_block_placeholder", "代码块")
             cursor.beginEditBlock()
             cursor.movePosition(QTextCursor.MoveOperation.StartOfLine)
-            cursor.insertText("```\n代码块\n```\n")
+            cursor.insertText(f"```\n{placeholder}\n```\n")
             cursor.endEditBlock()
             cursor.movePosition(QTextCursor.MoveOperation.Up, QTextCursor.MoveMode.MoveAnchor, 2)
             cursor.movePosition(QTextCursor.MoveOperation.EndOfLine)
@@ -331,9 +311,10 @@ class MarkdownEditor(QPlainTextEdit):
             replacement = f"[{selected_text}](url)"
             cursor.insertText(replacement)
         else:
-            cursor.insertText("[链接文字](url)")
+            placeholder_text = self._tr("link_text_placeholder", "链接文字")
+            cursor.insertText(f"[{placeholder_text}](url)")
             cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.MoveAnchor, 4)
-            cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor, 3)
+            cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor, len(placeholder_text))
             self.setTextCursor(cursor)
 
     def make_image(self):
@@ -343,9 +324,10 @@ class MarkdownEditor(QPlainTextEdit):
             replacement = f"![{selected_text}](图片路径)"
             cursor.insertText(replacement)
         else:
-            cursor.insertText("![图片描述](图片路径)")
+            placeholder_text = self._tr("image_placeholder", "图片描述")
+            cursor.insertText(f"![{placeholder_text}](图片路径)")
             cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.MoveAnchor, 4)
-            cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor, 3)
+            cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor, len(placeholder_text))
             self.setTextCursor(cursor)
 
     def make_unordered_list(self):
@@ -357,7 +339,8 @@ class MarkdownEditor(QPlainTextEdit):
             replacement = '\n'.join(new_lines)
             cursor.insertText(replacement)
         else:
-            self.insert_block("- ", "列表项")
+            placeholder = self._tr("list_item_placeholder", "列表项")
+            self.insert_block("- ", placeholder)
 
     def make_ordered_list(self):
         cursor = self.textCursor()
@@ -368,7 +351,8 @@ class MarkdownEditor(QPlainTextEdit):
             replacement = '\n'.join(new_lines)
             cursor.insertText(replacement)
         else:
-            self.insert_block("1. ", "列表项")
+            placeholder = self._tr("list_item_placeholder", "列表项")
+            self.insert_block("1. ", placeholder)
 
     def make_task_list(self):
         cursor = self.textCursor()
@@ -379,19 +363,25 @@ class MarkdownEditor(QPlainTextEdit):
             replacement = '\n'.join(new_lines)
             cursor.insertText(replacement)
         else:
-            self.insert_block("- [ ] ", "任务项")
+            placeholder = self._tr("task_item_placeholder", "任务项")
+            self.insert_block("- [ ] ", placeholder)
 
+    # ====================== 表格（支持多语言） ======================
     def make_table(self):
-        table_template = (
-            "| 列1 | 列2 | 列3 |\n"
-            "| --- | --- | --- |\n"
-            "| 内容 | 内容 | 内容 |\n"
-        )
+        header = self._tr("table_header", "列1 | 列2 | 列3")
+        cell = self._tr("table_cell", "内容")
+        # 解析表头
+        cols = [col.strip() for col in header.split('|')]
+        # 构建表格
+        header_line = "| " + " | ".join(cols) + " |"
+        sep_line = "| " + " | ".join(["---"] * len(cols)) + " |"
+        data_line = "| " + " | ".join([cell] * len(cols)) + " |"
+        table_template = f"{header_line}\n{sep_line}\n{data_line}\n"
         cursor = self.textCursor()
         cursor.insertText(table_template)
         self.setTextCursor(cursor)
 
-    # ====================== 鼠标点击切换任务列表状态 ======================
+    # ====================== 任务列表点击切换（优化版） ======================
     def mousePressEvent(self, event):
         cursor_before = self.textCursor()
         has_selection = cursor_before.hasSelection()
@@ -409,25 +399,27 @@ class MarkdownEditor(QPlainTextEdit):
 
         block = cursor.block()
         line_text = block.text()
+        pos_in_block = cursor.positionInBlock()
 
-        stripped = line_text.lstrip()
-        prefix_len = len(line_text) - len(stripped)
-        marker_start = prefix_len
-        marker_end = -1
-        is_checked = None
+        match = self.TASK_PATTERN.match(line_text)
+        if not match:
+            return
 
-        if stripped.startswith("- [ ] "):
-            is_checked = False
-            marker_end = prefix_len + len("- [ ] ")
-        elif stripped.startswith("- [x] "):
-            is_checked = True
-            marker_end = prefix_len + len("- [x] ")
+        prefix = match.group(1)
+        marker = match.group(3)
+        bracket_start = line_text.find('[', len(prefix))
+        bracket_end = line_text.find(']', bracket_start) + 1
+        if bracket_start == -1:
+            return
 
-        if is_checked is not None and marker_start <= cursor.positionInBlock() <= marker_end:
+        if bracket_start <= pos_in_block <= bracket_end:
+            is_checked = marker in ('x', 'X')
+            new_state = not is_checked
+
             if has_selection and sel_start <= cursor.position() <= sel_end:
-                self._toggle_task_lines(sel_start, sel_end, new_state=not is_checked)
+                self._toggle_task_lines(sel_start, sel_end, new_state)
             else:
-                self._toggle_single_task_line_by_cursor(cursor, new_state=not is_checked)
+                self._toggle_single_task_line_by_cursor(cursor, new_state)
 
     def _toggle_task_lines(self, start_pos: int, end_pos: int, new_state: bool):
         doc = self.document()
@@ -442,10 +434,7 @@ class MarkdownEditor(QPlainTextEdit):
             lines.append(block.text())
             block = block.next()
 
-        new_lines = []
-        for line in lines:
-            new_lines.append(self._toggle_single_task_line(line, new_state))
-
+        new_lines = [self._toggle_single_task_line(line, new_state) for line in lines]
         replacement = '\n'.join(new_lines)
 
         cursor = self.textCursor()
@@ -467,26 +456,17 @@ class MarkdownEditor(QPlainTextEdit):
         cursor.endEditBlock()
 
     def _toggle_single_task_line(self, line: str, new_state: bool) -> str:
-        stripped = line.lstrip()
-        if stripped.startswith("- [ ] "):
-            prefix = line[:len(line)-len(stripped)]
-            rest = stripped[len("- [ ] "):]
-            if new_state:
-                return prefix + "- [x] " + rest
-            else:
-                return prefix + "- [ ] " + rest
-        elif stripped.startswith("- [x] "):
-            prefix = line[:len(line)-len(stripped)]
-            rest = stripped[len("- [x] "):]
-            if new_state:
-                return prefix + "- [x] " + rest
-            else:
-                return prefix + "- [ ] " + rest
-        else:
+        match = self.TASK_PATTERN.match(line)
+        if not match:
             return line
+        bracket_start = line.find('[')
+        bracket_end = line.find(']') + 1
+        if bracket_start == -1:
+            return line
+        new_marker = "x" if new_state else " "
+        return line[:bracket_start+1] + new_marker + line[bracket_end-1:]
 
-    # ====================== 查找与跳转辅助方法 ======================
-
+    # ====================== 查找替换 ======================
     def find_text(self, text: str, case_sensitive: bool = False, whole_word: bool = False, backward: bool = False):
         flags = QTextDocument.FindFlag(0)
         if case_sensitive:
@@ -604,8 +584,7 @@ class MarkdownEditor(QPlainTextEdit):
                 break
         return -1, 0
 
-    # ====================== 缩放功能（带基础偏移系数） ======================
-
+    # ====================== 缩放 ======================
     def zoom_in(self):
         self.zoomIn(1)
 
@@ -616,14 +595,9 @@ class MarkdownEditor(QPlainTextEdit):
         self.set_zoom_percent(100)
 
     def set_zoom_percent(self, percent: int):
-        """
-        设置编辑器缩放百分比。
-        实际字体大小为 default_font_size * (percent/100) * base_font_scale
-        同时保留字体族列表不变。
-        """
         percent = max(10, min(500, percent))
         new_size = self.default_font_size * (percent / 100.0) * self.base_font_scale
         font = self.font()
-        font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])  # 确保保留列表
+        font.setFamilies(["Microsoft YaHei", "Malgun Gothic"])
         font.setPointSizeF(new_size)
         self.setFont(font)
