@@ -6,7 +6,7 @@ MarkEase 常量定义模块
 
 # 应用信息
 APP_NAME = "MarkEase"
-APP_VERSION = "1.2.4"
+APP_VERSION = "1.2.5"
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 
 # GitHub 仓库信息（用于检查更新）
@@ -19,7 +19,6 @@ MODE_EDIT = "edit"
 MODE_PREVIEW = "preview"
 MODE_SPLIT = "split"
 
-# 模式显示名称（后续多语言系统会替换，此处先使用简单映射）
 MODE_LABELS = {
     MODE_EDIT: "✏️ 编辑",
     MODE_PREVIEW: "🔎 预览",

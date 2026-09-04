@@ -13,6 +13,7 @@ import webbrowser
 import ctypes
 import winreg
 import time
+import re
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QLabel, QVBoxLayout, QHBoxLayout,
     QPushButton, QMenuBar, QMenu, QStatusBar, QFileDialog, QMessageBox,
@@ -477,7 +478,6 @@ class MainWindow(QMainWindow):
         self.language_group = QActionGroup(self)
         self.language_group.setExclusive(True)
 
-        # 创建语言动作，并保存语言代码到 data 中以便后续识别
         self.language_system_action = QAction(self.language_manager.tr("system"), self)
         self.language_system_action.setData("system")
         self.language_system_action.setCheckable(True)
@@ -624,28 +624,23 @@ class MainWindow(QMainWindow):
         lang = self.language_manager.current_language
         font_family = self.LANGUAGE_FONTS.get(lang, "")
 
-        # 构建主字体对象
         main_font = QFont()
         main_font.setPointSize(12)
         if font_family:
             main_font.setFamily(font_family)
         else:
-            main_font.setFamily(QFont().family())  # 系统默认
+            main_font.setFamily(QFont().family())
 
-        # 1. 设置主窗口字体（所有子部件默认继承）
         self.setFont(main_font)
 
-        # 2. 设置菜单栏及所有菜单的字体
         if hasattr(self, 'menuBar'):
             menu_bar = self.menuBar()
             menu_bar.setFont(main_font)
 
-            # 递归设置所有子菜单
             def set_menu_font(menu):
                 if menu is None:
                     return
                 menu.setFont(main_font)
-                # 强制样式表确保字体生效
                 menu.setStyleSheet(f"QMenu {{ font-family: '{main_font.family()}'; font-size: 12pt; }}")
                 for action in menu.actions():
                     sub_menu = action.menu()
@@ -657,7 +652,6 @@ class MainWindow(QMainWindow):
                 if sub_menu:
                     set_menu_font(sub_menu)
 
-        # 3. 显式设置模式按钮的字体
         if hasattr(self, 'btn_edit'):
             self.btn_edit.setFont(main_font)
         if hasattr(self, 'btn_preview'):
@@ -665,22 +659,18 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'btn_split'):
             self.btn_split.setFont(main_font)
 
-        # 4. 特殊处理：语言菜单中的各项，根据其语言代码强制设置字体
         if hasattr(self, 'language_menu'):
             for action in self.language_menu.actions():
                 lang_code = action.data()
                 if not lang_code:
                     continue
-                # 获取该语言对应的字体族
                 fixed_family = self.LANGUAGE_MENU_FONTS.get(lang_code, None)
                 if fixed_family:
-                    # 如果设置了固定字体，则单独设置
                     font = QFont()
                     font.setPointSize(12)
                     font.setFamily(fixed_family)
                     action.setFont(font)
                 else:
-                    # 否则使用主字体
                     action.setFont(main_font)
 
     # ---------- 语言更新 ----------
@@ -748,10 +738,7 @@ class MainWindow(QMainWindow):
         self._update_toolbar_tooltips()
         self._update_theme_toggle_icon()
 
-        # ========== 应用界面字体（根据当前语言，并固定语言菜单项） ==========
         self._apply_ui_font()
-
-        # ========== 重新应用编辑器缩放（保证编辑器字体固定） ==========
         self.editor.set_zoom_percent(self.zoom_percent)
 
     def _update_toc_action_text(self):
@@ -783,10 +770,8 @@ class MainWindow(QMainWindow):
         self.editor._line_number_area.update()
         self._update_preview()
         self._update_theme_menu_checked(theme)
-
-        # ========== 重要：切换主题后重新应用 UI 字体，防止菜单栏字号变小 ==========
+        # 切换主题后重新应用 UI 字体，防止菜单栏字号变小
         self._apply_ui_font()
-        # ========================================================================
 
     def toggle_theme_quick(self):
         current = self.theme_manager.get_current_theme()
@@ -833,11 +818,101 @@ class MainWindow(QMainWindow):
                 if self._is_newer_version(latest):
                     self._show_update_available(latest, notes, url)
 
+    # ========== Markdown 转 HTML（用于更新提示） ==========
+    @staticmethod
+    def _markdown_to_html(text: str) -> str:
+        """将简单的 Markdown 转为 HTML 片段，用于 QMessageBox 富文本显示"""
+        if not text:
+            return ""
+
+        lines = text.split('\n')
+        html_parts = []
+        list_stack = []  # 存储当前打开的列表深度（空格数）
+
+        def inline_format(content: str) -> str:
+            """处理加粗、斜体、行内代码"""
+            content = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', content)
+            content = re.sub(r'\*(.+?)\*', r'<i>\1</i>', content)
+            content = re.sub(r'`(.+?)`', r'<code>\1</code>', content)
+            return content
+
+        def get_indent(line: str) -> int:
+            return len(line) - len(line.lstrip(' '))
+
+        def close_lists(level: int):
+            """闭合所有深度大于等于 level 的列表"""
+            while list_stack and list_stack[-1] >= level:
+                html_parts.append('</ul>')
+                list_stack.pop()
+
+        for line in lines:
+            indent = get_indent(line)
+            stripped = line.lstrip(' ')
+
+            # 空行处理
+            if not stripped:
+                close_lists(0)
+                # 用 <br> 表示空行，块级元素会自动换行，所以这里只加一个换行
+                html_parts.append('<br>')
+                continue
+
+            # 标题
+            heading_match = re.match(r'^(#{1,6})\s+(.*)', stripped)
+            if heading_match:
+                close_lists(0)
+                level = len(heading_match.group(1))
+                content = inline_format(heading_match.group(2))
+                size = 6 - level + 2
+                # 使用块级 div 控制间距，margin:0 消除额外行距
+                html_parts.append(f'<div style="margin:0;"><b><font size="{size}">{content}</font></b></div>')
+                continue
+
+            # 引用
+            if stripped.startswith('> '):
+                close_lists(0)
+                content = inline_format(stripped[2:])
+                html_parts.append(f'<div style="margin:0;"><i>{content}</i></div>')
+                continue
+
+            # 列表项（- 或 *）
+            list_match = re.match(r'^[-*]\s+(.*)', stripped)
+            if list_match:
+                # 每 2 个空格算一级缩进，可调整
+                depth = indent // 2
+                if depth < 0:
+                    depth = 0
+
+                close_lists(depth + 1)
+
+                # 若当前深度大于栈顶，则开启新列表
+                if not list_stack or list_stack[-1] < depth:
+                    # 缩进：每层 16px（约两个空格），同时 margin:0 消除额外间距
+                    html_parts.append('<ul style="padding-left:16px; margin:0;">')
+                    list_stack.append(depth)
+
+                item = inline_format(list_match.group(1))
+                html_parts.append(f'<li>{item}</li>')
+                continue
+
+            # 普通段落
+            close_lists(0)
+            content = inline_format(stripped)
+            html_parts.append(f'<div style="margin:0;">{content}</div>')
+
+        # 关闭所有未闭合的列表
+        close_lists(0)
+        return ''.join(html_parts)
+
     def _show_update_available(self, latest, notes, url):
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle(self.language_manager.tr("update_available_title"))
-        msg_box.setText(self.language_manager.tr("update_available_message").format(
-            version=latest, notes=notes))
+        # 转换 Markdown 为 HTML
+        html_notes = self._markdown_to_html(notes)
+        # 构造完整消息
+        msg = f"<b>{self.language_manager.tr('update_available_message_prefix')}</b> v{latest}<br><br>{html_notes}"
+        msg_box.setText(msg)
+        msg_box.setTextFormat(Qt.TextFormat.RichText)
+
         download_btn = msg_box.addButton(self.language_manager.tr("open_download_page"),
                                          QMessageBox.ButtonRole.AcceptRole)
         later_btn = msg_box.addButton(self.language_manager.tr("later"),
@@ -939,7 +1014,6 @@ class MainWindow(QMainWindow):
             self.preview.setVisible(True)
             self.toolbar_container.setVisible(False)
             self.splitter.setSizes([0, 1])
-            # 强制刷新预览，避免黑色
             QTimer.singleShot(0, self.preview.update)
         elif mode == MODE_SPLIT:
             self.editor.setVisible(True)
@@ -1017,7 +1091,6 @@ class MainWindow(QMainWindow):
 
     def _on_replace_all(self, find_text, replace_text, case, whole):
         count = self.editor.replace_all(find_text, replace_text, case, whole)
-        # 临时隐藏查找面板，防止遮挡消息框
         self.find_replace_panel.setVisible(False)
         QMessageBox.information(self, self.language_manager.tr("replace_done"),
                                 self.language_manager.tr("replaced_count").format(count=count))

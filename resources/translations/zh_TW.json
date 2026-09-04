@@ -119,5 +119,6 @@
     "set_default_success_message": "MarkEase 已設定為 .md 和 .markdown 檔案的預設開啟程式。",
     "set_default_failed_title": "設定失敗",
     "set_default_failed_message": "無法設定檔案關聯，請嘗試以系統管理員身分執行程式，或手動修改登錄檔。",
-    "delete": "刪除"
+    "delete": "刪除", 
+    "update_available_message_prefix": "發現新版本"
 }

@@ -119,5 +119,6 @@
     "set_default_success_message": "MarkEase が .md および .markdown ファイルの既定のプログラムに設定されました。",
     "set_default_failed_title": "設定失敗",
     "set_default_failed_message": "ファイルの関連付けを設定できません。管理者として実行するか、レジストリを手動で変更してください。",
-    "delete": "削除"
+    "delete": "削除", 
+    "update_available_message_prefix": "新しいバージョン"
 }
