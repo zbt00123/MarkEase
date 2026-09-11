@@ -21,6 +21,15 @@ class MarkdownEditor(QPlainTextEdit):
 
     TASK_PATTERN = re.compile(r'^(\s*)(- +)*\[([ xX])\] (.*)')
 
+    # 已有列表前缀（用于替换时先移除）
+    EXISTING_LIST_PREFIX = re.compile(
+        r'^(?:'
+        r'[-*+]\s+\[[ xX]\]\s+'      # 任务列表 - [ ] / - [x]
+        r'|[-*+]\s+'                  # 无序列表 - / * / +
+        r'|\d+\.\s+'                  # 有序列表 1. 
+        r')'
+    )
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._line_number_area = LineNumberArea(self)
@@ -207,7 +216,7 @@ class MarkdownEditor(QPlainTextEdit):
         if cursor.hasSelection():
             cursor.removeSelectedText()
 
-    # ====================== 格式化方法（支持多语言预设文本） ======================
+    # ====================== 格式化方法 ======================
     def insert_text(self, text: str):
         self.insertPlainText(text)
 
@@ -251,9 +260,33 @@ class MarkdownEditor(QPlainTextEdit):
         self.wrap_selection("`")
 
     def make_heading(self, level: int):
+        """
+        在当前行前加对应数量的 #。
+        - 若当前行有内容：直接改为 “# 原内容”，不插入占位符
+        - 若当前行是空行：插入 “# 占位符”
+        - 自动去掉已有的 # 前缀
+        """
         prefix = "#" * level + " "
-        placeholder = self._tr(f"heading_{level}_placeholder", "标题")
-        self.insert_block(prefix, placeholder)
+
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+
+        cursor.movePosition(QTextCursor.MoveOperation.StartOfLine)
+        cursor.movePosition(QTextCursor.MoveOperation.EndOfLine, QTextCursor.MoveMode.KeepAnchor)
+        line_text = cursor.selectedText().replace('\u2029', '')
+
+        stripped = re.sub(r'^#{1,6}\s+', '', line_text)
+
+        if stripped.strip():
+            new_text = prefix + stripped
+        else:
+            placeholder = self._tr(f"heading_{level}_placeholder", "标题")
+            new_text = prefix + placeholder
+
+        cursor.removeSelectedText()
+        cursor.insertText(new_text)
+        cursor.endEditBlock()
+        self.setTextCursor(cursor)
 
     def make_quote(self):
         cursor = self.textCursor()
@@ -330,49 +363,170 @@ class MarkdownEditor(QPlainTextEdit):
             cursor.movePosition(QTextCursor.MoveOperation.Left, QTextCursor.MoveMode.KeepAnchor, len(placeholder_text))
             self.setTextCursor(cursor)
 
-    def make_unordered_list(self):
-        cursor = self.textCursor()
-        if cursor.hasSelection():
-            selected = cursor.selectedText()
-            lines = selected.split('\u2029')
-            new_lines = [f"- {line}" for line in lines]
-            replacement = '\n'.join(new_lines)
-            cursor.insertText(replacement)
+    # ====================== 列表前缀处理 ======================
+    def _prefix_line(self, line_text: str, prefix: str, placeholder_key: str) -> str:
+        """
+        给一行加列表前缀（无序 / 任务列表用）：
+        - 保留行首缩进（空格 / Tab）
+        - 去除已有的列表前缀
+        - 有内容：缩进 + 前缀 + 内容
+        - 空行：缩进 + 前缀 + 占位符
+        """
+        m = re.match(r'^(\s*)', line_text)
+        indent = m.group(1) if m else ''
+        rest = line_text[len(indent):]
+
+        rest = self.EXISTING_LIST_PREFIX.sub('', rest)
+
+        if rest.strip():
+            return indent + prefix + rest
         else:
-            placeholder = self._tr("list_item_placeholder", "列表项")
-            self.insert_block("- ", placeholder)
+            placeholder = self._tr(placeholder_key, "")
+            return indent + prefix + placeholder
+
+    def _apply_list_prefix(self, prefix: str, placeholder_key: str):
+        """
+        对光标所在行 / 选中行统一加列表前缀（无序 / 任务列表）。
+        """
+        cursor = self.textCursor()
+        doc = self.document()
+
+        has_selection = cursor.hasSelection()
+        start = cursor.selectionStart()
+        end = cursor.selectionEnd()
+
+        start_block = doc.findBlock(start)
+        if has_selection:
+            end_block = doc.findBlock(end)
+            if end == end_block.position() and end_block != start_block:
+                end_block = end_block.previous()
+        else:
+            end_block = start_block
+
+        lines = []
+        block = start_block
+        while block.isValid() and block.blockNumber() <= end_block.blockNumber():
+            lines.append(block.text())
+            block = block.next()
+
+        new_lines = [
+            self._prefix_line(line_text, prefix, placeholder_key)
+            for line_text in lines
+        ]
+        replacement = '\n'.join(new_lines)
+
+        replace_start = start_block.position()
+        replace_end = end_block.position() + len(end_block.text())
+
+        cursor.beginEditBlock()
+        cursor.setPosition(replace_start)
+        cursor.setPosition(replace_end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+        cursor.insertText(replacement)
+        cursor.endEditBlock()
+
+        if has_selection:
+            cursor.setPosition(replace_start)
+            cursor.setPosition(replace_start + len(replacement), QTextCursor.MoveMode.KeepAnchor)
+        else:
+            cursor.setPosition(replace_start + len(replacement))
+        self.setTextCursor(cursor)
+
+    # ====================== 有序列表（按层级分别计数） ======================
+    def _apply_ordered_list(self):
+        """
+        有序列表：
+        - 每行按缩进计算层级（每 2 空格 / 每 1 Tab 为一级）
+        - 每个层级有独立计数器
+        - 同级序号继续累加
+        - 遇到更浅的层级时，更深层级计数器清零
+        - 已有列表前缀会被替换
+        """
+        cursor = self.textCursor()
+        doc = self.document()
+
+        has_selection = cursor.hasSelection()
+        start = cursor.selectionStart()
+        end = cursor.selectionEnd()
+
+        start_block = doc.findBlock(start)
+        if has_selection:
+            end_block = doc.findBlock(end)
+            if end == end_block.position() and end_block != start_block:
+                end_block = end_block.previous()
+        else:
+            end_block = start_block
+
+        lines = []
+        block = start_block
+        while block.isValid() and block.blockNumber() <= end_block.blockNumber():
+            lines.append(block.text())
+            block = block.next()
+
+        counters = []  # 每个层级的计数器
+
+        new_lines = []
+        for line_text in lines:
+            m = re.match(r'^(\s*)', line_text)
+            indent = m.group(1) if m else ''
+            # Tab 视作 2 空格计算层级
+            indent_visual = indent.replace('\t', '  ')
+            level = len(indent_visual) // 2
+
+            rest = line_text[len(indent):]
+            rest = self.EXISTING_LIST_PREFIX.sub('', rest)
+
+            # 扩展 counters 到当前 level
+            while len(counters) <= level:
+                counters.append(0)
+
+            # 清零比当前 level 更深的计数器
+            for i in range(level + 1, len(counters)):
+                counters[i] = 0
+
+            # 当前层级 +1
+            counters[level] += 1
+            num = counters[level]
+
+            if rest.strip():
+                new_lines.append(indent + f"{num}. " + rest)
+            else:
+                placeholder = self._tr("list_item_placeholder", "")
+                new_lines.append(indent + f"{num}. " + placeholder)
+
+        replacement = '\n'.join(new_lines)
+
+        replace_start = start_block.position()
+        replace_end = end_block.position() + len(end_block.text())
+
+        cursor.beginEditBlock()
+        cursor.setPosition(replace_start)
+        cursor.setPosition(replace_end, QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+        cursor.insertText(replacement)
+        cursor.endEditBlock()
+
+        if has_selection:
+            cursor.setPosition(replace_start)
+            cursor.setPosition(replace_start + len(replacement), QTextCursor.MoveMode.KeepAnchor)
+        else:
+            cursor.setPosition(replace_start + len(replacement))
+        self.setTextCursor(cursor)
+
+    def make_unordered_list(self):
+        self._apply_list_prefix("- ", "list_item_placeholder")
 
     def make_ordered_list(self):
-        cursor = self.textCursor()
-        if cursor.hasSelection():
-            selected = cursor.selectedText()
-            lines = selected.split('\u2029')
-            new_lines = [f"{i+1}. {line}" for i, line in enumerate(lines)]
-            replacement = '\n'.join(new_lines)
-            cursor.insertText(replacement)
-        else:
-            placeholder = self._tr("list_item_placeholder", "列表项")
-            self.insert_block("1. ", placeholder)
+        self._apply_ordered_list()
 
     def make_task_list(self):
-        cursor = self.textCursor()
-        if cursor.hasSelection():
-            selected = cursor.selectedText()
-            lines = selected.split('\u2029')
-            new_lines = [f"- [ ] {line}" for line in lines]
-            replacement = '\n'.join(new_lines)
-            cursor.insertText(replacement)
-        else:
-            placeholder = self._tr("task_item_placeholder", "任务项")
-            self.insert_block("- [ ] ", placeholder)
+        self._apply_list_prefix("- [ ] ", "task_item_placeholder")
 
-    # ====================== 表格（支持多语言） ======================
+    # ====================== 表格 ======================
     def make_table(self):
         header = self._tr("table_header", "列1 | 列2 | 列3")
         cell = self._tr("table_cell", "内容")
-        # 解析表头
         cols = [col.strip() for col in header.split('|')]
-        # 构建表格
         header_line = "| " + " | ".join(cols) + " |"
         sep_line = "| " + " | ".join(["---"] * len(cols)) + " |"
         data_line = "| " + " | ".join([cell] * len(cols)) + " |"
@@ -381,7 +535,7 @@ class MarkdownEditor(QPlainTextEdit):
         cursor.insertText(table_template)
         self.setTextCursor(cursor)
 
-    # ====================== 任务列表点击切换（优化版） ======================
+    # ====================== 任务列表点击切换 ======================
     def mousePressEvent(self, event):
         cursor_before = self.textCursor()
         has_selection = cursor_before.hasSelection()

@@ -4,6 +4,7 @@
     "open": "Open",
     "save": "Save",
     "save_as": "Save As",
+    "export_pdf": "Export as PDF",
     "exit": "Exit",
     "edit": "Edit",
     "undo": "Undo",
@@ -119,6 +120,14 @@
     "set_default_success_message": "MarkEase has been set as the default program for .md and .markdown files.",
     "set_default_failed_title": "Failed",
     "set_default_failed_message": "Unable to set file associations. Please try running as administrator or modify the registry manually.",
-    "delete": "Delete", 
-    "update_available_message_prefix": "New version"
+    "delete": "Delete",
+    "update_available_message_prefix": "New version",
+    "pdf_unavailable": "PyMuPDF is not installed. Cannot open PDF. Please run: pip install PyMuPDF",
+    "pdf_import_failed_title": "PDF Import Failed",
+    "pdf_import_failed_message": "Error reading PDF: {error}",
+    "pdf_import_empty_title": "No Text in PDF",
+    "pdf_import_empty_message": "This PDF may be a scanned document with no extractable text.",
+    "export_empty_message": "The current document is empty. Nothing to export.",
+    "export_pdf_failed": "PDF export failed. Please try again.",
+    "pdf_image_placeholder": "[Image]"
 }

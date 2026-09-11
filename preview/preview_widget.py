@@ -11,8 +11,11 @@ import webbrowser
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings, QWebEngineProfile
 from PySide6.QtWebChannel import QWebChannel
-from PySide6.QtCore import QUrl, QObject, Slot, Signal, QTimer, Qt
-from PySide6.QtGui import QColor, QKeySequence, QAction, QContextMenuEvent, QShortcut
+from PySide6.QtCore import QUrl, QObject, Slot, Signal, QTimer, Qt, QMarginsF
+from PySide6.QtGui import (
+    QColor, QKeySequence, QAction, QContextMenuEvent, QShortcut,
+    QPageLayout, QPageSize
+)
 from PySide6.QtWidgets import QMenu
 
 
@@ -41,40 +44,26 @@ class PreviewPage(QWebEnginePage):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        # ========== 关键设置：允许本地文件加载远程资源（如徽章图片） ==========
         settings = self.profile().settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
-        # ======================================================================
 
     def acceptNavigationRequest(self, url: QUrl, navigation_type: QWebEnginePage.NavigationType, is_main_frame: bool):
-        """
-        拦截所有导航请求。
-        - 本地文件（file://）放行。
-        - 用户点击链接（LinkClicked）→ 系统浏览器打开，阻止加载。
-        - 主框架跳转（JS 重定向等）→ 系统浏览器打开，阻止加载。
-        - 子资源请求（图片、CSS、JS 等）→ 允许加载（保证徽章等图片正常显示）。
-        """
-        # 放行本地文件、about:blank、data:image 等
         if url.scheme() in ("file", "about", "data"):
             return True
 
-        # 如果是用户点击链接触发的导航，在系统浏览器中打开并阻止
         if navigation_type == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
             webbrowser.open(url.toString())
             return False
 
-        # 如果是主框架导航（例如 JS 跳转、地址栏输入等），在系统浏览器中打开并阻止
         if is_main_frame:
             webbrowser.open(url.toString())
             return False
 
-        # 子资源请求（图片、CSS、JS 等）—— 允许加载
         return True
 
     def createWindow(self, navigation_type: QWebEnginePage.WebWindowType):
-        """当页面请求创建新窗口时（如 target="_blank"），返回 None 以阻止创建"""
         return None
 
 
@@ -83,6 +72,7 @@ class PreviewWidget(QWebEngineView):
 
     scroll_ratio_changed = Signal(float)
     heading_changed = Signal(int)
+    pdf_export_finished = Signal(str, bool)   # (文件路径, 是否成功)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -95,9 +85,8 @@ class PreviewWidget(QWebEngineView):
         self._pending_theme = "light"
         self._pending_scroll_line = None
         self._zoom_percent = 100
-        self.language_manager = None  # 由外部设置
+        self.language_manager = None
 
-        # 设置页面背景色为白色，作为加载时的后备
         self._page = PreviewPage(self)
         self.setPage(self._page)
 
@@ -122,21 +111,20 @@ class PreviewWidget(QWebEngineView):
         self._scroll_debounce_timer.setSingleShot(True)
         self._scroll_debounce_timer.timeout.connect(self._fetch_scroll_info)
 
-        # 设置焦点策略，允许接收键盘事件
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        # ========== 修复快捷键 Ctrl+C 复制 ==========
         self.copy_shortcut = QShortcut(QKeySequence.StandardKey.Copy, self)
         self.copy_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.copy_shortcut.activated.connect(self._on_copy_shortcut)
 
+        # PDF 导出信号
+        self._page.pdfPrintingFinished.connect(self._on_pdf_printing_finished)
+
     def _on_copy_shortcut(self):
-        """处理 Ctrl+C 复制选中内容"""
         if self.hasFocus() or self.isActiveWindow():
             self.page().triggerAction(QWebEnginePage.WebAction.Copy)
 
     def set_language_manager(self, lm):
-        """注入语言管理器，用于翻译右键菜单"""
         self.language_manager = lm
 
     def _on_load_finished(self, ok: bool):
@@ -175,23 +163,19 @@ class PreviewWidget(QWebEngineView):
         if not self._loaded:
             self._pending_scroll_line = line
             return
-        js_code = f"window.scrollToLine({line});"
-        self.page().runJavaScript(js_code)
+        self.page().runJavaScript(f"window.scrollToLine({line});")
 
     def set_scroll_ratio(self, ratio: float):
         if not self._loaded:
             return
-        js_code = f"window.scrollToRatio({ratio});"
-        self.page().runJavaScript(js_code)
+        self.page().runJavaScript(f"window.scrollToRatio({ratio});")
 
     def set_zoom_percent(self, percent: int):
         self._zoom_percent = percent
         if self._loaded:
             self.setZoomFactor(percent / 100.0)
 
-    # ========== 新增：预览查找功能 ==========
     def find_text(self, text: str, backward: bool = False, case_sensitive: bool = False):
-        """在预览中查找文本，并高亮显示，滚动到第一个匹配项"""
         if not text:
             return
         flags = QWebEnginePage.FindFlag(0)
@@ -200,6 +184,23 @@ class PreviewWidget(QWebEngineView):
         if case_sensitive:
             flags |= QWebEnginePage.FindFlag.FindCaseSensitively
         self.page().findText(text, flags)
+
+    # ==================== PDF 导出 ====================
+    def export_to_pdf(self, output_path: str):
+        """将当前预览导出为 PDF（A4 纵向，15mm 边距）"""
+        if not self._loaded:
+            self.pdf_export_finished.emit(output_path, False)
+            return
+        layout = QPageLayout(
+            QPageSize(QPageSize.PageSizeId.A4),
+            QPageLayout.Orientation.Portrait,
+            QMarginsF(15, 15, 15, 15),
+            QPageLayout.Unit.Millimeter
+        )
+        self.page().printToPdf(output_path, layout)
+
+    def _on_pdf_printing_finished(self, file_path: str, success: bool):
+        self.pdf_export_finished.emit(file_path, success)
 
     def _on_bridge_scroll(self):
         if not self.qwebchannel_available:
@@ -238,16 +239,14 @@ class PreviewWidget(QWebEngineView):
         try:
             import json as json_module
             data = json_module.loads(result)
-        except:
+        except Exception:
             return
         line = data.get("line", -1)
         ratio = data.get("ratio", 0.0)
         self.scroll_ratio_changed.emit(ratio)
         self.heading_changed.emit(line)
 
-    # ---------- 键盘事件处理 ----------
     def keyPressEvent(self, event):
-        """支持 Ctrl+C 复制选中内容（备用，但已由 QShortcut 处理）"""
         if event.matches(QKeySequence.StandardKey.Copy):
             if self.hasFocus():
                 self.page().triggerAction(QWebEnginePage.WebAction.Copy)
@@ -255,18 +254,14 @@ class PreviewWidget(QWebEngineView):
                 return
         super().keyPressEvent(event)
 
-    # ---------- 自定义右键菜单 ----------
     def contextMenuEvent(self, event: QContextMenuEvent):
-        """使用自定义菜单，支持翻译"""
         menu = QMenu(self)
 
-        # 复制
         copy_action = QAction(self._tr("copy"), self)
         copy_action.setShortcut(QKeySequence.StandardKey.Copy)
         copy_action.triggered.connect(lambda: self.page().triggerAction(QWebEnginePage.WebAction.Copy))
         menu.addAction(copy_action)
 
-        # 全选
         select_all_action = QAction(self._tr("select_all"), self)
         select_all_action.setShortcut(QKeySequence.StandardKey.SelectAll)
         select_all_action.triggered.connect(lambda: self.page().triggerAction(QWebEnginePage.WebAction.SelectAll))
@@ -274,7 +269,6 @@ class PreviewWidget(QWebEngineView):
 
         menu.addSeparator()
 
-        # 重新加载
         reload_action = QAction(self._tr("reload"), self)
         reload_action.triggered.connect(self.reload)
         menu.addAction(reload_action)
@@ -282,7 +276,6 @@ class PreviewWidget(QWebEngineView):
         menu.exec(event.globalPos())
 
     def _tr(self, key: str, default: str = "") -> str:
-        """使用外部语言管理器翻译，若不可用则返回默认值"""
         if self.language_manager:
             return self.language_manager.tr(key, default)
         return default if default else key

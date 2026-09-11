@@ -4,6 +4,7 @@
     "open": "開く",
     "save": "保存",
     "save_as": "名前を付けて保存",
+    "export_pdf": "PDF として書き出し",
     "exit": "終了",
     "edit": "編集",
     "undo": "元に戻す",
@@ -119,6 +120,14 @@
     "set_default_success_message": "MarkEase が .md および .markdown ファイルの既定のプログラムに設定されました。",
     "set_default_failed_title": "設定失敗",
     "set_default_failed_message": "ファイルの関連付けを設定できません。管理者として実行するか、レジストリを手動で変更してください。",
-    "delete": "削除", 
-    "update_available_message_prefix": "新しいバージョン"
+    "delete": "削除",
+    "update_available_message_prefix": "新しいバージョン",
+    "pdf_unavailable": "PyMuPDF がインストールされていません。PDF を開けません。実行: pip install PyMuPDF",
+    "pdf_import_failed_title": "PDF 読み込み失敗",
+    "pdf_import_failed_message": "PDF の読み込み中にエラー: {error}",
+    "pdf_import_empty_title": "PDF にテキストなし",
+    "pdf_import_empty_message": "この PDF はスキャン版の可能性があり、抽出できるテキストがありません。",
+    "export_empty_message": "現在のドキュメントが空のため、書き出せません。",
+    "export_pdf_failed": "PDF の書き出しに失敗しました。もう一度お試しください。",
+    "pdf_image_placeholder": "[画像]"
 }

@@ -4,6 +4,7 @@
     "open": "開啟",
     "save": "儲存",
     "save_as": "另存為",
+    "export_pdf": "匯出為 PDF",
     "exit": "退出",
     "edit": "編輯",
     "undo": "復原",
@@ -119,6 +120,14 @@
     "set_default_success_message": "MarkEase 已設定為 .md 和 .markdown 檔案的預設開啟程式。",
     "set_default_failed_title": "設定失敗",
     "set_default_failed_message": "無法設定檔案關聯，請嘗試以系統管理員身分執行程式，或手動修改登錄檔。",
-    "delete": "刪除", 
-    "update_available_message_prefix": "發現新版本"
+    "delete": "刪除",
+    "update_available_message_prefix": "發現新版本",
+    "pdf_unavailable": "未安裝 PyMuPDF，無法開啟 PDF。請執行：pip install PyMuPDF",
+    "pdf_import_failed_title": "PDF 匯入失敗",
+    "pdf_import_failed_message": "讀取 PDF 時發生錯誤：{error}",
+    "pdf_import_empty_title": "PDF 無可提取文字",
+    "pdf_import_empty_message": "此 PDF 可能為掃描版，沒有可提取的文字。",
+    "export_empty_message": "目前文件為空，無法匯出。",
+    "export_pdf_failed": "PDF 匯出失敗，請重試。",
+    "pdf_image_placeholder": "[圖片]"
 }

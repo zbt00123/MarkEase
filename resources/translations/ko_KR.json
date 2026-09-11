@@ -4,6 +4,7 @@
     "open": "열기",
     "save": "저장",
     "save_as": "다른 이름으로 저장",
+    "export_pdf": "PDF로 내보내기",
     "exit": "종료",
     "edit": "편집",
     "undo": "실행 취소",
@@ -119,6 +120,14 @@
     "set_default_success_message": "MarkEase가 .md 및 .markdown 파일의 기본 프로그램으로 설정되었습니다.",
     "set_default_failed_title": "설정 실패",
     "set_default_failed_message": "파일 연결을 설정할 수 없습니다. 관리자 권한으로 실행하거나 레지스트리를 수동으로 수정하세요.",
-    "delete": "삭제", 
-    "update_available_message_prefix": "새 버전 발견"
+    "delete": "삭제",
+    "update_available_message_prefix": "새 버전 발견",
+    "pdf_unavailable": "PyMuPDF가 설치되지 않았습니다. PDF를 열 수 없습니다. 실행: pip install PyMuPDF",
+    "pdf_import_failed_title": "PDF 가져오기 실패",
+    "pdf_import_failed_message": "PDF를 읽는 중 오류 발생: {error}",
+    "pdf_import_empty_title": "PDF에 텍스트 없음",
+    "pdf_import_empty_message": "이 PDF는 스캔본으로, 추출할 텍스트가 없습니다.",
+    "export_empty_message": "현재 문서가 비어 있어 내보낼 수 없습니다.",
+    "export_pdf_failed": "PDF 내보내기에 실패했습니다. 다시 시도하세요.",
+    "pdf_image_placeholder": "[이미지]"
 }

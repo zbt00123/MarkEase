@@ -24,7 +24,9 @@ from PySide6.QtGui import QAction, QKeySequence, QCloseEvent, QActionGroup, QCol
 
 from app.constants import (
     APP_TITLE, APP_VERSION, MODE_EDIT, MODE_PREVIEW, MODE_SPLIT, MODE_LABELS,
-    DEFAULT_WIDTH, DEFAULT_HEIGHT, MARKDOWN_FILE_FILTER, GITHUB_REPO, GITHUB_API_URL
+    DEFAULT_WIDTH, DEFAULT_HEIGHT, MARKDOWN_FILE_FILTER,
+    OPEN_FILE_FILTER, PDF_EXPORT_FILTER,
+    GITHUB_REPO, GITHUB_API_URL
 )
 from document.document_manager import DocumentManager
 from document.file_manager import FileManager
@@ -39,6 +41,7 @@ from app.settings_manager import SettingsManager
 from app.theme_manager import ThemeManager
 from app.language_manager import LanguageManager
 from toc.floating_toc_button import FloatingTocButton
+from converters import PdfImporter
 
 
 class MainWindow(QMainWindow):
@@ -49,9 +52,9 @@ class MainWindow(QMainWindow):
         "zh_CN": "Microsoft YaHei",
         "zh_TW": "Microsoft YaHei",
         "ko_KR": "Malgun Gothic",
-        "en_US": "",   # 空表示系统默认
-        "ja_JP": "",   # 空表示系统默认
-        "system": "",  # 系统默认
+        "en_US": "",
+        "ja_JP": "",
+        "system": "",
     }
 
     # 语言菜单项专用字体映射（固定，不随界面语言变化）
@@ -59,45 +62,37 @@ class MainWindow(QMainWindow):
         "zh_CN": "Microsoft YaHei",
         "zh_TW": "Microsoft YaHei",
         "ko_KR": "Malgun Gothic",
-        # en_US, ja_JP, system 不强制指定，沿用界面字体
     }
 
     def __init__(self):
         super().__init__()
         self.current_mode = MODE_EDIT
 
-        # 初始化管理器
         self.settings = SettingsManager()
         self.theme_manager = ThemeManager()
         self.language_manager = LanguageManager()
 
-        # 应用上次保存的主题和语言
         saved_theme = self.settings.theme
         saved_language = self.settings.language
         self.theme_manager.apply_theme(saved_theme)
         self.language_manager.set_language(saved_language)
 
-        # 初始化文档管理器
         self.doc_manager = DocumentManager(self)
 
-        # 初始化 UI
         self._init_window()
         self._init_central_widget()
         self._init_toc_panel()
         self._init_menu_bar()
         self._init_toolbar()
 
-        # 缩放状态
         self.zoom_percent = self.settings.zoom_percent
 
         self._init_status_bar()
         self._init_find_replace_panel()
         self._init_zoom_controls()
 
-        # 应用保存的缩放比例
         self.set_zoom_percent(self.zoom_percent)
 
-        # 初始化同步滚动管理器
         self.scroll_sync_manager = ScrollSyncManager(self.editor, self.preview, self)
         self.editor.verticalScrollBar().valueChanged.connect(self._on_editor_scrolled)
         self.preview.scroll_ratio_changed.connect(self._on_preview_ratio_changed)
@@ -105,42 +100,28 @@ class MainWindow(QMainWindow):
         self.last_scroll_source = "editor"
         self.scroll_sync_manager.set_sync_enabled(False)
 
-        # 连接编辑器文本和光标信号
         self.editor.textChanged.connect(self._on_editor_text_changed)
         self.editor.cursorPositionChanged.connect(self._on_cursor_position_changed)
 
-        # 连接文档管理器信号
         self.doc_manager.modification_changed.connect(self._on_modification_changed)
         self.doc_manager.file_path_changed.connect(self._on_file_path_changed)
 
-        # 应用默认模式
         self.set_mode(MODE_EDIT)
 
-        # 恢复目录可见性和宽度
         if self.settings.toc_visible:
             self.toc_panel.setVisible(True)
         else:
             self.toc_panel.setVisible(False)
         self.toc_panel.setFixedWidth(self.settings.toc_width)
 
-        # 应用主题到自定义控件
         self._apply_theme_to_widgets()
-
-        # 初始更新预览和目录
         self._update_preview()
         self._update_toc()
-
-        # 创建目录悬浮按钮
         self._init_floating_toc_button()
 
-        # 语言改变时刷新 UI 文本
         self.language_manager.language_changed.connect(self._retranslate_ui)
         QTimer.singleShot(0, self._retranslate_ui)
-
-        # 更新工具栏提示
         self._update_toolbar_tooltips()
-
-        # 启动每月后台检查更新定时器
         self._start_update_check_timer()
 
     # ---------- UI 初始化 ----------
@@ -160,31 +141,26 @@ class MainWindow(QMainWindow):
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
 
-        # 左侧目录容器
         self.toc_container = QWidget()
         self.toc_layout = QVBoxLayout(self.toc_container)
         self.toc_layout.setContentsMargins(0, 0, 0, 0)
         self.toc_layout.setSpacing(0)
         central_layout.addWidget(self.toc_container)
 
-        # 右侧主区域
         self.right_widget = QWidget()
         right_layout = QVBoxLayout(self.right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
-        # 模式切换标签栏
         mode_bar = self._create_mode_bar()
         right_layout.addWidget(mode_bar)
 
-        # 工具栏容器
         self.toolbar_container = QWidget()
         self.toolbar_layout = QVBoxLayout(self.toolbar_container)
         self.toolbar_layout.setContentsMargins(0, 0, 0, 0)
         self.toolbar_layout.setSpacing(0)
         right_layout.addWidget(self.toolbar_container)
 
-        # 编辑/预览分割器
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.editor = MarkdownEditor()
         self.editor.set_language_manager(self.language_manager)
@@ -219,7 +195,6 @@ class MainWindow(QMainWindow):
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self._hide_if_not_under_mouse)
 
-        # 初始 Y 位置计算（偏移20像素）
         mode_bar_height = 48
         toolbar_height = self.toolbar_container.height() if self.toolbar_container.isVisible() else 0
         top_limit = mode_bar_height + toolbar_height + 10
@@ -251,7 +226,6 @@ class MainWindow(QMainWindow):
             self._button_anim.finished.connect(self._update_button_layering)
 
     def _update_button_layering(self):
-        """调整按钮、目录面板、右侧区域之间的层级"""
         if self.toc_panel.isVisible():
             self.right_widget.lower()
             self.floating_toc_btn.stackUnder(self.toc_container)
@@ -330,13 +304,15 @@ class MainWindow(QMainWindow):
     def _init_menu_bar(self):
         menu_bar = self.menuBar()
 
-        # 文件菜单
+        # ---------- 文件菜单 ----------
         self.file_menu = menu_bar.addMenu(self.language_manager.tr("file"))
+
         self.new_action = QAction(self.language_manager.tr("new"), self)
         self.new_action.setShortcut(QKeySequence.StandardKey.New)
         self.new_action.triggered.connect(self.new_document)
         self.file_menu.addAction(self.new_action)
 
+        # 统一的“打开”：可打开 md / markdown / pdf
         self.open_action = QAction(self.language_manager.tr("open"), self)
         self.open_action.setShortcut(QKeySequence.StandardKey.Open)
         self.open_action.triggered.connect(self.open_document)
@@ -354,6 +330,13 @@ class MainWindow(QMainWindow):
 
         self.file_menu.addSeparator()
 
+        # “导出为 PDF”一级菜单项
+        self.export_pdf_action = QAction(self.language_manager.tr("export_pdf"), self)
+        self.export_pdf_action.triggered.connect(self.export_as_pdf)
+        self.file_menu.addAction(self.export_pdf_action)
+
+        self.file_menu.addSeparator()
+
         self.reveal_action = QAction(self.language_manager.tr("reveal_in_explorer"), self)
         self.reveal_action.triggered.connect(self.reveal_in_explorer)
         self.file_menu.addAction(self.reveal_action)
@@ -364,7 +347,7 @@ class MainWindow(QMainWindow):
         self.exit_action.triggered.connect(self.close)
         self.file_menu.addAction(self.exit_action)
 
-        # 编辑菜单
+        # ---------- 编辑菜单 ----------
         self.edit_menu = menu_bar.addMenu(self.language_manager.tr("edit"))
         self.undo_action = QAction(self.language_manager.tr("undo"), self)
         self.undo_action.setShortcut(QKeySequence.StandardKey.Undo)
@@ -403,7 +386,7 @@ class MainWindow(QMainWindow):
         self.replace_action.triggered.connect(lambda: self.show_find_replace(True))
         self.edit_menu.addAction(self.replace_action)
 
-        # 窗口菜单
+        # ---------- 窗口菜单 ----------
         self.window_menu = menu_bar.addMenu(self.language_manager.tr("window"))
         self.edit_mode_action = QAction(self.language_manager.tr("edit_mode"), self)
         self.edit_mode_action.triggered.connect(lambda: self.set_mode(MODE_EDIT))
@@ -444,7 +427,7 @@ class MainWindow(QMainWindow):
         self.sync_scroll_action.toggled.connect(self._on_sync_scroll_toggled)
         self.window_menu.addAction(self.sync_scroll_action)
 
-        # 帮助菜单
+        # ---------- 帮助菜单 ----------
         self.help_menu = menu_bar.addMenu(self.language_manager.tr("help"))
 
         # 主题子菜单
@@ -526,7 +509,6 @@ class MainWindow(QMainWindow):
         self.language_ja_jp_action.setChecked(self.settings.language == "ja_JP")
         self.language_menu.addAction(self.language_ja_jp_action)
 
-        # 更新菜单项
         self.help_menu.addSeparator()
         self.check_update_action = QAction(self.language_manager.tr("check_update"), self)
         self.check_update_action.triggered.connect(self.check_for_updates)
@@ -616,11 +598,6 @@ class MainWindow(QMainWindow):
 
     # ========== 统一字体管理 ==========
     def _apply_ui_font(self):
-        """
-        根据当前语言设置所有 UI 控件的字体族和字号（12pt）。
-        包括主窗口、菜单栏、所有菜单、模式按钮等。
-        语言菜单中的各个语言名称项，根据其对应语言设置固定字体。
-        """
         lang = self.language_manager.current_language
         font_family = self.LANGUAGE_FONTS.get(lang, "")
 
@@ -680,6 +657,7 @@ class MainWindow(QMainWindow):
         self.open_action.setText(self.language_manager.tr("open"))
         self.save_action.setText(self.language_manager.tr("save"))
         self.save_as_action.setText(self.language_manager.tr("save_as"))
+        self.export_pdf_action.setText(self.language_manager.tr("export_pdf"))
         self.reveal_action.setText(self.language_manager.tr("reveal_in_explorer"))
         self.exit_action.setText(self.language_manager.tr("exit"))
 
@@ -770,7 +748,6 @@ class MainWindow(QMainWindow):
         self.editor._line_number_area.update()
         self._update_preview()
         self._update_theme_menu_checked(theme)
-        # 切换主题后重新应用 UI 字体，防止菜单栏字号变小
         self._apply_ui_font()
 
     def toggle_theme_quick(self):
@@ -818,19 +795,16 @@ class MainWindow(QMainWindow):
                 if self._is_newer_version(latest):
                     self._show_update_available(latest, notes, url)
 
-    # ========== Markdown 转 HTML（用于更新提示） ==========
     @staticmethod
     def _markdown_to_html(text: str) -> str:
-        """将简单的 Markdown 转为 HTML 片段，用于 QMessageBox 富文本显示"""
         if not text:
             return ""
 
         lines = text.split('\n')
         html_parts = []
-        list_stack = []  # 存储当前打开的列表深度（空格数）
+        list_stack = []
 
         def inline_format(content: str) -> str:
-            """处理加粗、斜体、行内代码"""
             content = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', content)
             content = re.sub(r'\*(.+?)\*', r'<i>\1</i>', content)
             content = re.sub(r'`(.+?)`', r'<code>\1</code>', content)
@@ -840,7 +814,6 @@ class MainWindow(QMainWindow):
             return len(line) - len(line.lstrip(' '))
 
         def close_lists(level: int):
-            """闭合所有深度大于等于 level 的列表"""
             while list_stack and list_stack[-1] >= level:
                 html_parts.append('</ul>')
                 list_stack.pop()
@@ -849,66 +822,50 @@ class MainWindow(QMainWindow):
             indent = get_indent(line)
             stripped = line.lstrip(' ')
 
-            # 空行处理
             if not stripped:
                 close_lists(0)
-                # 用 <br> 表示空行，块级元素会自动换行，所以这里只加一个换行
                 html_parts.append('<br>')
                 continue
 
-            # 标题
             heading_match = re.match(r'^(#{1,6})\s+(.*)', stripped)
             if heading_match:
                 close_lists(0)
                 level = len(heading_match.group(1))
                 content = inline_format(heading_match.group(2))
                 size = 6 - level + 2
-                # 使用块级 div 控制间距，margin:0 消除额外行距
                 html_parts.append(f'<div style="margin:0;"><b><font size="{size}">{content}</font></b></div>')
                 continue
 
-            # 引用
             if stripped.startswith('> '):
                 close_lists(0)
                 content = inline_format(stripped[2:])
                 html_parts.append(f'<div style="margin:0;"><i>{content}</i></div>')
                 continue
 
-            # 列表项（- 或 *）
             list_match = re.match(r'^[-*]\s+(.*)', stripped)
             if list_match:
-                # 每 2 个空格算一级缩进，可调整
                 depth = indent // 2
                 if depth < 0:
                     depth = 0
-
                 close_lists(depth + 1)
-
-                # 若当前深度大于栈顶，则开启新列表
                 if not list_stack or list_stack[-1] < depth:
-                    # 缩进：每层 16px（约两个空格），同时 margin:0 消除额外间距
                     html_parts.append('<ul style="padding-left:16px; margin:0;">')
                     list_stack.append(depth)
-
                 item = inline_format(list_match.group(1))
                 html_parts.append(f'<li>{item}</li>')
                 continue
 
-            # 普通段落
             close_lists(0)
             content = inline_format(stripped)
             html_parts.append(f'<div style="margin:0;">{content}</div>')
 
-        # 关闭所有未闭合的列表
         close_lists(0)
         return ''.join(html_parts)
 
     def _show_update_available(self, latest, notes, url):
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle(self.language_manager.tr("update_available_title"))
-        # 转换 Markdown 为 HTML
         html_notes = self._markdown_to_html(notes)
-        # 构造完整消息
         msg = f"<b>{self.language_manager.tr('update_available_message_prefix')}</b> v{latest}<br><br>{html_notes}"
         msg_box.setText(msg)
         msg_box.setTextFormat(Qt.TextFormat.RichText)
@@ -936,7 +893,7 @@ class MainWindow(QMainWindow):
     def _version_tuple(self, v):
         try:
             return tuple(map(int, v.split('.')))
-        except:
+        except Exception:
             return (0, 0, 0)
 
     def _is_newer_version(self, latest: str) -> bool:
@@ -1162,7 +1119,15 @@ class MainWindow(QMainWindow):
             if line >= 0:
                 self.toc_panel.set_current_heading(line)
 
-    # ---------- 文档操作 ----------
+    # ---------- 未保存检查 ----------
+    def _has_unsaved_content(self) -> bool:
+        """只有“有内容 + 已修改”才需要提示保存；空文档不提示"""
+        if not self.doc_manager.is_modified:
+            return False
+        if not self.editor.toPlainText().strip():
+            return False
+        return True
+
     def _show_unsaved_dialog(self):
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle(self.language_manager.tr("unsaved_changes"))
@@ -1180,8 +1145,9 @@ class MainWindow(QMainWindow):
         else:
             return "cancel"
 
+    # ---------- 文档操作 ----------
     def new_document(self):
-        if self.doc_manager.is_modified:
+        if self._has_unsaved_content():
             choice = self._show_unsaved_dialog()
             if choice == "save":
                 if not self.save_document():
@@ -1196,7 +1162,8 @@ class MainWindow(QMainWindow):
         self._update_stats_label()
 
     def open_document(self):
-        if self.doc_manager.is_modified:
+        """统一“打开”：支持 md / markdown / pdf"""
+        if self._has_unsaved_content():
             choice = self._show_unsaved_dialog()
             if choice == "save":
                 if not self.save_document():
@@ -1205,33 +1172,197 @@ class MainWindow(QMainWindow):
                 return
 
         file_path, _ = QFileDialog.getOpenFileName(
-            self, self.language_manager.tr("open"), "", MARKDOWN_FILE_FILTER
+            self, self.language_manager.tr("open"), "", OPEN_FILE_FILTER
         )
         if file_path:
-            self.open_file_from_path(file_path)
+            self.open_file_from_path(file_path, ignore_unsaved=True)
+
+    # ================== 打开 PDF ==================
+    def _import_pdf(self, path: str) -> bool:
+        """读取 PDF 并写入编辑器。成功返回 True"""
+        if not PdfImporter.is_available():
+            QMessageBox.warning(self,
+                                self.language_manager.tr("open_failed"),
+                                self.language_manager.tr("pdf_unavailable"))
+            return False
+        try:
+            placeholder = self.language_manager.tr("pdf_image_placeholder", "[图片]")
+            markdown_text = PdfImporter.convert(path, image_placeholder=placeholder)
+        except Exception as e:
+            QMessageBox.critical(self,
+                                 self.language_manager.tr("pdf_import_failed_title"),
+                                 self.language_manager.tr("pdf_import_failed_message").format(error=str(e)))
+            return False
+
+        if not markdown_text.strip():
+            QMessageBox.information(self,
+                                    self.language_manager.tr("pdf_import_empty_title"),
+                                    self.language_manager.tr("pdf_import_empty_message"))
+            return False
+
+        self.editor.setPlainText(markdown_text)
+        self.doc_manager.new_document()
+        self._update_preview()
+        self._update_toc()
+        self._update_stats_label()
+        self.set_mode(MODE_EDIT)
+        return True
+
+    # ================== 导出 PDF ==================
+    def export_as_pdf(self):
+        if not self.editor.toPlainText().strip():
+            QMessageBox.information(
+                self,
+                self.language_manager.tr("export_pdf"),
+                self.language_manager.tr("export_empty_message")
+            )
+            return
+
+        default_name = self._suggest_default_export_name(".pdf")
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            self.language_manager.tr("export_pdf"),
+            default_name,
+            PDF_EXPORT_FILTER
+        )
+        if not file_path:
+            return
+        if not file_path.lower().endswith(".pdf"):
+            file_path += ".pdf"
+
+        # 记录当前预览主题，导出完成后恢复
+        self._saved_preview_theme = self.theme_manager.get_current_theme()
+        self._pending_pdf_path = file_path
+
+        # 用当前内容刷新预览
+        self._update_preview()
+
+        # 强制预览切为浅色
+        self.preview.set_theme("light")
+
+        # 等 JS 重绘后再导出
+        QTimer.singleShot(400, self._do_export_pdf)
+
+    def _do_export_pdf(self):
+        try:
+            self.preview.pdf_export_finished.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        self.preview.pdf_export_finished.connect(self._on_pdf_export_finished)
+        self.preview.export_to_pdf(self._pending_pdf_path)
+
+    def _on_pdf_export_finished(self, file_path: str, success: bool):
+        try:
+            self.preview.pdf_export_finished.disconnect(self._on_pdf_export_finished)
+        except (TypeError, RuntimeError):
+            pass
+
+        # 恢复原预览主题
+        saved = getattr(self, "_saved_preview_theme", None)
+        if saved:
+            self.preview.set_theme(saved)
+            self._saved_preview_theme = None
+
+        if not success:
+            QMessageBox.warning(
+                self,
+                self.language_manager.tr("export_pdf"),
+                self.language_manager.tr("export_pdf_failed")
+            )
+            return
+
+        # 把当前 Markdown 作为隐藏附件嵌入 PDF
+        self._embed_markdown_into_pdf(file_path)
+
+    def _embed_markdown_into_pdf(self, pdf_path: str):
+        """
+        把当前编辑器内容作为隐藏附件嵌入 PDF。
+        导入时优先读取该附件，实现 100% 无损还原。
+        """
+        try:
+            import pymupdf as fitz
+        except ImportError:
+            try:
+                import fitz
+            except ImportError:
+                return
+
+        import os as _os
+        import tempfile
+
+        EMBED_NAME = "markease_source.md"
+
+        try:
+            markdown_text = self.editor.toPlainText()
+            md_bytes = markdown_text.encode("utf-8")
+
+            doc = fitz.open(pdf_path)
+            tmp_path = None
+            try:
+                try:
+                    names = doc.embfile_names()
+                    if EMBED_NAME in names:
+                        doc.embfile_del(EMBED_NAME)
+                except Exception:
+                    pass
+
+                doc.embfile_add(
+                    EMBED_NAME,
+                    md_bytes,
+                    filename=EMBED_NAME,
+                    ufilename=EMBED_NAME,
+                    desc="MarkEase original markdown",
+                )
+
+                fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+                _os.close(fd)
+                doc.save(tmp_path, garbage=3, deflate=True)
+            finally:
+                doc.close()
+
+            if tmp_path and _os.path.exists(tmp_path):
+                _os.replace(tmp_path, pdf_path)
+        except Exception:
+            pass
+
+    def _suggest_default_export_name(self, ext: str) -> str:
+        if self.doc_manager.file_path:
+            base = os.path.splitext(os.path.basename(self.doc_manager.file_path))[0]
+            return base + ext
+        first_line = self.editor.toPlainText().split('\n', 1)[0].strip()
+        if first_line:
+            name = first_line.lstrip('#').strip()
+            name = re.sub(r'[\\/:*?"<>|]', '', name)[:50]
+            if name:
+                return name + ext
+        return "未命名" + ext
 
     def open_file_from_path(self, path: str, ignore_unsaved: bool = False):
-        if not ignore_unsaved and self.doc_manager.is_modified:
+        if not ignore_unsaved and self._has_unsaved_content():
             choice = self._show_unsaved_dialog()
             if choice == "save":
                 if not self.save_document():
                     return
             elif choice == "cancel":
                 return
-        elif ignore_unsaved and self.doc_manager.is_modified:
-            self.doc_manager.mark_saved()
+
+        ext = os.path.splitext(path)[1].lower()
 
         try:
-            content = FileManager.read_file(path)
-            self.editor.setPlainText(content)
-            self.doc_manager.open_document(path)
+            if ext == ".pdf":
+                self._import_pdf(path)
+                return
+            else:
+                content = FileManager.read_file(path)
+                self.editor.setPlainText(content)
+                self.doc_manager.open_document(path)
             self._update_preview()
             self._update_toc()
             self._update_stats_label()
             self.set_mode(MODE_EDIT)
         except Exception as e:
             QMessageBox.critical(self, self.language_manager.tr("open_failed"),
-                                f"{self.language_manager.tr('open_failed')}: {e}")
+                                 f"{self.language_manager.tr('open_failed')}: {e}")
 
     def save_document(self) -> bool:
         if not self.doc_manager.file_path:
@@ -1327,7 +1458,7 @@ class MainWindow(QMainWindow):
         self.settings.zoom_percent = self.zoom_percent
         self.settings.sync_scroll = self.sync_scroll_button.isChecked()
 
-        if self.doc_manager.is_modified:
+        if self._has_unsaved_content():
             choice = self._show_unsaved_dialog()
             if choice == "save":
                 if not self.save_document():
@@ -1358,6 +1489,7 @@ class MainWindow(QMainWindow):
         <p><b>{self.language_manager.tr('about_copyright')}:</b> {self.language_manager.tr('about_copyright_text')}</p>
         <p><b>{self.language_manager.tr('about_acknowledgements')}:</b><br>
         PySide6 - <a href="https://pypi.org/project/PySide6/">https://pypi.org/project/PySide6/</a> (LGPL)<br>
+        PyMuPDF - <a href="https://pypi.org/project/PyMuPDF/">https://pypi.org/project/PyMuPDF/</a> (AGPL)<br>
         marked.js - <a href="https://marked.js.org/">https://marked.js.org/</a> (MIT)<br>
         highlight.js - <a href="https://highlightjs.org/">https://highlightjs.org/</a> (BSD-3-Clause)<br>
         github-markdown-css - <a href="https://github.com/sindresorhus/github-markdown-css">GitHub</a> (MIT)<br>

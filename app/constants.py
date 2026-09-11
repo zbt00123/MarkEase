@@ -6,7 +6,7 @@ MarkEase 常量定义模块
 
 # 应用信息
 APP_NAME = "MarkEase"
-APP_VERSION = "1.2.5"
+APP_VERSION = "1.3.0"
 APP_TITLE = f"{APP_NAME} v{APP_VERSION}"
 
 # GitHub 仓库信息（用于检查更新）
@@ -31,3 +31,14 @@ DEFAULT_HEIGHT = 800
 
 # 文件过滤器
 MARKDOWN_FILE_FILTER = "Markdown 文件 (*.md *.markdown);;所有文件 (*.*)"
+
+# 统一的“打开”文件过滤器：支持 md / markdown / pdf
+OPEN_FILE_FILTER = (
+    "所有支持的文档 (*.md *.markdown *.pdf);;"
+    "Markdown 文件 (*.md *.markdown);;"
+    "PDF 文件 (*.pdf);;"
+    "所有文件 (*.*)"
+)
+
+# 导出过滤器
+PDF_EXPORT_FILTER = "PDF 文件 (*.pdf)"
