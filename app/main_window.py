@@ -123,9 +123,10 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._retranslate_ui)
         self._update_toolbar_tooltips()
         self._start_update_check_timer()
-        # 检查并注册 ShellNew（Windows 新建菜单）
-        from app.shell_new_manager import ensure_shell_new_on_startup
-        ensure_shell_new_on_startup()
+        # Windows「新建」菜单集成（仅 Windows 有效）
+        if sys.platform == "win32":
+            from app.shell_new_manager import ensure_shell_new_on_startup
+            ensure_shell_new_on_startup()
 
     # ---------- UI 初始化 ----------
     def _init_window(self):
