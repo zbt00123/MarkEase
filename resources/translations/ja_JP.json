@@ -129,5 +129,6 @@
     "pdf_import_empty_message": "この PDF はスキャン版の可能性があり、抽出できるテキストがありません。",
     "export_empty_message": "現在のドキュメントが空のため、書き出せません。",
     "export_pdf_failed": "PDF の書き出しに失敗しました。もう一度お試しください。",
-    "pdf_image_placeholder": "[画像]"
+    "pdf_image_placeholder": "[画像]",
+    "about_emoji_source": "絵文字アイコンはシステムの絵文字フォントから提供されます。"
 }

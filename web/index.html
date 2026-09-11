@@ -6,8 +6,10 @@
     <title>MarkEase Preview</title>
     <link rel="stylesheet" href="css/github-markdown.css">
     <link rel="stylesheet" href="css/highlight-github.min.css">
+    <link rel="stylesheet" href="css/highlight-github-dark.css">
+    <link rel="stylesheet" href="css/katex.min.css">
     <style>
-        /* 强制基础样式，浅色为默认 */
+        /* ============ 基础 ============ */
         html, body {
             margin: 0;
             padding: 0;
@@ -27,16 +29,14 @@
             .markdown-body { padding: 15px; }
         }
 
-        /* 深色模式下的样式 */
+        /* ============ 深色模式基础 ============ */
         html.dark, body.dark {
             background-color: #1e1e1e !important;
             color: #dcdcdc !important;
         }
-        body.dark .markdown-body {
-            color: #dcdcdc !important;
-        }
+        body.dark .markdown-body { color: #dcdcdc !important; }
 
-        /* 浅色模式元素颜色 */
+        /* ============ 浅色模式元素颜色 ============ */
         body:not(.dark) h1, body:not(.dark) h2, body:not(.dark) h3,
         body:not(.dark) h4, body:not(.dark) h5, body:not(.dark) h6 {
             color: #1e1e1e !important;
@@ -49,28 +49,18 @@
             color: #c7254e !important;
             background-color: #f6f8fa !important;
         }
-        body:not(.dark) pre {
-            background-color: #f6f8fa !important;
-        }
+        body:not(.dark) pre { background-color: #f6f8fa !important; }
         body:not(.dark) pre code {
             color: #333333 !important;
             background-color: transparent !important;
         }
-        body:not(.dark) a {
-            color: #0366d6 !important;
-        }
-        body:not(.dark) table tr {
-            background-color: #ffffff !important;
-        }
-        body:not(.dark) table tr:nth-child(2n) {
-            background-color: #f6f8fa !important;
-        }
+        body:not(.dark) a { color: #0366d6 !important; }
+        body:not(.dark) table tr { background-color: #ffffff !important; }
+        body:not(.dark) table tr:nth-child(2n) { background-color: #f6f8fa !important; }
 
-        /* 深色模式元素颜色 */
+        /* ============ 深色模式元素颜色 ============ */
         body.dark h1, body.dark h2, body.dark h3,
-        body.dark h4, body.dark h5, body.dark h6 {
-            color: #dcdcdc !important;
-        }
+        body.dark h4, body.dark h5, body.dark h6 { color: #dcdcdc !important; }
         body.dark blockquote {
             color: #9ecbff !important;
             border-left-color: #444444 !important;
@@ -79,96 +69,96 @@
             color: #ff7b72 !important;
             background-color: #2a2a2a !important;
         }
-        body.dark pre {
-            background-color: #2a2a2a !important;
-        }
+        body.dark pre { background-color: #2a2a2a !important; }
         body.dark pre code {
             color: #e6e6e6 !important;
             background-color: transparent !important;
         }
-        body.dark a {
-            color: #58a6ff !important;
-        }
-        body.dark table tr {
-            background-color: #1e1e1e !important;
-        }
-        body.dark table tr:nth-child(2n) {
-            background-color: #2d2d2d !important;
-        }
+        body.dark a { color: #58a6ff !important; }
+        body.dark table tr { background-color: #1e1e1e !important; }
+        body.dark table tr:nth-child(2n) { background-color: #2d2d2d !important; }
 
-        /* ================= 任务列表 checkbox 自定义 ================= */
+        /* ============ 任务列表 checkbox ============ */
         .markdown-body input[type="checkbox"] {
-            appearance: none;
-            -webkit-appearance: none;
-            width: 16px;
-            height: 16px;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-            background: #fff;
-            cursor: pointer;
-            vertical-align: middle;
-            margin: 0 4px;
-            position: relative;
-            flex-shrink: 0;
+            appearance: none; -webkit-appearance: none;
+            width: 16px; height: 16px;
+            border: 1px solid #ccc; border-radius: 3px;
+            background: #fff; cursor: pointer;
+            vertical-align: middle; margin: 0 4px;
+            position: relative; flex-shrink: 0;
         }
-
-        /* 浅色模式：未完成 → 浅灰色边框和背景 */
         body:not(.dark) .markdown-body input[type="checkbox"]:not(:checked) {
-            border-color: #cccccc;
-            background: #fafafa;
+            border-color: #cccccc; background: #fafafa;
         }
-
-        /* 深色模式：未完成 → 深色背景，浅色边框 */
         body.dark .markdown-body input[type="checkbox"]:not(:checked) {
-            border-color: #555555;
-            background: #2a2a2a;
+            border-color: #555555; background: #2a2a2a;
         }
-
-        /* 已完成：绿色背景 (#58d68e) + 白色对勾 */
         .markdown-body input[type="checkbox"]:checked {
-            background: #58d68e;
-            border-color: #58d68e;
+            background: #58d68e; border-color: #58d68e;
         }
-
         .markdown-body input[type="checkbox"]:checked::after {
-            content: "✓";
-            color: white;
-            position: absolute;
-            top: 50%;
-            left: 50%;
+            content: "✓"; color: white;
+            position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 12px;
-            font-weight: bold;
+            font-size: 12px; font-weight: bold;
         }
-
-        /* 修复任务列表项的对齐 */
         .markdown-body .task-list-item {
-            list-style: none;
-            display: flex;
-            align-items: flex-start;
+            list-style: none; display: flex; align-items: flex-start;
         }
         .markdown-body .task-list-item input[type="checkbox"] {
-            margin-right: 6px;
-            margin-top: 4px;
+            margin-right: 6px; margin-top: 4px;
         }
-        /* 确保嵌套列表正常 */
-        .markdown-body .task-list-item .task-list-item {
-            margin-left: 20px;
+        .markdown-body .task-list-item .task-list-item { margin-left: 20px; }
+
+        /* ============ 图片 ============ */
+        .markdown-body img { max-width: 100%; box-sizing: border-box; }
+        .markdown-body a img { border: none; }
+        .markdown-body img[src*="img.shields.io"] {
+            display: inline-block; vertical-align: middle;
         }
 
-        /* ========== 内联图片（如徽章）样式优化 ========== */
-        .markdown-body img {
-            max-width: 100%;
-            box-sizing: border-box;
+        /* ============ CSV 配色 ============ */
+        .csv-header { color: #6f42c1; font-weight: bold; }
+        .csv-number { color: #005cc5; }
+        .csv-string { color: #032f62; }
+        .csv-sep    { color: #6a737d; }
+        .csv-empty  { color: #999999; }
+        body.dark .csv-header { color: #d2a8ff; font-weight: bold; }
+        body.dark .csv-number { color: #79c0ff; }
+        body.dark .csv-string { color: #a5d6ff; }
+        body.dark .csv-sep    { color: #8b949e; }
+        body.dark .csv-empty  { color: #6e7681; }
+
+        /* ============ KaTeX 数学块 ============ */
+        .math-block {
+            overflow-x: auto;
+            margin: 16px 0;
+            padding: 14px 18px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 1em;
         }
-        .markdown-body a img {
-            border: none;
+        body:not(.dark) .math-block {
+            background-color: #f6f8fa;
+            border-left: 3px solid #0366d6;
         }
-        /* 针对 shields.io 徽章，使图片与文字垂直居中 */
-        .markdown-body img[src*="img.shields.io"] {
-            display: inline-block;
-            vertical-align: middle;
+        body.dark .math-block {
+            background-color: #2a2a2a;
+            border-left: 3px solid #58a6ff;
         }
+        .math-block .katex-display { margin: 0; }
+        .katex { font-size: 1.1em; }
+        body:not(.dark) .katex { color: #1e1e1e; }
+        body.dark .katex { color: #e6e6e6; }
+
+        .katex-error {
+            color: #d1242f !important;
+            font-family: monospace;
+            font-size: 0.95em;
+        }
+        body.dark .katex-error { color: #ff7b72 !important; }
+
+        .katex-inline { display: inline-block; vertical-align: baseline; }
     </style>
 </head>
 <body>
@@ -176,28 +166,486 @@
 
     <script src="js/marked.min.js"></script>
     <script src="js/highlight.min.js"></script>
+    <script src="js/katex.min.js"></script>
     <script src="js/qwebchannel.js"></script>
 
     <script>
-        // 配置 marked
-        if (typeof marked !== 'undefined') {
-            marked.setOptions({
-                highlight: function(code, lang) {
-                    if (typeof hljs !== 'undefined') {
-                        if (lang && hljs.getLanguage(lang)) {
-                            return hljs.highlight(code, { language: lang }).value;
-                        } else {
-                            return hljs.highlightAuto(code).value;
+        // ============================================================
+        // 工具函数
+        // ============================================================
+        function escapeHtml(s) {
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // ============================================================
+        // 安全过滤器：清理 marked 输出的 HTML
+        // 白名单机制，危险标签/属性/URL 全部剥除
+        // ============================================================
+
+        // 允许保留的标签（含内容）
+        var ALLOWED_TAGS = {
+            'a': 1, 'p': 1, 'br': 1, 'hr': 1,
+            'strong': 1, 'b': 1, 'em': 1, 'i': 1, 'u': 1,
+            'del': 1, 's': 1, 'mark': 1,
+            'code': 1, 'pre': 1, 'kbd': 1, 'samp': 1, 'var': 1,
+            'blockquote': 1,
+            'ul': 1, 'ol': 1, 'li': 1,
+            'table': 1, 'thead': 1, 'tbody': 1, 'tfoot': 1,
+            'tr': 1, 'th': 1, 'td': 1, 'caption': 1,
+            'h1': 1, 'h2': 1, 'h3': 1, 'h4': 1, 'h5': 1, 'h6': 1,
+            'img': 1, 'span': 1, 'div': 1, 'input': 1,
+            'sup': 1, 'sub': 1, 'abbr': 1,
+            'details': 1, 'summary': 1,
+            'figure': 1, 'figcaption': 1,
+            'dl': 1, 'dt': 1, 'dd': 1
+        };
+
+        // 危险标签：整个连同内容一起删除
+        var DANGEROUS_TAGS = {
+            'script': 1, 'style': 1, 'iframe': 1, 'object': 1,
+            'embed': 1, 'applet': 1, 'frame': 1, 'frameset': 1,
+            'noscript': 1, 'template': 1,
+            'base': 1, 'meta': 1, 'link': 1, 'title': 1, 'head': 1,
+            'form': 1, 'button': 1, 'select': 1, 'textarea': 1,
+            'option': 1, 'optgroup': 1, 'fieldset': 1, 'legend': 1,
+            'svg': 1, 'math': 1,       // SVG / MathML 可嵌入 script
+            'audio': 1, 'video': 1, 'source': 1, 'track': 1,
+            'canvas': 1, 'map': 1, 'area': 1
+        };
+
+        // 全局允许的属性
+        var GLOBAL_ATTRS = {
+            'class': 1, 'id': 1, 'title': 1
+        };
+
+        // 按标签细分的属性白名单
+        var TAG_ATTRS = {
+            'a':     { 'href': 1, 'title': 1, 'target': 1, 'rel': 1 },
+            'img':   { 'src': 1, 'alt': 1, 'title': 1, 'width': 1, 'height': 1 },
+            'input': { 'type': 1, 'checked': 1, 'disabled': 1 },
+            'td':    { 'align': 1, 'colspan': 1, 'rowspan': 1 },
+            'th':    { 'align': 1, 'colspan': 1, 'rowspan': 1 },
+            'ol':    { 'start': 1, 'type': 1 },
+            'code':  { 'class': 1 },
+            'pre':   { 'class': 1 },
+            'div':   { 'class': 1, 'data-tex': 1, 'data-line': 1 },
+            'span':  { 'class': 1, 'data-line': 1 },
+            'h1':    { 'data-line': 1 }, 'h2': { 'data-line': 1 },
+            'h3':    { 'data-line': 1 }, 'h4': { 'data-line': 1 },
+            'h5':    { 'data-line': 1 }, 'h6': { 'data-line': 1 }
+        };
+
+        // 允许的 URL 协议白名单
+        var SAFE_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:', 'file:', 'ftp:', 'ftps:'];
+
+        function isSafeUrl(url) {
+            if (!url) return true;   // 空 URL 不检查
+            // 去掉所有控制字符和空白，防绕过（如 "java\nscript:"）
+            var cleaned = String(url).replace(/[\u0000-\u001F\u007F\s]/g, '').toLowerCase();
+            // 无协议：相对路径，安全
+            if (cleaned.indexOf(':') === -1) return true;
+            // 白名单协议
+            for (var i = 0; i < SAFE_PROTOCOLS.length; i++) {
+                if (cleaned.indexOf(SAFE_PROTOCOLS[i]) === 0) return true;
+            }
+            return false;
+        }
+
+        function sanitizeHtml(html) {
+            if (!html) return '';
+            // 降级：没有 DOMParser 就整个转义
+            if (typeof DOMParser === 'undefined') {
+                return escapeHtml(html);
+            }
+
+            var doc;
+            try {
+                doc = new DOMParser().parseFromString(
+                    '<div id="__sanitize_root__">' + html + '</div>',
+                    'text/html'
+                );
+            } catch (e) {
+                return escapeHtml(html);
+            }
+
+            var root = doc.getElementById('__sanitize_root__');
+            if (!root) return escapeHtml(html);
+
+            // 递归清理一个元素节点
+            function cleanNode(node) {
+                if (!node) return;
+
+                // 文本节点：直接通过
+                if (node.nodeType === 3) return;
+
+                // 注释 / CDATA 等：删除
+                if (node.nodeType !== 1) {
+                    if (node.parentNode) node.parentNode.removeChild(node);
+                    return;
+                }
+
+                var tagName = node.tagName ? node.tagName.toLowerCase() : '';
+
+                // ---- 危险标签：整棵子树删除 ----
+                if (DANGEROUS_TAGS[tagName]) {
+                    if (node.parentNode) node.parentNode.removeChild(node);
+                    return;
+                }
+
+                // ---- 不在白名单：先清理子节点，再拆掉标签本身 ----
+                if (!ALLOWED_TAGS[tagName]) {
+                    // 先递归清理所有子节点
+                    var children = [];
+                    for (var c = 0; c < node.childNodes.length; c++) {
+                        children.push(node.childNodes[c]);
+                    }
+                    for (var ci = 0; ci < children.length; ci++) {
+                        cleanNode(children[ci]);
+                    }
+                    // 再把子节点提升到父级，删除本标签
+                    if (node.parentNode) {
+                        while (node.firstChild) {
+                            node.parentNode.insertBefore(node.firstChild, node);
+                        }
+                        node.parentNode.removeChild(node);
+                    }
+                    return;
+                }
+
+                // ---- 白名单标签：清理属性 ----
+                var attrs = node.attributes;
+                var toRemove = [];
+                for (var i = 0; i < attrs.length; i++) {
+                    var attr = attrs[i];
+                    var attrName = attr.name.toLowerCase();
+                    var attrValue = attr.value;
+
+                    // 1) 所有 on* 事件属性：一律删除
+                    if (attrName.indexOf('on') === 0) {
+                        toRemove.push(attr.name);
+                        continue;
+                    }
+                    // 2) style 属性：删除（防 CSS 注入）
+                    if (attrName === 'style') {
+                        toRemove.push(attr.name);
+                        continue;
+                    }
+                    // 3) xlink:href / xml:base 等命名空间属性：删除
+                    if (attrName.indexOf('xlink:') === 0 ||
+                        attrName.indexOf('xml:') === 0) {
+                        toRemove.push(attr.name);
+                        continue;
+                    }
+                    // 4) 是否在白名单
+                    var allowed = GLOBAL_ATTRS[attrName] ||
+                                  (TAG_ATTRS[tagName] && TAG_ATTRS[tagName][attrName]);
+                    if (!allowed) {
+                        toRemove.push(attr.name);
+                        continue;
+                    }
+                    // 5) URL 协议检查
+                    if (attrName === 'href' || attrName === 'src') {
+                        if (!isSafeUrl(attrValue)) {
+                            toRemove.push(attr.name);
+                            continue;
                         }
                     }
-                    return code;
-                },
+                    // 6) input 只允许 checkbox
+                    if (tagName === 'input' && attrName === 'type') {
+                        if (String(attrValue).toLowerCase() !== 'checkbox') {
+                            toRemove.push(attr.name);
+                            continue;
+                        }
+                    }
+                }
+
+                for (var k = 0; k < toRemove.length; k++) {
+                    node.removeAttribute(toRemove[k]);
+                }
+
+                // 7) input 兜底：如果 type 不是 checkbox 就整个删除
+                if (tagName === 'input') {
+                    var t = (node.getAttribute('type') || '').toLowerCase();
+                    if (t !== 'checkbox') {
+                        if (node.parentNode) node.parentNode.removeChild(node);
+                        return;
+                    }
+                }
+
+                // 8) a 标签加安全属性
+                if (tagName === 'a' && node.hasAttribute('href')) {
+                    node.setAttribute('rel', 'noopener noreferrer');
+                }
+
+                // ---- 递归处理子节点 ----
+                var kids = [];
+                for (var m = 0; m < node.childNodes.length; m++) {
+                    kids.push(node.childNodes[m]);
+                }
+                for (var mi = 0; mi < kids.length; mi++) {
+                    cleanNode(kids[mi]);
+                }
+            }
+
+            // 从根节点的所有子节点开始清理
+            var rootKids = [];
+            for (var rk = 0; rk < root.childNodes.length; rk++) {
+                rootKids.push(root.childNodes[rk]);
+            }
+            for (var rki = 0; rki < rootKids.length; rki++) {
+                cleanNode(rootKids[rki]);
+            }
+
+            return root.innerHTML;
+        }
+
+        // ============================================================
+        // KaTeX 渲染辅助
+        // ============================================================
+        var KATEX_OPTS = {
+            throwOnError: false,
+            strict: false,
+            trust: false,
+            output: 'html'
+        };
+
+        function renderKatexToString(tex, display) {
+            if (typeof katex === 'undefined') {
+                return '<code>' + escapeHtml(tex) + '</code>';
+            }
+            try {
+                var opts = Object.assign({}, KATEX_OPTS, { displayMode: !!display });
+                return katex.renderToString(tex, opts);
+            } catch (e) {
+                return '<span class="katex-error">[公式错误] ' +
+                       escapeHtml(tex) + '</span>';
+            }
+        }
+
+        // ============================================================
+        // 数学公式预处理（先替换为占位符，marked 后再换回）
+        // ============================================================
+        function preprocessMath(md) {
+            var mathList = [];
+
+            // 1) 找出所有代码块 / 行内代码的范围（这些区域内的 $ 不算公式）
+            var codeRanges = [];
+            var m;
+            var reBlock = /(```[\s\S]*?```|~~~[\s\S]*?~~~)/g;
+            while ((m = reBlock.exec(md)) !== null) {
+                codeRanges.push([m.index, m.index + m[0].length]);
+            }
+            var reInline = /`[^`\n]*`/g;
+            while ((m = reInline.exec(md)) !== null) {
+                var skip = false;
+                for (var i = 0; i < codeRanges.length; i++) {
+                    if (m.index >= codeRanges[i][0] && m.index < codeRanges[i][1]) {
+                        skip = true; break;
+                    }
+                }
+                if (!skip) codeRanges.push([m.index, m.index + m[0].length]);
+            }
+            codeRanges.sort(function(a, b) { return a[0] - b[0]; });
+
+            function isInCode(idx) {
+                for (var i = 0; i < codeRanges.length; i++) {
+                    if (idx >= codeRanges[i][0] && idx < codeRanges[i][1]) return true;
+                    if (codeRanges[i][0] > idx) break;
+                }
+                return false;
+            }
+
+            // 2) 收集公式片段
+            var allMatches = [];
+
+            // 块级：$$...$$ 或 \[...\]
+            var blockRe = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]/g;
+            while ((m = blockRe.exec(md)) !== null) {
+                if (isInCode(m.index)) continue;
+                var texB = (m[1] !== undefined) ? m[1] : m[2];
+                texB = texB.replace(/^\s+|\s+$/g, '');
+                if (!texB) continue;
+                allMatches.push({
+                    start: m.index,
+                    end: m.index + m[0].length,
+                    tex: texB,
+                    display: true
+                });
+            }
+
+            // 行内：$...$ 或 \(...\)
+            var inlineRe = /\$(?![\s\d])([^\$\n]+?)\$|\\\(([\s\S]+?)\\\)/g;
+            while ((m = inlineRe.exec(md)) !== null) {
+                if (isInCode(m.index)) continue;
+                var overlap = false;
+                for (var k = 0; k < allMatches.length; k++) {
+                    if (m.index >= allMatches[k].start &&
+                        m.index < allMatches[k].end) {
+                        overlap = true; break;
+                    }
+                }
+                if (overlap) continue;
+                var texI = (m[1] !== undefined) ? m[1] : m[2];
+                if (!texI) continue;
+                allMatches.push({
+                    start: m.index,
+                    end: m.index + m[0].length,
+                    tex: texI,
+                    display: false
+                });
+            }
+
+            // 3) 从后往前替换为占位符
+            allMatches.sort(function(a, b) { return b.start - a.start; });
+
+            var result = md;
+            for (var j = 0; j < allMatches.length; j++) {
+                var item = allMatches[j];
+                var placeholder = '\u2063MKPH' + j + 'MKPH\u2063';
+                mathList.push({
+                    placeholder: placeholder,
+                    tex: item.tex,
+                    display: item.display
+                });
+                result = result.slice(0, item.start) +
+                         placeholder +
+                         result.slice(item.end);
+            }
+
+            return { text: result, mathList: mathList };
+        }
+
+        // ============================================================
+        // CSV 处理
+        // ============================================================
+        function parseCsvLine(line) {
+            var cells = [];
+            var cur = '';
+            var inQuotes = false;
+            var i = 0;
+            while (i < line.length) {
+                var c = line[i];
+                if (inQuotes) {
+                    if (c === '"') {
+                        if (line[i + 1] === '"') { cur += '"'; i += 2; }
+                        else { inQuotes = false; i++; }
+                    } else { cur += c; i++; }
+                } else {
+                    if (c === '"' && cur === '') { inQuotes = true; i++; }
+                    else if (c === ',') { cells.push(cur); cur = ''; i++; }
+                    else { cur += c; i++; }
+                }
+            }
+            cells.push(cur);
+            return cells;
+        }
+
+        function looksLikeCsv(code) {
+            var lines = code.split('\n').filter(function(l) { return l.trim(); });
+            if (lines.length < 2) return false;
+            var firstCount = (lines[0].match(/,/g) || []).length;
+            if (firstCount < 1) return false;
+            for (var i = 1; i < lines.length; i++) {
+                if ((lines[i].match(/,/g) || []).length !== firstCount) return false;
+            }
+            return true;
+        }
+
+        function renderCsvBlock(code) {
+            var lines = code.replace(/\r\n/g, '\n').split('\n');
+            while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+            if (!lines.length) {
+                return '<pre><code class="hljs language-csv"></code></pre>\n';
+            }
+            var html = '<pre class="csv-block"><code class="hljs language-csv">';
+            for (var r = 0; r < lines.length; r++) {
+                var cells = parseCsvLine(lines[r]);
+                var isHeader = (r === 0);
+                var parts = [];
+                for (var c = 0; c < cells.length; c++) {
+                    var raw = cells[c];
+                    var trimmed = raw.trim();
+                    var cls;
+                    if (isHeader) cls = 'csv-header';
+                    else if (trimmed === '') cls = 'csv-empty';
+                    else if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed)) cls = 'csv-number';
+                    else cls = 'csv-string';
+                    parts.push('<span class="' + cls + '">' + escapeHtml(raw) + '</span>');
+                }
+                html += parts.join('<span class="csv-sep">,</span>');
+                if (r < lines.length - 1) html += '\n';
+            }
+            html += '</code></pre>\n';
+            return html;
+        }
+
+        // ============================================================
+        // marked 自定义 code 渲染
+        // ============================================================
+        if (typeof marked !== 'undefined') {
+            var mdRenderer = new marked.Renderer();
+
+            mdRenderer.code = function(code, infostring, escaped) {
+                var info = (infostring || '').trim();
+                var lang = (info.match(/^\S+/) || [''])[0].toLowerCase();
+
+                // Math 代码块
+                if (lang === 'math' || lang === 'latex' ||
+                    lang === 'katex' || lang === 'tex') {
+                    return '<div class="math-block" data-tex="' +
+                           encodeURIComponent(code) + '">' +
+                           escapeHtml(code) +
+                           '</div>\n';
+                }
+
+                // CSV 代码块
+                if (lang === 'csv') return renderCsvBlock(code);
+                if (!lang && looksLikeCsv(code)) return renderCsvBlock(code);
+
+                // 其他语言：highlight.js
+                if (typeof hljs !== 'undefined') {
+                    var highlighted;
+                    try {
+                        if (lang && hljs.getLanguage(lang)) {
+                            highlighted = hljs.highlight(code, {
+                                language: lang,
+                                ignoreIllegals: true
+                            }).value;
+                        } else {
+                            highlighted = hljs.highlightAuto(code).value;
+                        }
+                    } catch (e) {
+                        highlighted = escapeHtml(code);
+                    }
+                    var cls = 'hljs' + (lang ? ' language-' + lang : '');
+                    return '<pre><code class="' + cls + '">' +
+                           highlighted + '</code></pre>\n';
+                }
+                return '<pre><code>' + escapeHtml(code) + '</code></pre>\n';
+            };
+
+            // 关键：禁用原始 HTML 直出，改为转义为纯文本
+            // 这样即使 sanitize 漏了，用户也看不到自己的 <script> 被执行
+            mdRenderer.html = function(html) {
+                // 不返回原始 HTML，把它作为纯文本展示
+                return '<p>' + escapeHtml(html) + '</p>\n';
+            };
+
+            marked.setOptions({
+                renderer: mdRenderer,
                 breaks: true,
                 gfm: true
             });
         }
 
-        // 主题切换函数
+        // ============================================================
+        // 主题切换
+        // ============================================================
         function setTheme(theme) {
             var html = document.documentElement;
             var body = document.body;
@@ -214,29 +662,80 @@
                 body.style.backgroundColor = '#ffffff';
                 body.style.color = '#1e1e1e';
             }
-            // 强制重绘
             document.body.offsetHeight;
         }
 
-        // 缩放函数
         function setZoomPercent(percent) {
             document.body.style.zoom = percent / 100;
         }
 
-        // 渲染 Markdown
+        // ============================================================
+        // ```math 代码块渲染
+        // ============================================================
+        function renderMathBlocks(root) {
+            if (typeof katex === 'undefined') return;
+            var blocks = root.querySelectorAll('.math-block[data-tex]');
+            for (var i = 0; i < blocks.length; i++) {
+                var el = blocks[i];
+                var tex = el.getAttribute('data-tex');
+                try { tex = decodeURIComponent(tex); }
+                catch (e) { tex = el.textContent; }
+
+                try {
+                    katex.render(tex, el, {
+                        displayMode: true,
+                        throwOnError: false,
+                        strict: false,
+                        trust: false,
+                        output: 'html'
+                    });
+                } catch (e) {
+                    el.innerHTML = '<span class="katex-error">[公式错误] ' +
+                                   escapeHtml(String(e.message || e)) +
+                                   '</span><br><code>' + escapeHtml(tex) + '</code>';
+                }
+            }
+        }
+
+        // ============================================================
+        // 渲染 Markdown（含安全过滤）
+        // ============================================================
         function renderMarkdown(markdownText, headingsArray) {
             var contentElement = document.getElementById('markdown-content');
             if (!contentElement) return;
+
             try {
                 if (typeof marked !== 'undefined') {
-                    var html = marked.parse(markdownText);
-                    contentElement.innerHTML = html;
-                    if (typeof hljs !== 'undefined') {
-                        document.querySelectorAll('pre code').forEach((block) => {
-                            hljs.highlightElement(block);
-                        });
+                    // 1) 预处理公式
+                    var pre = preprocessMath(markdownText);
+
+                    // 2) marked 渲染
+                    var html = marked.parse(pre.text);
+
+                    // 3) ★★★ 安全过滤：剥掉所有危险标签/属性 ★★★
+                    html = sanitizeHtml(html);
+
+                    // 4) 换回 KaTeX 公式（此步生成的 HTML 是可信的，不再过滤）
+                    for (var i = 0; i < pre.mathList.length; i++) {
+                        var item = pre.mathList[i];
+                        var katexHtml = renderKatexToString(item.tex, item.display);
+                        if (item.display) {
+                            katexHtml = '<div class="math-block">' +
+                                        katexHtml + '</div>';
+                        } else {
+                            katexHtml = '<span class="katex-inline">' +
+                                        katexHtml + '</span>';
+                        }
+                        html = html.split(item.placeholder).join(katexHtml);
                     }
+
+                    // 5) 写入 DOM
+                    contentElement.innerHTML = html;
+
+                    // 6) ```math 代码块渲染
+                    renderMathBlocks(contentElement);
                 } else {
+                    // marked 未加载时，用纯文本模式（安全）
                     contentElement.textContent = markdownText;
                 }
             } catch (e) {
@@ -244,12 +743,14 @@
                 console.error("渲染失败", e);
             }
 
+            // 目录锚点
             if (headingsArray && Array.isArray(headingsArray)) {
                 headingsArray.forEach(function(item) {
                     var headingElements = document.querySelectorAll('h1,h2,h3,h4,h5,h6');
                     for (var i = 0; i < headingElements.length; i++) {
                         var el = headingElements[i];
-                        if (el.textContent.trim() === item.text && parseInt(el.tagName.substring(1)) === item.level) {
+                        if (el.textContent.trim() === item.text &&
+                            parseInt(el.tagName.substring(1)) === item.level) {
                             el.setAttribute('data-line', item.line);
                             break;
                         }
@@ -259,6 +760,9 @@
             document.body.offsetHeight;
         }
 
+        // ============================================================
+        // 滚动
+        // ============================================================
         function getScrollRatio() {
             var docHeight = document.documentElement.scrollHeight - window.innerHeight;
             if (docHeight <= 0) return 0;
@@ -283,7 +787,9 @@
             setTimeout(function() { isProgrammaticScroll = false; }, 100);
         }
 
+        // ============================================================
         // QWebChannel 桥接
+        // ============================================================
         if (typeof QWebChannel !== 'undefined') {
             new QWebChannel(qt.webChannelTransport, function(channel) {
                 window.bridge = channel.objects.bridge;

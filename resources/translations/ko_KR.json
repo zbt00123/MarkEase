@@ -129,5 +129,6 @@
     "pdf_import_empty_message": "이 PDF는 스캔본으로, 추출할 텍스트가 없습니다.",
     "export_empty_message": "현재 문서가 비어 있어 내보낼 수 없습니다.",
     "export_pdf_failed": "PDF 내보내기에 실패했습니다. 다시 시도하세요.",
-    "pdf_image_placeholder": "[이미지]"
+    "pdf_image_placeholder": "[이미지]",
+    "about_emoji_source": "이모지 아이콘은 시스템 이모지 글꼴에서 제공됩니다."
 }

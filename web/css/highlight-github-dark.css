@@ -1,0 +1,83 @@
+/*!
+  Theme: GitHub Dark (scoped to body.dark)
+  Description: Dark theme as seen on github.com
+  Based on highlight.js github-dark theme
+*/
+
+body.dark .hljs {
+    color: #c9d1d9;
+    background: #0d1117;
+}
+body.dark .hljs-doctag,
+body.dark .hljs-keyword,
+body.dark .hljs-meta .hljs-keyword,
+body.dark .hljs-template-tag,
+body.dark .hljs-template-variable,
+body.dark .hljs-type,
+body.dark .hljs-variable.language_ {
+    color: #ff7b72;
+}
+body.dark .hljs-title,
+body.dark .hljs-title.class_,
+body.dark .hljs-title.class_.inherited__,
+body.dark .hljs-title.function_ {
+    color: #d2a8ff;
+}
+body.dark .hljs-attr,
+body.dark .hljs-attribute,
+body.dark .hljs-literal,
+body.dark .hljs-meta,
+body.dark .hljs-number,
+body.dark .hljs-operator,
+body.dark .hljs-selector-attr,
+body.dark .hljs-selector-class,
+body.dark .hljs-selector-id,
+body.dark .hljs-variable {
+    color: #79c0ff;
+}
+body.dark .hljs-meta .hljs-string,
+body.dark .hljs-regexp,
+body.dark .hljs-string {
+    color: #a5d6ff;
+}
+body.dark .hljs-built_in,
+body.dark .hljs-symbol {
+    color: #ffa657;
+}
+body.dark .hljs-code,
+body.dark .hljs-comment,
+body.dark .hljs-formula {
+    color: #8b949e;
+}
+body.dark .hljs-name,
+body.dark .hljs-quote,
+body.dark .hljs-selector-pseudo,
+body.dark .hljs-selector-tag {
+    color: #7ee787;
+}
+body.dark .hljs-subst {
+    color: #c9d1d9;
+}
+body.dark .hljs-section {
+    color: #1f6feb;
+    font-weight: 700;
+}
+body.dark .hljs-bullet {
+    color: #f2cc60;
+}
+body.dark .hljs-emphasis {
+    color: #c9d1d9;
+    font-style: italic;
+}
+body.dark .hljs-strong {
+    color: #c9d1d9;
+    font-weight: 700;
+}
+body.dark .hljs-addition {
+    color: #aff5b4;
+    background-color: #033a16;
+}
+body.dark .hljs-deletion {
+    color: #ffdcd7;
+    background-color: #67060c;
+}

@@ -129,5 +129,6 @@
     "pdf_import_empty_message": "此 PDF 可能為掃描版，沒有可提取的文字。",
     "export_empty_message": "目前文件為空，無法匯出。",
     "export_pdf_failed": "PDF 匯出失敗，請重試。",
-    "pdf_image_placeholder": "[圖片]"
+    "pdf_image_placeholder": "[圖片]",
+    "about_emoji_source": "Emoji 圖示來自系統 Emoji 字型。"
 }

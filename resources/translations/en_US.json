@@ -129,5 +129,6 @@
     "pdf_import_empty_message": "This PDF may be a scanned document with no extractable text.",
     "export_empty_message": "The current document is empty. Nothing to export.",
     "export_pdf_failed": "PDF export failed. Please try again.",
-    "pdf_image_placeholder": "[Image]"
+    "pdf_image_placeholder": "[Image]",
+    "about_emoji_source": "Emoji icons are provided by the system emoji fonts."
 }

@@ -1476,25 +1476,28 @@ class MainWindow(QMainWindow):
             link_color = "#0000EE"
         style = f"<style>a {{ color: {link_color}; }}</style>"
 
+        lm = self.language_manager
         about_html = f"""
         {style}
         <h3>MarkEase</h3>
-        <p><b>{self.language_manager.tr('about_version')}:</b> {APP_VERSION}</p>
-        <p><b>{self.language_manager.tr('about_author')}:</b> ZBT Studio<br>
+        <p><b>{lm.tr('about_version')}:</b> {APP_VERSION}</p>
+        <p><b>{lm.tr('about_author')}:</b> ZBT Studio<br>
         <a href="https://github.com/zbt00123/">https://github.com/zbt00123/</a></p>
-        <p><b>{self.language_manager.tr('about_outline')}:</b> ChatGPT<br>
+        <p><b>{lm.tr('about_outline')}:</b> ChatGPT<br>
         <a href="https://chatgpt.com/">https://chatgpt.com/</a></p>
-        <p><b>{self.language_manager.tr('about_coding')}:</b> DeepSeek<br>
+        <p><b>{lm.tr('about_coding')}:</b> DeepSeek<br>
         <a href="https://chat.deepseek.com/">https://chat.deepseek.com/</a></p>
-        <p><b>{self.language_manager.tr('about_copyright')}:</b> {self.language_manager.tr('about_copyright_text')}</p>
-        <p><b>{self.language_manager.tr('about_acknowledgements')}:</b><br>
+        <p><b>{lm.tr('about_copyright')}:</b> {lm.tr('about_copyright_text')}</p>
+        <p><b>{lm.tr('about_acknowledgements')}:</b><br>
         PySide6 - <a href="https://pypi.org/project/PySide6/">https://pypi.org/project/PySide6/</a> (LGPL)<br>
         PyMuPDF - <a href="https://pypi.org/project/PyMuPDF/">https://pypi.org/project/PyMuPDF/</a> (AGPL)<br>
         marked.js - <a href="https://marked.js.org/">https://marked.js.org/</a> (MIT)<br>
         highlight.js - <a href="https://highlightjs.org/">https://highlightjs.org/</a> (BSD-3-Clause)<br>
+        KaTeX - <a href="https://katex.org/">https://katex.org/</a> (MIT)<br>
+        KaTeX Fonts - <a href="https://github.com/KaTeX/katex-fonts">https://github.com/KaTeX/katex-fonts</a> (OFL-1.1)<br>
         github-markdown-css - <a href="https://github.com/sindresorhus/github-markdown-css">GitHub</a> (MIT)<br>
         QWebChannel.js - part of Qt (LGPL)<br>
-        Emoji icons from system emoji fonts.
+        {lm.tr('about_emoji_source')}
         </p>
         """
-        QMessageBox.about(self, self.language_manager.tr("about"), about_html)
+        QMessageBox.about(self, lm.tr("about"), about_html)

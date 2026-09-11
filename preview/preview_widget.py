@@ -49,6 +49,19 @@ class PreviewPage(QWebEnginePage):
         settings.setAttribute(QWebEngineSettings.WebAttribute.AutoLoadImages, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
 
+    def javaScriptConsoleMessage(self, level, message, lineNumber, sourceID):
+        """把 JS 的 console 输出转发到 Python 控制台，方便排查问题"""
+        try:
+            level_name = {
+                QWebEnginePage.JavaScriptConsoleMessageLevel.InfoMessageLevel: "INFO",
+                QWebEnginePage.JavaScriptConsoleMessageLevel.WarningMessageLevel: "WARN",
+                QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel: "ERROR",
+            }.get(level, "LOG")
+            print(f"[JS {level_name}] {sourceID}:{lineNumber} {message}")
+        except Exception:
+            pass
+        # 不调用 super()，避免在部分 Qt 版本里默认弹窗
+
     def acceptNavigationRequest(self, url: QUrl, navigation_type: QWebEnginePage.NavigationType, is_main_frame: bool):
         if url.scheme() in ("file", "about", "data"):
             return True
@@ -139,6 +152,25 @@ class PreviewWidget(QWebEngineView):
             if self._pending_scroll_line is not None:
                 self.scroll_to_line(self._pending_scroll_line)
                 self._pending_scroll_line = None
+        else:
+            print("[PreviewWidget] 页面加载失败")
+
+    def _build_js_args(self, markdown_text: str, headings_map) -> str:
+        """
+        把 Python 字符串安全地转换成 JS 字面量。
+        关键：用 json.dumps 保证转义正确；再把 </ 替换为 <\\/ 防止
+        字符串里出现 </script> 破坏 QWebEngine 内部 HTML 结构。
+        """
+        md_json = json.dumps(markdown_text, ensure_ascii=False)
+        md_json = md_json.replace('</', '<\\/')
+
+        if headings_map:
+            headings_json = json.dumps(headings_map, ensure_ascii=False)
+        else:
+            headings_json = "[]"
+        headings_json = headings_json.replace('</', '<\\/')
+
+        return md_json, headings_json
 
     def set_markdown(self, markdown_text: str, headings_map: list = None, theme: str = "light"):
         self._pending_theme = theme
@@ -147,28 +179,32 @@ class PreviewWidget(QWebEngineView):
             self._pending_headings = headings_map
             return
 
-        self.page().runJavaScript(f"setTheme('{theme}');")
+        # 主题
+        theme_json = json.dumps(theme, ensure_ascii=False)
+        self.page().runJavaScript(f"setTheme({theme_json});")
 
-        headings_json = json.dumps(headings_map) if headings_map else "[]"
-        js_code = f"window.renderMarkdown({markdown_text!r}, {headings_json});"
+        # Markdown 内容（用安全的字面量）
+        md_json, headings_json = self._build_js_args(markdown_text, headings_map)
+        js_code = f"window.renderMarkdown({md_json}, {headings_json});"
         self.page().runJavaScript(js_code)
         self.page().runJavaScript("document.body.offsetHeight;")
 
     def set_theme(self, theme: str):
         self._pending_theme = theme
         if self._loaded:
-            self.page().runJavaScript(f"setTheme('{theme}');")
+            theme_json = json.dumps(theme, ensure_ascii=False)
+            self.page().runJavaScript(f"setTheme({theme_json});")
 
     def scroll_to_line(self, line: int):
         if not self._loaded:
             self._pending_scroll_line = line
             return
-        self.page().runJavaScript(f"window.scrollToLine({line});")
+        self.page().runJavaScript(f"window.scrollToLine({int(line)});")
 
     def set_scroll_ratio(self, ratio: float):
         if not self._loaded:
             return
-        self.page().runJavaScript(f"window.scrollToRatio({ratio});")
+        self.page().runJavaScript(f"window.scrollToRatio({float(ratio)});")
 
     def set_zoom_percent(self, percent: int):
         self._zoom_percent = percent
@@ -189,17 +225,39 @@ class PreviewWidget(QWebEngineView):
     def export_to_pdf(self, output_path: str):
         """将当前预览导出为 PDF（A4 纵向，15mm 边距）"""
         if not self._loaded:
+            print("[PreviewWidget] 页面未加载，无法导出 PDF")
             self.pdf_export_finished.emit(output_path, False)
             return
+
+        # 先检查页面是否有内容，避免空页面导出
+        self.page().runJavaScript(
+            "document.getElementById('markdown-content') ? "
+            "document.getElementById('markdown-content').innerHTML.length : -1;",
+            lambda result: self._start_pdf_export(output_path, result)
+        )
+
+    def _start_pdf_export(self, output_path: str, content_length):
+        try:
+            content_length = int(content_length) if content_length is not None else -1
+        except Exception:
+            content_length = -1
+
+        if content_length <= 0:
+            print(f"[PreviewWidget] 预览内容为空(length={content_length})，取消导出")
+            self.pdf_export_finished.emit(output_path, False)
+            return
+
         layout = QPageLayout(
             QPageSize(QPageSize.PageSizeId.A4),
             QPageLayout.Orientation.Portrait,
             QMarginsF(15, 15, 15, 15),
             QPageLayout.Unit.Millimeter
         )
+        print(f"[PreviewWidget] 开始 printToPdf: {output_path}")
         self.page().printToPdf(output_path, layout)
 
     def _on_pdf_printing_finished(self, file_path: str, success: bool):
+        print(f"[PreviewWidget] printToPdf 完成: {file_path} success={success}")
         self.pdf_export_finished.emit(file_path, success)
 
     def _on_bridge_scroll(self):
