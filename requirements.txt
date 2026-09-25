@@ -1,2 +1,3 @@
-PySide6>=6.5
-PyMuPDF>=1.24
+pywebview>=4.0
+PyMuPDF>=1.23
+pythonnet>=3.0

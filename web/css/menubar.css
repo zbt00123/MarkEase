@@ -1,0 +1,237 @@
+/* ============================================================
+   MarkEase 菜单栏样式（阶段 14 修订 3：去掉 z-index 修复 tooltip 遮挡）
+   ============================================================ */
+#menubar {
+    display: flex;
+    align-items: stretch;
+    background: #fff;
+    border-bottom: 1px solid #e1e4e8;
+    height: 30px;
+    font-size: 13px;
+    user-select: none;
+    flex-shrink: 0;
+    padding: 0 4px;
+    position: relative;
+    /* ★ 不设 z-index，避免创建 stacking context 遮挡工具栏 tooltip */
+}
+
+.menu-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    cursor: default;
+    color: #24292f;
+    border-radius: 4px;
+    margin: 3px 0;
+    transition: background-color 0.08s ease;
+}
+.menu-item:hover,
+.menu-item.open {
+    background: #e7f0ff;
+    color: #0969da;
+}
+.menu-item.active {
+    background: #cfe3ff;
+    color: #0969da;
+}
+.menu-item > span {
+    line-height: 1;
+}
+
+/* 下拉容器 */
+.menu-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    min-width: 220px;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+    padding: 4px 0;
+    /* ★ 高 z-index，会直接相对 body 的 stacking context */
+    z-index: 5000;
+}
+.menu-item.open .menu-dropdown {
+    display: block;
+}
+
+.menu-entry {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px 6px 28px;
+    cursor: default;
+    color: #24292f;
+    font-size: 13px;
+    position: relative;
+    white-space: nowrap;
+}
+.menu-entry:hover:not(.disabled):not(.separator):not(.has-submenu) {
+    background: #0969da;
+    color: #fff;
+}
+.menu-entry.disabled {
+    color: #8b949e;
+    cursor: not-allowed;
+}
+.menu-entry .menu-check {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    display: none;
+    color: #0969da;
+    font-weight: 700;
+    font-size: 11px;
+    line-height: 12px;
+    text-align: center;
+}
+.menu-entry.checked .menu-check {
+    display: block;
+}
+.menu-entry .shortcut {
+    margin-left: auto;
+    padding-left: 24px;
+    color: #6e7781;
+    font-size: 12px;
+    font-family: Consolas, "Microsoft YaHei", monospace;
+}
+.menu-entry:hover:not(.disabled):not(.separator):not(.has-submenu) .shortcut {
+    color: #d0d7de;
+}
+.menu-separator {
+    height: 1px;
+    background: #e1e4e8;
+    margin: 4px 0;
+}
+
+/* ============================================================
+   二级子菜单（has-submenu）
+   ============================================================ */
+.menu-entry.has-submenu {
+    padding-right: 26px;
+    cursor: default;
+}
+.menu-entry.has-submenu:hover,
+.menu-entry.has-submenu.submenu-open {
+    background: #e7f0ff;
+    color: #0969da;
+}
+.menu-entry.has-submenu .menu-arrow {
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #6e7781;
+    font-size: 9px;
+    line-height: 1;
+    pointer-events: none;
+    transition: color 0.12s ease;
+}
+.menu-entry.has-submenu:hover .menu-arrow,
+.menu-entry.has-submenu.submenu-open .menu-arrow {
+    color: #0969da;
+}
+
+.menu-entry .submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: -5px;
+    min-width: 170px;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+    padding: 4px 0;
+    z-index: 5001;
+}
+.menu-entry.has-submenu.submenu-open .submenu {
+    display: block;
+}
+.submenu .menu-entry {
+    padding-left: 28px;
+}
+.submenu .menu-entry:hover:not(.disabled) {
+    background: #0969da;
+    color: #fff;
+}
+.submenu .menu-entry:hover .menu-check {
+    color: #fff;
+}
+.submenu .menu-entry.checked .menu-check {
+    color: #0969da;
+}
+.submenu .menu-entry.checked:hover .menu-check {
+    color: #fff;
+}
+
+/* ============================================================
+   深色模式
+   ============================================================ */
+body.dark #menubar {
+    background: #2a2a2a;
+    border-color: #444;
+}
+body.dark .menu-item {
+    color: #dcdcdc;
+}
+body.dark .menu-item:hover,
+body.dark .menu-item.open {
+    background: #1e3a5f;
+    color: #58a6ff;
+}
+body.dark .menu-item.active {
+    background: #1a5276;
+    color: #58a6ff;
+}
+body.dark .menu-dropdown {
+    background: #2a2a2a;
+    border-color: #444;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+body.dark .menu-entry {
+    color: #dcdcdc;
+}
+body.dark .menu-entry:hover:not(.disabled):not(.separator):not(.has-submenu) {
+    background: #1f6feb;
+    color: #fff;
+}
+body.dark .menu-entry.disabled {
+    color: #666;
+}
+body.dark .menu-entry .shortcut {
+    color: #888;
+}
+body.dark .menu-separator {
+    background: #444;
+}
+
+body.dark .menu-entry.has-submenu:hover,
+body.dark .menu-entry.has-submenu.submenu-open {
+    background: #1e3a5f;
+    color: #58a6ff;
+}
+body.dark .menu-entry.has-submenu .menu-arrow {
+    color: #888;
+}
+body.dark .menu-entry.has-submenu:hover .menu-arrow,
+body.dark .menu-entry.has-submenu.submenu-open .menu-arrow {
+    color: #58a6ff;
+}
+body.dark .menu-entry .submenu {
+    background: #2a2a2a;
+    border-color: #444;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+body.dark .submenu .menu-entry:hover:not(.disabled) {
+    background: #1f6feb;
+    color: #fff;
+}
+body.dark .menu-entry .menu-check {
+    color: #58a6ff;
+}

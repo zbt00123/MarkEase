@@ -1,0 +1,255 @@
+PS D:\自建程序\应用程序\MarkEase> tree /f
+Folder PATH listing for volume Media
+Volume serial number is 4C2C-414F
+D:.
+│   .gitattributes
+│   .gitignore
+│   LICENSE
+│   main.py
+│   MarkEase.spec
+│   README.md
+│   requirements.txt
+│   THIRD_PARTY_NOTICES.md
+│   tree.txt
+│   version_info.txt
+│
+├───app
+│   │   api.py
+│   │   asset_server.py
+│   │   file_assoc.py
+│   │   image_picker.py
+│   │   __init__.py
+│   │
+│   └───__pycache__
+│           __init__.cpython-314.pyc
+│
+├───converters
+│   │   pdf_importer.py
+│   │   __init__.py
+│   │
+│   └───__pycache__
+│           pdf_importer.cpython-314.pyc
+│           __init__.cpython-314.pyc
+│
+├───Pic
+│       P_01.png
+│       P_02.png
+│       P_03.png
+│       P_04.png
+│       P_05.png
+│
+├───release
+│       MarkEase_v2.0.0_Windows_x64_portable.7z
+│
+├───resources
+│   ├───icons
+│   │       .gitkeep
+│   │       图标.ico
+│   │
+│   ├───themes
+│   │       .gitkeep
+│   │
+│   └───translations
+│           .gitkeep
+│           en_US.json
+│           ja_JP.json
+│           ko_KR.json
+│           zh_CN.json
+│           zh_TW.json
+│
+├───scripts
+│       1.一键打包.py
+│       2.上传.py
+│       3.下载统计.py
+│       clean_old.py
+│       fetch_vendor.py
+│       inspect_vendor.py
+│       verify_vendor.py
+│
+├───web
+│   │   about.html
+│   │   image_picker.html
+│   │   index.html
+│   │
+│   ├───css
+│   │   │   .gitkeep
+│   │   │   about.css
+│   │   │   codemirror.css
+│   │   │   find.css
+│   │   │   github-markdown.css
+│   │   │   highlight-github-dark.css
+│   │   │   highlight-github.min.css
+│   │   │   image_picker.css
+│   │   │   katex.min.css
+│   │   │   main.css
+│   │   │   menubar.css
+│   │   │   toolbar.css
+│   │   │   update.css
+│   │   │
+│   │   └───fonts
+│   │           KaTeX_AMS-Regular.ttf
+│   │           KaTeX_AMS-Regular.woff
+│   │           KaTeX_AMS-Regular.woff2
+│   │           KaTeX_Caligraphic-Bold.ttf
+│   │           KaTeX_Caligraphic-Bold.woff
+│   │           KaTeX_Caligraphic-Bold.woff2
+│   │           KaTeX_Caligraphic-Regular.ttf
+│   │           KaTeX_Caligraphic-Regular.woff
+│   │           KaTeX_Caligraphic-Regular.woff2
+│   │           KaTeX_Fraktur-Bold.ttf
+│   │           KaTeX_Fraktur-Bold.woff
+│   │           KaTeX_Fraktur-Bold.woff2
+│   │           KaTeX_Fraktur-Regular.ttf
+│   │           KaTeX_Fraktur-Regular.woff
+│   │           KaTeX_Fraktur-Regular.woff2
+│   │           KaTeX_Main-Bold.ttf
+│   │           KaTeX_Main-Bold.woff
+│   │           KaTeX_Main-Bold.woff2
+│   │           KaTeX_Main-BoldItalic.ttf
+│   │           KaTeX_Main-BoldItalic.woff
+│   │           KaTeX_Main-BoldItalic.woff2
+│   │           KaTeX_Main-Italic.ttf
+│   │           KaTeX_Main-Italic.woff
+│   │           KaTeX_Main-Italic.woff2
+│   │           KaTeX_Main-Regular.ttf
+│   │           KaTeX_Main-Regular.woff
+│   │           KaTeX_Main-Regular.woff2
+│   │           KaTeX_Math-BoldItalic.ttf
+│   │           KaTeX_Math-BoldItalic.woff
+│   │           KaTeX_Math-BoldItalic.woff2
+│   │           KaTeX_Math-Italic.ttf
+│   │           KaTeX_Math-Italic.woff
+│   │           KaTeX_Math-Italic.woff2
+│   │           KaTeX_SansSerif-Bold.ttf
+│   │           KaTeX_SansSerif-Bold.woff
+│   │           KaTeX_SansSerif-Bold.woff2
+│   │           KaTeX_SansSerif-Italic.ttf
+│   │           KaTeX_SansSerif-Italic.woff
+│   │           KaTeX_SansSerif-Italic.woff2
+│   │           KaTeX_SansSerif-Regular.ttf
+│   │           KaTeX_SansSerif-Regular.woff
+│   │           KaTeX_SansSerif-Regular.woff2
+│   │           KaTeX_Script-Regular.ttf
+│   │           KaTeX_Script-Regular.woff
+│   │           KaTeX_Script-Regular.woff2
+│   │           KaTeX_Size1-Regular.ttf
+│   │           KaTeX_Size1-Regular.woff
+│   │           KaTeX_Size1-Regular.woff2
+│   │           KaTeX_Size2-Regular.ttf
+│   │           KaTeX_Size2-Regular.woff
+│   │           KaTeX_Size2-Regular.woff2
+│   │           KaTeX_Size3-Regular.ttf
+│   │           KaTeX_Size3-Regular.woff
+│   │           KaTeX_Size3-Regular.woff2
+│   │           KaTeX_Size4-Regular.ttf
+│   │           KaTeX_Size4-Regular.woff
+│   │           KaTeX_Size4-Regular.woff2
+│   │           KaTeX_Typewriter-Regular.ttf
+│   │           KaTeX_Typewriter-Regular.woff
+│   │           KaTeX_Typewriter-Regular.woff2
+│   │           README.md
+│   │
+│   └───js
+│       │   .gitkeep
+│       │   about.js
+│       │   app.js
+│       │   auto-render.min.js
+│       │   find.js
+│       │   highlight.min.js
+│       │   i18n.js
+│       │   icons.js
+│       │   image-fallback.js
+│       │   image_picker.js
+│       │   inline-format.js
+│       │   katex.min.js
+│       │   marked.min.js
+│       │   menubar.js
+│       │   qwebchannel.js
+│       │   render.js
+│       │   sanitize.js
+│       │   toolbar.js
+│       │   zoom.js
+│       │
+│       └───vendor
+│               04365ad576_common.mjs
+│               060c57fe31_view_6.mjs
+│               0cc18c9c59_view__6.27.0.mjs
+│               133dfde4c7_style-mod__4.0.0.mjs
+│               1a8590f142_lang-markdown_6.mjs
+│               1ece3699e7_lang-html__6.0.0.mjs
+│               21e97b47b5_markdown__1.0.0.mjs
+│               24ec984b36_state_6.mjs
+│               27c0509f61_javascript__1.0.0.mjs
+│               2b426a00d7_lang-markdown.mjs
+│               31e888a258_common__1.1.0.mjs
+│               34e1064502_view__6.17.0.mjs
+│               3b4d076b9d_autocomplete__6.7.1.mjs
+│               41fe66140f_common__1.2.0.mjs
+│               4582ca5120_lr.mjs
+│               459dc0c468_state__6.0.0.mjs
+│               484b1fb828_crelt__1.0.6.mjs
+│               5da37af2fb_css__1.1.7.mjs
+│               6832e90a7d_lang-javascript__6.0.0.mjs
+│               6cd1a4a7f1_view.mjs
+│               6d0e53a9c4_crelt.mjs
+│               6fae83cc8b_common__1.3.0.mjs
+│               713000a08e_process.mjs
+│               77988e0a16_autocomplete__6.0.0.mjs
+│               78b3ceb44c_highlight__1.1.3.mjs
+│               7a1c3d71d0_language__6.0.0.mjs
+│               7ad419b587_lang-javascript.mjs
+│               7cc8f2d2d3_find-cluster-break__1.0.0.mjs
+│               860378f75a_view__6.23.0.mjs
+│               8659b7a3d4_lang-css.mjs
+│               8795d78b4b_w3c-keyname.mjs
+│               898c8540e4_common__1.0.0.mjs
+│               8e3df6dc8b_state__6.7.0.mjs
+│               906501f3a7_lang-html.mjs
+│               98868d2f64_async_hooks.mjs
+│               999eaced7b_state.mjs
+│               9b84b1c53f_highlight__1.0.0.mjs
+│               a2d631b0be_commands.mjs
+│               a4320ed874_css.mjs
+│               a65d96dc51_tty.mjs
+│               ac351af775_events.mjs
+│               b28e72b38a_language_6.mjs
+│               b4aeb0926b_lang-css__6.0.0.mjs
+│               bb21cabee0_html__1.3.12.mjs
+│               be28976b9e_javascript.mjs
+│               c3bd31aadd_language.mjs
+│               c6aca190a7_lr__1.3.0.mjs
+│               c9d659cf16_highlight.mjs
+│               caabf9a4fc_view__6.0.0.mjs
+│               ce43c543fa_w3c-keyname__2.2.4.mjs
+│               cf3c4f50b1_language__6.3.0.mjs
+│               cfc963e127_html.mjs
+│               commands.mjs
+│               d139ebadc2_lr__1.0.0.mjs
+│               d243e663e1_common__1.5.0.mjs
+│               d4efaa779e_highlight_1.mjs
+│               d81b90a3b7_style-mod.mjs
+│               e0563d3b87_markdown.mjs
+│               e5c32b28dc_find-cluster-break.mjs
+│               e6377cc70c_language__6.6.0.mjs
+│               f3117eb6a7_style-mod__4.1.0.mjs
+│               f5d007e4a8_language__6.4.0.mjs
+│               f802962adc_commands_6.mjs
+│               fce702b959_common__1.0.2.mjs
+│               fdfe165c95_common__1.2.1.mjs
+│               fef88b2346_autocomplete.mjs
+│               lang-markdown.mjs
+│               language.mjs
+│               lezer-highlight.mjs
+│               state.mjs
+│               view.mjs
+│               _manifest.json
+│
+└───开发手册
+        1.创建项目.py
+        2.下载依赖.py
+        Demo.md
+        MarkEase v2.0 开发大纲.md
+        MarkEase v2.0 开发记忆文档.md
+        MarkEase 编辑器完整开发大纲.md
+        发布.md
+        图标.ico

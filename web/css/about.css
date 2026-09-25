@@ -1,0 +1,312 @@
+* { box-sizing: border-box; }
+html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 13px;
+    color: #1e1e1e; background: #f7f7f7;
+    overflow: hidden;
+}
+
+.about {
+    height: 100%;
+    padding: 22px 26px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+}
+
+/* ---------- 滚动条 ---------- */
+.about::-webkit-scrollbar { width: 8px; }
+.about::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 4px;
+}
+.about::-webkit-scrollbar-thumb:hover { background: #aaa; }
+
+/* ---------- 头部 ---------- */
+.about-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 4px;
+}
+.about-logo {
+    width: 54px; height: 54px;
+    border-radius: 13px;
+    background: linear-gradient(135deg, #0969da 0%, #1f6feb 100%);
+    color: #fff;
+    font-family: Georgia, serif;
+    font-size: 32px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(9, 105, 218, 0.25);
+    flex-shrink: 0;
+    user-select: none;
+    overflow: hidden;
+    position: relative;
+}
+.about-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+.about-logo.has-icon {
+    background: transparent;
+    box-shadow: none;
+}
+.about-logo.has-icon #about-logo-fallback {
+    display: none;
+}
+.about-title h1 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1e1e1e;
+    letter-spacing: 0.5px;
+}
+.about-version {
+    font-size: 12px;
+    color: #888;
+    margin-top: 3px;
+    font-family: Consolas, monospace;
+}
+
+/* ---------- 简介 ---------- */
+.about-desc {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #444;
+    padding: 10px 12px;
+    background: #eef4ff;
+    border-left: 3px solid #0969da;
+    border-radius: 4px;
+}
+
+/* ---------- 分区 ---------- */
+.about-section {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.section-title {
+    font-size: 11px;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+/* ---------- 引用 ---------- */
+.about-quote {
+    margin: 0;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #444;
+    background: #f6f8fa;
+    border-left: 3px solid #d0d7de;
+    border-radius: 4px;
+    font-style: normal;
+}
+
+/* ---------- 链接行 ---------- */
+.link-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #0969da;
+    transition: background-color 0.12s ease;
+    user-select: none;
+}
+.link-row:hover { background: #e7f0ff; }
+.link-row:active { background: #cfe3ff; }
+.link-icon {
+    flex-shrink: 0;
+    color: #0969da;
+    width: 16px; height: 16px;
+}
+.link-row em {
+    font-style: normal;
+    color: #6e7781;
+    font-size: 12px;
+}
+
+/* ---------- 鸣谢网格 ---------- */
+.thanks-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+.thanks-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 7px 10px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    background: #fff;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.12s ease;
+    cursor: pointer;
+    user-select: none;
+}
+.thanks-item:hover {
+    background: #e7f0ff;
+    border-color: #0969da;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(9, 105, 218, 0.15);
+}
+.thanks-name {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #0969da;
+    line-height: 1.3;
+}
+.thanks-desc {
+    font-size: 11px;
+    color: #6e7781;
+    line-height: 1.3;
+}
+
+/* ---------- 关闭按钮 ---------- */
+.about-footer {
+    margin-top: 4px;
+    padding-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    border-top: 1px solid #e1e4e8;
+}
+.btn-primary {
+    padding: 7px 22px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    border: 1px solid #0969da;
+    background: #0969da;
+    color: #fff;
+}
+.btn-primary:hover { background: #0759b8; }
+.btn-primary:active { background: #064a9c; }
+
+/* ============================================================
+   深色模式
+   ============================================================ */
+body.dark { background: #1e1e1e; color: #dcdcdc; }
+body.dark .about::-webkit-scrollbar-thumb { background: #555; }
+body.dark .about-title h1 { color: #e6edf3; }
+body.dark .about-version { color: #888; }
+body.dark .about-desc {
+    background: #1a3a5c;
+    color: #c9d1d9;
+    border-left-color: #58a6ff;
+}
+body.dark .section-title { color: #888; }
+body.dark .about-quote {
+    background: #262626;
+    color: #c9d1d9;
+    border-left-color: #444;
+}
+body.dark .link-row { color: #58a6ff; }
+body.dark .link-row:hover { background: #1a3a5c; }
+body.dark .link-row:active { background: #1f6feb33; }
+body.dark .link-icon { color: #58a6ff; }
+body.dark .link-row em { color: #8b949e; }
+body.dark .thanks-item {
+    background: #2a2a2a;
+    border-color: #444;
+}
+body.dark .thanks-item:hover {
+    background: #1a3a5c;
+    border-color: #58a6ff;
+    box-shadow: 0 2px 6px rgba(88, 166, 255, 0.2);
+}
+body.dark .thanks-name { color: #58a6ff; }
+body.dark .thanks-desc { color: #8b949e; }
+body.dark .about-footer { border-top-color: #444; }
+body.dark .btn-primary { background: #1f6feb; border-color: #1f6feb; }
+body.dark .btn-primary:hover { background: #2a7fee; }
+
+/* ============================================================
+   ★★★ 阶段 15：深色滚动条统一（追加段落，不覆盖上方） ★★★
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1) 深色模式下让浏览器原生控件（含滚动条）也走深色
+   ------------------------------------------------------------ */
+html.dark,
+body.dark {
+    color-scheme: dark;
+    /* Firefox */
+    scrollbar-color: #555 #2a2a2a;
+    scrollbar-width: thin;
+}
+
+/* ------------------------------------------------------------
+   2) about 窗口滚动条（8px，与浅色尺寸一致）
+   ------------------------------------------------------------ */
+body.dark .about::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+    background: transparent;
+}
+body.dark .about::-webkit-scrollbar-track {
+    background: transparent;
+}
+body.dark .about::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+body.dark .about::-webkit-scrollbar-thumb:hover {
+    background: #666;
+    background-clip: content-box;
+}
+body.dark .about::-webkit-scrollbar-thumb:active {
+    background: #777;
+    background-clip: content-box;
+}
+body.dark .about::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ------------------------------------------------------------
+   3) 浅色模式滚动条：统一风格（内缩 2px 透明边框 + clip）
+   ------------------------------------------------------------ */
+body:not(.dark) .about::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+    background: transparent;
+}
+body:not(.dark) .about::-webkit-scrollbar-track {
+    background: transparent;
+}
+body:not(.dark) .about::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+body:not(.dark) .about::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+    background-clip: content-box;
+}
+body:not(.dark) .about::-webkit-scrollbar-thumb:active {
+    background: #909090;
+    background-clip: content-box;
+}
+body:not(.dark) .about::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ============================================================
+   ★★★ 阶段 15 段落结束 ★★★
+   ============================================================ */

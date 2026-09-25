@@ -1,0 +1,1420 @@
+* { box-sizing: border-box; }
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: "Microsoft YaHei", sans-serif;
+    background: #f7f7f7;
+    color: #1e1e1e;
+    overflow: hidden;
+}
+html.dark, html.dark body {
+    background: #1e1e1e;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+/* ============================================================
+   启动遮罩
+   ============================================================ */
+#splash {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f7f7f7;
+    color: #1e1e1e;
+    transition: opacity 0.22s ease;
+}
+html.dark #splash,
+body.dark #splash {
+    background: #1e1e1e;
+    color: #dcdcdc;
+}
+#splash.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.22s ease, visibility 0s 0.22s;
+}
+.splash-inner { text-align: center; max-width: 480px; padding: 0 20px; }
+.splash-logo {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    margin-bottom: 10px;
+}
+.splash-text {
+    font-size: 13px;
+    opacity: 0.65;
+    line-height: 1.7;
+}
+.splash-text.error {
+    color: #d1242f;
+    opacity: 1;
+}
+html.dark .splash-text.error { color: #f85149; }
+
+/* ---------- 主体 ---------- */
+#main {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    position: relative;
+}
+
+/* ---------- 目录 ---------- */
+#toc {
+    width: 220px;
+    border-right: 1px solid #e1e4e8;
+    background: #fafafa;
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex-shrink: 0;
+    position: relative;
+}
+#toc.hidden { display: none; }
+#toc .toc-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #666;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e1e4e8;
+    background: #f0f0f0;
+}
+#toc-list { padding: 6px 0; }
+
+.toc-item {
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 19.5px;
+    line-height: 1.5;
+    color: #333;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    overflow: visible;
+    text-overflow: clip;
+}
+.toc-item:hover { background: #eef4ff; }
+.toc-item.active { background: #cce5ff; }
+.toc-level-1 { padding-left: 12px; font-weight: bold; }
+.toc-level-2 { padding-left: 24px; font-weight: bold; }
+.toc-level-3 { padding-left: 36px; }
+.toc-level-4 { padding-left: 48px; font-size: 18px; }
+.toc-level-5 { padding-left: 60px; font-size: 18px; }
+.toc-level-6 { padding-left: 72px; font-size: 18px; }
+
+/* 目录拖动分隔条 */
+#toc-resizer {
+    position: absolute;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 10;
+    user-select: none;
+    transition: background-color 0.12s ease;
+}
+#toc-resizer:hover {
+    background: rgba(9, 105, 218, 0.35);
+}
+body.dark #toc-resizer:hover {
+    background: rgba(88, 166, 255, 0.45);
+}
+
+/* ---------- 编辑 / 预览 ---------- */
+#editor-container,
+#preview-container {
+    flex: 1;
+    overflow: hidden;
+    background: #fff;
+    min-width: 0;
+}
+#editor-container { border-right: 1px solid #e1e4e8; }
+
+#editor { height: 100%; overflow: auto; }
+
+#editor .cm-editor {
+    font-size: 1.2em !important;
+}
+
+#preview-container { overflow: auto; }
+#preview {
+    padding: 24px 32px;
+    max-width: 980px;
+    margin: 0 auto;
+}
+
+/* ---------- 模式切换 ---------- */
+#main[data-mode="edit"] #preview-container { display: none; }
+#main[data-mode="preview"] #editor-container { display: none; }
+
+/* ============================================================
+   状态栏
+   ============================================================ */
+#statusbar {
+    padding: 4px 12px;
+    background: #fafafa;
+    border-top: 1px solid #e1e4e8;
+    font-size: 12px;
+    color: #666;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+    min-height: 24px;
+}
+#status-text,
+#stats-text {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+#file-path {
+    margin-left: auto;
+    color: #666;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 45%;
+    padding: 1px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+#file-path:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: #0969da;
+    text-decoration: underline;
+}
+#file-path.no-file {
+    cursor: default;
+    color: #999;
+}
+#file-path.no-file:hover {
+    background: transparent;
+    color: #999;
+    text-decoration: none;
+}
+
+/* ---------- 缩放控件 ---------- */
+#zoom-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: 4px;
+    flex-shrink: 0;
+    user-select: none;
+}
+#zoom-display {
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 12px;
+    color: inherit;
+    cursor: pointer;
+    min-width: 46px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+#zoom-display:hover {
+    background: rgba(0, 0, 0, 0.06);
+    border-color: rgba(0, 0, 0, 0.12);
+}
+#zoom-slider-wrap {
+    position: relative;
+    width: 96px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+}
+
+#zoom-slider {
+    width: 100%;
+    height: 4px;
+    margin: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #d0d7de;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    position: relative;
+    z-index: 2;
+}
+#zoom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #0969da;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+#zoom-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #0969da;
+    border: none;
+    cursor: pointer;
+}
+
+/* 刻度线：CSS calc 对齐到 thumb 中心 */
+#zoom-tick-100 {
+    position: absolute;
+    left: calc(6px + 0.183673 * (100% - 12px));
+    top: 1px;
+    bottom: 1px;
+    width: 2px;
+    margin-left: -1px;
+    background: #8a9199;
+    border-radius: 1px;
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* ---------- 缩放预设菜单 ---------- */
+.zoom-preset-menu {
+    position: fixed;
+    z-index: 10000;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.25);
+    padding: 4px 0;
+    min-width: 78px;
+    font-size: 12px;
+    color: #24292f;
+    font-family: "Microsoft YaHei", sans-serif;
+}
+.zoom-preset-item {
+    padding: 5px 14px;
+    cursor: pointer;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.zoom-preset-item:hover {
+    background: #eef4ff;
+    color: #0969da;
+}
+.zoom-preset-item.active {
+    background: #cfe3ff;
+    color: #0969da;
+    font-weight: 600;
+}
+
+/* ============================================================
+   折叠 <details> 样式
+   ============================================================ */
+#preview details.md-details {
+    margin: 12px 0;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    background: #f6f8fa;
+    padding: 0;
+    overflow: hidden;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+#preview details.md-details[open] {
+    background: #ffffff;
+}
+
+#preview details.md-details > summary.md-summary {
+    cursor: pointer;
+    padding: 8px 12px 8px 30px;
+    font-weight: 600;
+    font-size: 14px;
+    color: #24292f;
+    list-style: none;
+    position: relative;
+    -webkit-user-select: text;
+    user-select: text;
+    background: transparent;
+    border-bottom: 1px solid transparent;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+#preview details.md-details[open] > summary.md-summary {
+    border-bottom-color: #e1e4e8;
+}
+#preview details.md-details > summary.md-summary::-webkit-details-marker {
+    display: none;
+}
+#preview details.md-details > summary.md-summary::before {
+    content: '▶';
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    color: #57606a;
+    transition: transform 0.15s ease, color 0.12s ease;
+    line-height: 1;
+}
+#preview details.md-details[open] > summary.md-summary::before {
+    content: '▼';
+    color: #0969da;
+}
+#preview details.md-details > summary.md-summary:hover {
+    background: rgba(9, 105, 218, 0.06);
+    color: #0969da;
+}
+#preview details.md-details > summary.md-summary:hover::before {
+    color: #0969da;
+}
+
+#preview details.md-details > *:not(summary) {
+    padding-left: 12px;
+    padding-right: 12px;
+}
+#preview details.md-details > p,
+#preview details.md-details > ul,
+#preview details.md-details > ol,
+#preview details.md-details > blockquote,
+#preview details.md-details > pre,
+#preview details.md-details > table,
+#preview details.md-details > h1,
+#preview details.md-details > h2,
+#preview details.md-details > h3,
+#preview details.md-details > h4,
+#preview details.md-details > h5,
+#preview details.md-details > h6 {
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+#preview details.md-details[open] > *:last-child {
+    margin-bottom: 12px;
+}
+
+/* ============================================================
+   预览跨段选高亮
+   ============================================================ */
+#preview ::selection,
+#preview *::selection {
+    background: rgba(9, 105, 218, 0.22);
+    color: inherit;
+}
+body.dark #preview ::selection,
+body.dark #preview *::selection {
+    background: rgba(88, 166, 255, 0.32);
+    color: inherit;
+}
+
+#preview [contenteditable="true"]::selection,
+#preview [contenteditable="true"] *::selection {
+    background: rgba(9, 105, 218, 0.35);
+}
+body.dark #preview [contenteditable="true"]::selection,
+body.dark #preview [contenteditable="true"] *::selection {
+    background: rgba(88, 166, 255, 0.45);
+}
+
+/* ============================================================
+   格式刷激活时的全局光标
+   ============================================================ */
+body.format-painter-active #preview {
+    cursor: crosshair;
+}
+body.format-painter-active #preview * {
+    cursor: crosshair !important;
+}
+body.format-painter-active #preview [contenteditable="true"],
+body.format-painter-active #preview [contenteditable="true"] * {
+    cursor: text !important;
+}
+
+/* ============================================================
+   预览区强制允许文字选择
+   ============================================================ */
+#preview,
+#preview * {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+#preview details.md-details > summary.md-summary {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+/* ============================================================
+   空标题不显示标题样式
+   ============================================================ */
+#preview h1:empty,
+#preview h2:empty,
+#preview h3:empty,
+#preview h4:empty,
+#preview h5:empty,
+#preview h6:empty {
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+    line-height: 0;
+    display: block;
+    border: none;
+}
+
+/* ============================================================
+   ★ 任务列表：前缀（- [x]）可选中复制
+   ============================================================ */
+#preview li.task-list-item,
+#preview li.task-list-item::marker {
+    list-style: none;
+    list-style-type: none;
+}
+#preview li.task-list-item::before {
+    content: none !important;
+}
+
+/* 自定义 bullet "- "：可选中 */
+#preview .task-list-bullet {
+    color: #57606a;
+    -webkit-user-select: text;
+    user-select: text;
+    pointer-events: none;
+}
+body.dark #preview .task-list-bullet {
+    color: #8b949e;
+}
+
+/* checkbox 用 span 替代，可选中 */
+#preview .task-list-checkbox {
+    display: inline;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.95em;
+    color: #0969da;
+    cursor: pointer;
+    -webkit-user-select: text;
+    user-select: text;
+    margin-right: 4px;
+    transition: color 0.12s ease;
+}
+#preview .task-list-checkbox:hover {
+    color: #0550ae;
+    text-decoration: underline;
+}
+body.dark #preview .task-list-checkbox {
+    color: #58a6ff;
+}
+body.dark #preview .task-list-checkbox:hover {
+    color: #79c0ff;
+}
+
+/* 无序/有序列表前缀可选中（list-style-position: inside） */
+#preview ul:not(.contains-task-list),
+#preview ol {
+    list-style-position: inside;
+}
+
+/* ============================================================
+   深色模式
+   ============================================================ */
+body.dark #editor-container {
+    background: #2a2a2a;
+    border-color: #444;
+}
+body.dark #preview-container {
+    background: #0d1117;
+}
+body.dark #toc {
+    background: #262626;
+    border-color: #444;
+}
+body.dark #toc .toc-title {
+    background: #333;
+    color: #ccc;
+}
+body.dark .toc-item { color: #ccc; }
+body.dark .toc-item:hover { background: #333; }
+body.dark .toc-item.active { background: #1a5276; color: #fff; }
+body.dark #statusbar {
+    background: #262626;
+    color: #999;
+    border-color: #444;
+}
+body.dark #file-path { color: #999; }
+body.dark #file-path:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #58a6ff;
+}
+body.dark #file-path.no-file { color: #666; }
+body.dark #file-path.no-file:hover {
+    background: transparent;
+    color: #666;
+}
+body.dark #zoom-display:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+body.dark #zoom-slider { background: #555; }
+body.dark #zoom-slider::-webkit-slider-thumb { background: #58a6ff; }
+body.dark #zoom-slider::-moz-range-thumb { background: #58a6ff; }
+body.dark #zoom-tick-100 { background: #888; }
+body.dark .zoom-preset-menu {
+    background: #2a2a2a;
+    border-color: #444;
+    color: #dcdcdc;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+body.dark .zoom-preset-item:hover {
+    background: #353535;
+    color: #58a6ff;
+}
+body.dark .zoom-preset-item.active {
+    background: #1a3a5c;
+    color: #58a6ff;
+}
+
+/* 折叠深色 */
+body.dark #preview details.md-details {
+    background: #161b22;
+    border-color: #30363d;
+}
+body.dark #preview details.md-details[open] {
+    background: #0d1117;
+}
+body.dark #preview details.md-details > summary.md-summary {
+    color: #e6edf3;
+}
+body.dark #preview details.md-details[open] > summary.md-summary {
+    border-bottom-color: #30363d;
+}
+body.dark #preview details.md-details > summary.md-summary::before {
+    color: #8b949e;
+}
+body.dark #preview details.md-details > summary.md-summary:hover {
+    background: rgba(88, 166, 255, 0.1);
+    color: #58a6ff;
+}
+body.dark #preview details.md-details[open] > summary.md-summary::before {
+    color: #58a6ff;
+}
+
+/* ============================================================
+   markdown-body 变量
+   ============================================================ */
+.markdown-body {
+    color-scheme: light;
+    --color-prettylights-syntax-comment: #57606a;
+    --color-prettylights-syntax-constant: #0550ae;
+    --color-prettylights-syntax-entity: #6639ba;
+    --color-prettylights-syntax-storage-modifier-import: #24292f;
+    --color-prettylights-syntax-entity-tag: #116329;
+    --color-prettylights-syntax-keyword: #cf222e;
+    --color-prettylights-syntax-string: #0a3069;
+    --color-prettylights-syntax-variable: #953800;
+    --color-prettylights-syntax-brackethighlighter-unmatched: #82071e;
+    --color-prettylights-syntax-invalid-illegal-text: #f6f8fa;
+    --color-prettylights-syntax-invalid-illegal-bg: #82071e;
+    --color-prettylights-syntax-carriage-return-text: #f6f8fa;
+    --color-prettylights-syntax-carriage-return-bg: #cf222e;
+    --color-prettylights-syntax-string-regexp: #116329;
+    --color-prettylights-syntax-markup-list: #3b2300;
+    --color-prettylights-syntax-markup-heading: #0550ae;
+    --color-prettylights-syntax-markup-italic: #24292f;
+    --color-prettylights-syntax-markup-bold: #24292f;
+    --color-prettylights-syntax-markup-deleted-text: #82071e;
+    --color-prettylights-syntax-markup-deleted-bg: #ffebe9;
+    --color-prettylights-syntax-markup-inserted-text: #116329;
+    --color-prettylights-syntax-markup-inserted-bg: #dafbe1;
+    --color-prettylights-syntax-markup-changed-text: #953800;
+    --color-prettylights-syntax-markup-changed-bg: #ffd8b5;
+    --color-prettylights-syntax-markup-ignored-text: #eaeef2;
+    --color-prettylights-syntax-markup-ignored-bg: #0550ae;
+    --color-prettylights-syntax-meta-diff-range: #8250df;
+    --color-prettylights-syntax-brackethighlighter-angle: #57606a;
+    --color-prettylights-syntax-sublimelinter-gutter-mark: #8c959f;
+    --color-prettylights-syntax-constant-other-reference-link: #0a3069;
+    --color-fg-default: #1F2328;
+    --color-fg-muted: #656d76;
+    --color-fg-subtle: #6e7781;
+    --color-canvas-default: #ffffff;
+    --color-canvas-subtle: #f6f8fa;
+    --color-border-default: #d0d7de;
+    --color-border-muted: hsla(210,18%,87%,1);
+    --color-neutral-muted: rgba(175,184,193,0.2);
+    --color-accent-fg: #0969da;
+    --color-accent-emphasis: #0969da;
+    --color-success-fg: #1a7f37;
+    --color-success-emphasis: #1f883d;
+    --color-attention-fg: #9a6700;
+    --color-attention-emphasis: #9a6700;
+    --color-attention-subtle: #fff8c5;
+    --color-danger-fg: #d1242f;
+    --color-danger-emphasis: #cf222e;
+    --color-done-fg: #8250df;
+    --color-done-emphasis: #8250df;
+    background-color: var(--color-canvas-default);
+    color: var(--color-fg-default);
+}
+
+body.dark .markdown-body {
+    color-scheme: dark;
+    --color-prettylights-syntax-comment: #8b949e;
+    --color-prettylights-syntax-constant: #79c0ff;
+    --color-prettylights-syntax-entity: #d2a8ff;
+    --color-prettylights-syntax-storage-modifier-import: #c9d1d9;
+    --color-prettylights-syntax-entity-tag: #7ee787;
+    --color-prettylights-syntax-keyword: #ff7b72;
+    --color-prettylights-syntax-string: #a5d6ff;
+    --color-prettylights-syntax-variable: #ffa657;
+    --color-prettylights-syntax-brackethighlighter-unmatched: #f85149;
+    --color-prettylights-syntax-invalid-illegal-text: #f0f6fc;
+    --color-prettylights-syntax-invalid-illegal-bg: #8e1519;
+    --color-prettylights-syntax-carriage-return-text: #f0f6fc;
+    --color-prettylights-syntax-carriage-return-bg: #b62324;
+    --color-prettylights-syntax-string-regexp: #7ee787;
+    --color-prettylights-syntax-markup-list: #f2cc60;
+    --color-prettylights-syntax-markup-heading: #1f6feb;
+    --color-prettylights-syntax-markup-italic: #c9d1d9;
+    --color-prettylights-syntax-markup-bold: #c9d1d9;
+    --color-prettylights-syntax-markup-deleted-text: #ffdcd7;
+    --color-prettylights-syntax-markup-deleted-bg: #67060c;
+    --color-prettylights-syntax-markup-inserted-text: #aff5b4;
+    --color-prettylights-syntax-markup-inserted-bg: #033a16;
+    --color-prettylights-syntax-markup-changed-text: #ffdfb6;
+    --color-prettylights-syntax-markup-changed-bg: #5a1e02;
+    --color-prettylights-syntax-markup-ignored-text: #c9d1d9;
+    --color-prettylights-syntax-markup-ignored-bg: #1158c7;
+    --color-prettylights-syntax-meta-diff-range: #d2a8ff;
+    --color-prettylights-syntax-brackethighlighter-angle: #8b949e;
+    --color-prettylights-syntax-sublimelinter-gutter-mark: #484f58;
+    --color-prettylights-syntax-constant-other-reference-link: #a5d6ff;
+    --color-fg-default: #e6edf3;
+    --color-fg-muted: #848d97;
+    --color-fg-subtle: #6e7681;
+    --color-canvas-default: #0d1117;
+    --color-canvas-subtle: #161b22;
+    --color-border-default: #30363d;
+    --color-border-muted: #21262d;
+    --color-neutral-muted: rgba(110,118,129,0.4);
+    --color-accent-fg: #2f81f7;
+    --color-accent-emphasis: #1f6feb;
+    --color-success-fg: #3fb950;
+    --color-success-emphasis: #238636;
+    --color-attention-fg: #d29922;
+    --color-attention-emphasis: #9e6a03;
+    --color-attention-subtle: rgba(187,128,9,0.15);
+    --color-danger-fg: #f85149;
+    --color-danger-emphasis: #da3633;
+    --color-done-fg: #a371f7;
+    --color-done-emphasis: #8957e5;
+    background-color: var(--color-canvas-default);
+    color: var(--color-fg-default);
+}
+
+/* ============================================================
+   PDF 导出
+   ============================================================ */
+@media print {
+    #menubar,
+    #toolbar,
+    #statusbar,
+    #toc,
+    #editor-container,
+    #splash {
+        display: none !important;
+    }
+    #main {
+        display: block !important;
+        overflow: visible !important;
+    }
+    #preview-container {
+        display: block !important;
+        overflow: visible !important;
+        width: 100% !important;
+        height: auto !important;
+    }
+    #preview {
+        max-width: none !important;
+        padding: 0 !important;
+    }
+    html, body, #app {
+        background: #fff !important;
+        color: #000 !important;
+        overflow: visible !important;
+        height: auto !important;
+    }
+    .markdown-body {
+        background: #fff !important;
+        color: #000 !important;
+    }
+    #preview details.md-details > * {
+        display: block !important;
+    }
+    #preview details.md-details > summary.md-summary::before {
+        content: '' !important;
+    }
+}
+
+/* ============================================================
+   预览可编辑段落
+   ============================================================ */
+#preview [data-md-editable="1"] {
+    outline: none;
+    cursor: text;
+    transition: background-color 0.15s ease;
+    border-radius: 4px;
+}
+#preview [data-md-editable="1"]:hover {
+    background: rgba(42, 130, 218, 0.05);
+}
+#preview [data-md-editable="1"]:focus {
+    background: rgba(42, 130, 218, 0.08);
+    box-shadow: 0 0 0 2px rgba(42, 130, 218, 0.3);
+}
+body.dark #preview [data-md-editable="1"]:hover {
+    background: rgba(88, 166, 255, 0.08);
+}
+body.dark #preview [data-md-editable="1"]:focus {
+    background: rgba(88, 166, 255, 0.12);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.4);
+}
+#preview [data-md-editable="0"] {
+    cursor: default;
+}
+
+/* ============================================================
+   拖拽冲突弹窗
+   ============================================================ */
+.modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+.modal-overlay.hidden { display: none !important; }
+.modal-overlay .modal {
+    background: #fff; border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    padding: 20px 24px; max-width: 560px; width: 90%;
+    max-height: 90vh; overflow-y: auto;
+}
+.modal-overlay .modal h3 {
+    margin: 0 0 6px; font-size: 15px; color: #1e1e1e;
+}
+.modal-overlay .modal-hint {
+    margin: 0 0 14px; font-size: 12px; color: #666;
+}
+.modal-overlay .conflict-compare {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px; margin-bottom: 16px;
+}
+.modal-overlay .conflict-item {
+    border: 1px solid #e1e4e8; border-radius: 6px;
+    padding: 10px; text-align: center; background: #fafafa;
+}
+.modal-overlay .conflict-label {
+    font-size: 11px; color: #888; margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: 0.4px;
+}
+.modal-overlay .conflict-thumb {
+    height: 120px; display: flex;
+    align-items: center; justify-content: center;
+    background: #fff; border-radius: 4px;
+    overflow: hidden; margin-bottom: 6px;
+}
+.modal-overlay .conflict-thumb img {
+    max-width: 100%; max-height: 100%; object-fit: contain;
+}
+.modal-overlay .conflict-name {
+    font-size: 12px; color: #333; font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; margin-bottom: 2px;
+}
+.modal-overlay .conflict-size { font-size: 11px; color: #888; }
+.modal-overlay .modal-actions {
+    display: flex; gap: 8px; justify-content: flex-end;
+    padding-top: 4px;
+}
+.modal-overlay .btn-primary,
+.modal-overlay .btn-plain {
+    padding: 7px 16px; border-radius: 6px; cursor: pointer;
+    font-size: 13px; border: 1px solid #ccc; background: #fff; color: #333;
+}
+.modal-overlay .btn-primary {
+    background: #0969da; color: #fff; border-color: #0969da;
+}
+.modal-overlay .btn-primary:hover:not(:disabled) { background: #0759b8; }
+.modal-overlay .btn-plain:hover { background: #f0f0f0; }
+
+body.dark .modal-overlay .modal { background: #2a2a2a; }
+body.dark .modal-overlay .modal h3 { color: #e6edf3; }
+body.dark .modal-overlay .modal-hint { color: #999; }
+body.dark .modal-overlay .conflict-item {
+    background: #1e1e1e; border-color: #444;
+}
+body.dark .modal-overlay .conflict-label { color: #999; }
+body.dark .modal-overlay .conflict-thumb { background: #222; }
+body.dark .modal-overlay .conflict-name { color: #dcdcdc; }
+body.dark .modal-overlay .conflict-size { color: #999; }
+body.dark .modal-overlay .btn-plain {
+    background: #353535; color: #dcdcdc; border-color: #555;
+}
+body.dark .modal-overlay .btn-plain:hover { background: #404040; }
+body.dark .modal-overlay .btn-primary {
+    background: #1f6feb; border-color: #1f6feb;
+}
+body.dark .modal-overlay .btn-primary:hover:not(:disabled) { background: #2a7fee; }
+body.dark #preview { min-height: 100%; }
+body.dark .markdown-body { min-height: 100%; }
+
+/* ============================================================
+   阶段 14：更新弹窗样式
+   ============================================================ */
+#update-modal .modal.update-modal {
+    max-width: 660px;
+    width: 92%;
+}
+
+#update-modal h3 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    color: #1e1e1e;
+}
+
+.update-info {
+    display: flex;
+    gap: 22px;
+    font-size: 12.5px;
+    color: #57606a;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: #f6f8fa;
+    border-radius: 6px;
+    font-variant-numeric: tabular-nums;
+    flex-wrap: wrap;
+}
+.update-info > div {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.update-info span:last-child {
+    color: #0969da;
+    font-weight: 600;
+}
+
+.update-notes-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #57606a;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+
+.update-notes {
+    max-height: 340px;
+    overflow-y: auto;
+    padding: 12px 16px;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    background: #fafbfc;
+    font-size: 13px;
+    line-height: 1.65;
+    margin-bottom: 6px;
+    color: #1e1e1e;
+}
+.update-notes h1 { font-size: 18px; margin-top: 6px; }
+.update-notes h2 { font-size: 16px; margin-top: 6px; }
+.update-notes h3 { font-size: 14px; margin-top: 6px; }
+.update-notes h4 { font-size: 13px; margin-top: 6px; }
+.update-notes p { margin: 6px 0; }
+.update-notes ul,
+.update-notes ol { padding-left: 22px; margin: 6px 0; }
+.update-notes li { margin: 2px 0; }
+.update-notes code {
+    background: rgba(27, 31, 35, 0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+    color: #cf222e;
+}
+.update-notes pre {
+    padding: 8px 12px;
+    background: #f0f2f4;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+.update-notes pre code {
+    background: transparent;
+    padding: 0;
+    color: #24292f;
+}
+.update-notes a {
+    color: #0969da;
+    text-decoration: none;
+}
+.update-notes a:hover { text-decoration: underline; }
+.update-notes blockquote {
+    margin: 6px 0;
+    padding: 4px 12px;
+    border-left: 3px solid #d0d7de;
+    color: #57606a;
+    background: transparent;
+}
+.update-notes img { max-width: 100%; }
+
+#update-modal .modal-actions {
+    margin-top: 12px;
+}
+
+body.dark #update-modal h3 { color: #e6edf3; }
+body.dark .update-info {
+    background: #262626;
+    color: #8b949e;
+}
+body.dark .update-info span:last-child { color: #58a6ff; }
+body.dark .update-notes-title { color: #8b949e; }
+body.dark .update-notes {
+    background: #161b22;
+    border-color: #30363d;
+    color: #c9d1d9;
+}
+body.dark .update-notes code {
+    background: rgba(110, 118, 129, 0.25);
+    color: #ff7b72;
+}
+body.dark .update-notes pre {
+    background: #0d1117;
+}
+body.dark .update-notes pre code { color: #c9d1d9; }
+body.dark .update-notes a { color: #58a6ff; }
+body.dark .update-notes blockquote {
+    border-left-color: #30363d;
+    color: #8b949e;
+}
+
+/* ============================================================
+   阶段 14 修订：深色模式下弹窗文字颜色（通用）
+   —— 放在文件末尾，覆盖前面浅色定义
+   ============================================================ */
+body.dark .modal-overlay .modal {
+    background: #2a2a2a;
+    color: #dcdcdc;
+}
+body.dark .modal-overlay .modal h1,
+body.dark .modal-overlay .modal h2,
+body.dark .modal-overlay .modal h3,
+body.dark .modal-overlay .modal h4,
+body.dark .modal-overlay .modal h5,
+body.dark .modal-overlay .modal h6 {
+    color: #e6edf3;
+}
+body.dark .modal-overlay .modal p,
+body.dark .modal-overlay .modal .message-modal-body {
+    color: #dcdcdc;
+}
+body.dark .modal-overlay .modal .update-info {
+    background: #262626;
+    color: #8b949e;
+}
+body.dark .modal-overlay .modal .update-info span:last-child {
+    color: #58a6ff;
+}
+body.dark .modal-overlay .modal .update-notes-title {
+    color: #8b949e;
+}
+body.dark .modal-overlay .modal .update-notes,
+body.dark .modal-overlay .modal .update-notes.markdown-body {
+    color: #c9d1d9;
+}
+
+/* 通用消息弹窗（message-modal）尺寸与文字 */
+#message-modal .modal.message-modal {
+    max-width: 460px;
+    width: 92%;
+}
+#message-modal h3 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    color: #1e1e1e;
+}
+.message-modal-body {
+    margin: 0 0 14px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: #1e1e1e;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+body.dark #message-modal h3 { color: #e6edf3; }
+body.dark .message-modal-body { color: #dcdcdc; }
+
+/* ============================================================
+   阶段 14 修订：任务列表样式修正
+   ============================================================ */
+
+/* 移除列表默认标记 */
+#preview li.task-list-item,
+#preview li.task-list-item::marker,
+#preview li.task-list-item::before {
+    list-style: none !important;
+    list-style-type: none !important;
+}
+#preview li.task-list-item::before {
+    content: none !important;
+}
+#preview ul.contains-task-list,
+#preview ol.contains-task-list {
+    list-style: none;
+    padding-left: 0;
+}
+#preview ul.contains-task-list > li.task-list-item,
+#preview ol.contains-task-list > li.task-list-item {
+    padding-left: 0;
+    margin-left: 0;
+}
+
+/* 自定义 bullet "- "：可选中 */
+#preview .task-list-bullet {
+    color: #57606a;
+    -webkit-user-select: text;
+    user-select: text;
+    pointer-events: none;
+    font-family: Consolas, "Courier New", monospace;
+    display: inline;
+}
+body.dark #preview .task-list-bullet {
+    color: #8b949e;
+}
+
+/* checkbox 前缀：可点击、可选中 */
+#preview .task-list-checkbox {
+    display: inline;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.95em;
+    color: #0969da;
+    cursor: pointer;
+    -webkit-user-select: text;
+    user-select: text;
+    margin-right: 4px;
+    transition: color 0.12s ease;
+}
+#preview .task-list-checkbox:hover {
+    color: #0550ae;
+    text-decoration: underline;
+}
+body.dark #preview .task-list-checkbox {
+    color: #58a6ff;
+}
+body.dark #preview .task-list-checkbox:hover {
+    color: #79c0ff;
+}
+
+/* 深色弹窗文字（上一轮已加，这里再确认） */
+body.dark .modal-overlay .modal { color: #dcdcdc; }
+body.dark .modal-overlay .modal h1,
+body.dark .modal-overlay .modal h2,
+body.dark .modal-overlay .modal h3,
+body.dark .modal-overlay .modal h4,
+body.dark .modal-overlay .modal h5,
+body.dark .modal-overlay .modal h6 { color: #e6edf3; }
+body.dark .modal-overlay .modal p,
+body.dark .message-modal-body { color: #dcdcdc; }
+body.dark #message-modal h3 { color: #e6edf3; }
+
+#message-modal .modal.message-modal {
+    max-width: 460px;
+    width: 92%;
+}
+#message-modal h3 {
+    margin: 0 0 10px;
+    font-size: 15px;
+    color: #1e1e1e;
+}
+.message-modal-body {
+    margin: 0 0 14px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: #1e1e1e;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* ============================================================
+   阶段 14 修订 17：任务列表图形 checkbox
+   ============================================================ */
+
+/* ---- 列表容器：移除默认项目符号 ---- */
+#preview ul.contains-task-list,
+#preview ol.contains-task-list {
+    list-style: none;
+    padding-left: 0;
+}
+
+/* ---- 嵌套列表保留缩进 ---- */
+#preview li.task-list-item > ul.contains-task-list,
+#preview li.task-list-item > ol.contains-task-list,
+#preview li > ul.contains-task-list,
+#preview li > ol.contains-task-list {
+    padding-left: 22px;
+    margin-left: 0;
+}
+
+/* ---- 列表项：移除 marker ---- */
+#preview li.task-list-item,
+#preview li.task-list-item::marker,
+#preview li.task-list-item::before {
+    list-style: none !important;
+    list-style-type: none !important;
+}
+#preview li.task-list-item::before {
+    content: none !important;
+}
+
+/* ---- 自定义 bullet "- "：可选中、灰色 ---- */
+#preview .task-list-bullet {
+    color: #8b949e;
+    -webkit-user-select: text;
+    user-select: text;
+    pointer-events: none;
+    font-family: Consolas, "Courier New", monospace;
+    display: inline;
+    margin-right: 2px;
+}
+
+/* ============================================================
+   ★ 图形 checkbox（用 CSS 画方框 + 对勾）
+   textContent 仍是 "[ ]" / "[x]"，copy 出来还是原文
+   ============================================================ */
+#preview .task-list-checkbox {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    border: 1.5px solid #6e7781;
+    border-radius: 3px;
+    vertical-align: -2px;
+    margin-right: 6px;
+    position: relative;
+    background: #fff;
+    /* 隐藏内部文字，但 textContent 依然保留 */
+    font-size: 0;
+    line-height: 0;
+    color: transparent;
+    overflow: hidden;
+    text-indent: -9999px;
+    cursor: pointer;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+    box-sizing: border-box;
+}
+#preview .task-list-checkbox::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0;
+    width: 4px;
+    height: 8px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) scale(0);
+    transition: transform 0.12s ease;
+}
+#preview .task-list-checkbox[data-md-task-checked="1"] {
+    background: #0969da;
+    border-color: #0969da;
+}
+#preview .task-list-checkbox[data-md-task-checked="1"]::after {
+    transform: rotate(45deg) scale(1);
+}
+
+/* 深色 */
+body.dark #preview .task-list-checkbox {
+    background: #2a2a2a;
+    border-color: #8b949e;
+}
+body.dark #preview .task-list-checkbox[data-md-task-checked="1"] {
+    background: #58a6ff;
+    border-color: #58a6ff;
+}
+body.dark #preview .task-list-bullet {
+    color: #6e7681;
+}
+
+/* ============================================================
+   深色模式下弹窗文字（上一轮已加，确认保留）
+   ============================================================ */
+body.dark .modal-overlay .modal { color: #dcdcdc; }
+body.dark .modal-overlay .modal h1,
+body.dark .modal-overlay .modal h2,
+body.dark .modal-overlay .modal h3,
+body.dark .modal-overlay .modal h4,
+body.dark .modal-overlay .modal h5,
+body.dark .modal-overlay .modal h6 { color: #e6edf3; }
+body.dark .modal-overlay .modal p,
+body.dark .message-modal-body { color: #dcdcdc; }
+body.dark #message-modal h3 { color: #e6edf3; }
+
+/* ============================================================
+   ★★★ 阶段 15：TOC 拖拽条 + 深色滚动条（追加段落，不覆盖上方） ★★★
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1) TOC 拖拽条覆盖在滚动条之上
+   —— 原样式：#toc-resizer { right: -3px; width: 6px; z-index: 10 }
+   —— 新样式：right: 0; width: 8px; z-index: 30，覆盖在滚动条上方
+   —— 同时 #toc 加 scrollbar-gutter: stable，避免滚动条出现时
+      挤压内容导致拖拽条与滚动条位置错乱
+   ------------------------------------------------------------ */
+#toc {
+    /* ★ 预留滚动条槽位（Chromium 94+ / WebView2 支持） */
+    scrollbar-gutter: stable;
+}
+
+#toc-resizer {
+    /* ★ 从 -3px 改为 0：直接贴在 TOC 右边缘 */
+    right: 0;
+    /* ★ 加宽到 8px，便于抓取 */
+    width: 8px;
+    /* ★ 高于滚动条（滚动条在容器内不构成层叠，30 足够） */
+    z-index: 30;
+    background: transparent;
+    cursor: col-resize;
+}
+
+#toc-resizer:hover,
+#toc-resizer.dragging {
+    background: rgba(9, 105, 218, 0.35);
+}
+body.dark #toc-resizer:hover,
+body.dark #toc-resizer.dragging {
+    background: rgba(88, 166, 255, 0.45);
+}
+
+/* ------------------------------------------------------------
+   2) 深色滚动条：全局
+   —— 只在 body.dark / html.dark 下生效
+   —— 覆盖主窗口所有滚动容器（TOC / 编辑器 / 预览 / 弹窗等）
+   ------------------------------------------------------------ */
+html.dark,
+body.dark {
+    color-scheme: dark;
+    /* Firefox */
+    scrollbar-color: #555 #2a2a2a;
+    scrollbar-width: thin;
+}
+
+/* 滚动条整体 */
+body.dark ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+}
+body.dark ::-webkit-scrollbar-track {
+    background: transparent;
+}
+body.dark ::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 5px;
+    /* 用 2px 透明边框 + background-clip 做内缩效果 */
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+body.dark ::-webkit-scrollbar-thumb:hover {
+    background: #666;
+    background-clip: content-box;
+}
+body.dark ::-webkit-scrollbar-thumb:active {
+    background: #777;
+    background-clip: content-box;
+}
+body.dark ::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ------------------------------------------------------------
+   3) 深色滚动条：各滚动容器（更具体的选择器，优先级更高）
+   —— TOC / 编辑器 / CodeMirror 内滚 / 预览区
+   ------------------------------------------------------------ */
+body.dark #toc::-webkit-scrollbar,
+body.dark #editor-container::-webkit-scrollbar,
+body.dark #editor .cm-scroller::-webkit-scrollbar,
+body.dark #preview-container::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+}
+body.dark #toc::-webkit-scrollbar-track,
+body.dark #editor-container::-webkit-scrollbar-track,
+body.dark #editor .cm-scroller::-webkit-scrollbar-track,
+body.dark #preview-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+body.dark #toc::-webkit-scrollbar-thumb,
+body.dark #editor-container::-webkit-scrollbar-thumb,
+body.dark #editor .cm-scroller::-webkit-scrollbar-thumb,
+body.dark #preview-container::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+body.dark #toc::-webkit-scrollbar-thumb:hover,
+body.dark #editor-container::-webkit-scrollbar-thumb:hover,
+body.dark #editor .cm-scroller::-webkit-scrollbar-thumb:hover,
+body.dark #preview-container::-webkit-scrollbar-thumb:hover {
+    background: #666;
+    background-clip: content-box;
+}
+body.dark #toc::-webkit-scrollbar-thumb:active,
+body.dark #editor-container::-webkit-scrollbar-thumb:active,
+body.dark #editor .cm-scroller::-webkit-scrollbar-thumb:active,
+body.dark #preview-container::-webkit-scrollbar-thumb:active {
+    background: #777;
+    background-clip: content-box;
+}
+
+/* ------------------------------------------------------------
+   4) 浅色模式滚动条：统一风格（可选但推荐）
+   —— 使用 :not(.dark) 明确只作用于浅色
+   ------------------------------------------------------------ */
+body:not(.dark) ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+}
+body:not(.dark) ::-webkit-scrollbar-track {
+    background: transparent;
+}
+body:not(.dark) ::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+body:not(.dark) ::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+    background-clip: content-box;
+}
+body:not(.dark) ::-webkit-scrollbar-thumb:active {
+    background: #909090;
+    background-clip: content-box;
+}
+body:not(.dark) ::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ============================================================
+   ★★★ 阶段 15 段落结束 ★★★
+   ============================================================ */

@@ -1,0 +1,411 @@
+/* ============================================================
+   MarkEase 工具栏样式（阶段 15 修订：JS 动态 tooltip 防裁剪）
+   新增：格式刷激活态、表格下拉网格、溢出菜单、折叠、JS tooltip
+   ============================================================ */
+#toolbar {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    background: #fff;
+    border-bottom: 1px solid #e1e4e8;
+    height: 40px;
+    gap: 2px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 100;
+    overflow: visible;
+}
+
+.tb-group { display: flex; align-items: center; gap: 1px; }
+
+.tb-sep {
+    width: 1px; height: 20px;
+    background: #d0d7de;
+    margin: 0 6px;
+    flex-shrink: 0;
+}
+
+.tb-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    border-radius: 5px;
+    cursor: pointer;
+    color: #24292f;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    transition: background-color 0.08s ease, color 0.08s ease;
+    flex-shrink: 0;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.tb-btn:hover:not(:disabled) { background: #f0f3f6; }
+.tb-btn:active:not(:disabled) { background: #e1e4e8; }
+.tb-btn:disabled { opacity: 0.35; cursor: default; }
+.tb-btn[aria-pressed="true"] { background: #cfe3ff; color: #0969da; }
+.tb-btn[aria-pressed="true"]:hover { background: #b8d8ff; }
+.tb-btn svg { display: block; width: 16px; height: 16px; pointer-events: none; }
+.tb-btn.active { background: #cfe3ff; color: #0969da; }
+
+/* ============================================================
+   ★ JS 动态 tooltip（替代原 CSS ::after 伪元素）
+   —— 由 toolbar.js 的 bindTooltips 管理
+   —— position: fixed 相对视口定位，自动避让窗口左右边界
+   ============================================================ */
+.tb-tooltip {
+    position: fixed;
+    z-index: 99999;
+    background: rgba(28, 32, 38, 0.94);
+    color: #fff;
+    padding: 4px 9px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 400;
+    font-family: "Microsoft YaHei", sans-serif;
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    line-height: 1.4;
+    /* 防止 tooltip 比视口还宽（极端长文本时） */
+    max-width: calc(100vw - 12px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* 淡入 */
+    animation: tb-tooltip-in 0.12s ease;
+}
+
+@keyframes tb-tooltip-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* 箭头（相对 tooltip 自身定位，用 --arrow-x 控制水平位置） */
+.tb-tooltip::after {
+    content: '';
+    position: absolute;
+    left: var(--arrow-x, 50%);
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+}
+
+/* tooltip 在按钮上方 → 箭头朝下 */
+.tb-tooltip[data-arrow="top"]::after {
+    top: 100%;
+    border-top-color: rgba(28, 32, 38, 0.94);
+    margin-top: -1px;
+}
+
+/* tooltip 在按钮下方 → 箭头朝上 */
+.tb-tooltip[data-arrow="bottom"]::after {
+    bottom: 100%;
+    border-bottom-color: rgba(28, 32, 38, 0.94);
+    margin-bottom: -1px;
+}
+
+/* 深色模式 */
+body.dark .tb-tooltip {
+    background: rgba(60, 65, 72, 0.96);
+}
+body.dark .tb-tooltip[data-arrow="top"]::after {
+    border-top-color: rgba(60, 65, 72, 0.96);
+}
+body.dark .tb-tooltip[data-arrow="bottom"]::after {
+    border-bottom-color: rgba(60, 65, 72, 0.96);
+}
+
+/* ============================================================
+   H1~H6 组合按钮（主区 + 三角）
+   ============================================================ */
+.tb-h-wrap {
+    display: inline-flex;
+    align-items: stretch;
+    height: 28px;
+    flex-shrink: 0;
+    gap: 0;
+    border-radius: 5px;
+}
+.tb-h-wrap:hover .tb-h-btn-main,
+.tb-h-wrap:hover .tb-h-btn-caret {
+    background: #f0f3f6;
+}
+.tb-h-btn-main {
+    width: 24px;
+    height: 100%;
+    padding: 0;
+    border-radius: 5px 0 0 5px;
+}
+.tb-h-btn-caret {
+    width: 12px;
+    height: 100%;
+    padding: 0;
+    border-radius: 0 5px 5px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.tb-h-btn-caret svg {
+    width: 8px;
+    height: 8px;
+    opacity: 0.65;
+}
+.tb-h-label {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    pointer-events: none;
+    margin-right: -2px;
+}
+
+/* 下拉菜单（在 body 上的 fixed 定位） */
+.tb-dropdown { position: relative; display: flex; }
+.tb-dropdown-menu {
+    position: fixed;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+    padding: 4px;
+    z-index: 10050;
+    min-width: 90px;
+    display: none;
+}
+.tb-dropdown-menu.open { display: block; }
+.tb-dropdown-item {
+    padding: 5px 12px;
+    font-size: 13px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #24292f;
+    white-space: nowrap;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.tb-dropdown-item:hover { background: #0969da; color: #fff; }
+.tb-dropdown-item[data-active="true"] {
+    background: #cfe3ff;
+    color: #0969da;
+    font-weight: 600;
+}
+
+/* ============================================================
+   阶段 13：格式刷
+   ============================================================ */
+.tb-btn[data-tool="painter"].active {
+    background: #cfe3ff;
+    color: #0969da;
+}
+.tb-btn[data-tool="painter"].active.continuous {
+    background: #0969da;
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.35);
+}
+.tb-btn[data-tool="painter"].active.continuous::after {
+    content: '∞';
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    pointer-events: none;
+}
+
+/* 激活时全局光标提示 */
+body.format-painter-active #editor .cm-content {
+    cursor: crosshair !important;
+}
+body.format-painter-active #editor .cm-line {
+    cursor: crosshair !important;
+}
+body.format-painter-active #editor ::selection,
+body.format-painter-active #editor .cm-selectionBackground {
+    background: rgba(9, 105, 218, 0.28) !important;
+}
+
+/* ============================================================
+   阶段 13：表格下拉网格
+   ============================================================ */
+.tb-table-menu {
+    position: fixed;
+    z-index: 10060;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.25);
+    padding: 8px;
+    display: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.tb-table-menu.open { display: block; }
+
+.tb-table-grid {
+    display: grid;
+    gap: 2px;
+    margin-bottom: 6px;
+}
+.tb-table-cell {
+    width: 16px;
+    height: 16px;
+    background: #f6f8fa;
+    border: 1px solid #d0d7de;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background-color 0.06s ease, border-color 0.06s ease;
+}
+.tb-table-cell.hl {
+    background: #cfe3ff;
+    border-color: #0969da;
+}
+.tb-table-label {
+    text-align: center;
+    font-size: 12px;
+    color: #57606a;
+    font-variant-numeric: tabular-nums;
+    padding-top: 2px;
+    min-height: 18px;
+}
+
+/* ============================================================
+   阶段 13：工具栏溢出菜单
+   ============================================================ */
+.tb-overflow-btn {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.tb-overflow-menu {
+    position: fixed;
+    z-index: 10055;
+    min-width: 180px;
+    max-height: 70vh;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.25);
+    padding: 4px;
+    display: none;
+}
+.tb-overflow-menu.open { display: block; }
+
+.tb-overflow-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+    color: #24292f;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.tb-overflow-item:hover {
+    background: #0969da;
+    color: #fff;
+}
+.tb-overflow-item:hover .tb-overflow-icon svg {
+    stroke: #fff;
+}
+.tb-overflow-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+.tb-overflow-icon svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+/* ============================================================
+   阶段 13：折叠按钮提示态
+   ============================================================ */
+.tb-btn[data-tool="collapse"] {
+    /* 图标较宽，保持 28 宽 */
+}
+
+/* ============================================================
+   深色模式
+   ============================================================ */
+body.dark #toolbar { background: #2a2a2a; border-color: #444; }
+body.dark .tb-sep { background: #444; }
+body.dark .tb-btn { color: #dcdcdc; }
+body.dark .tb-btn:hover:not(:disabled) { background: #353535; }
+body.dark .tb-btn:active:not(:disabled) { background: #404040; }
+body.dark .tb-btn[aria-pressed="true"] { background: #1a3a5c; color: #58a6ff; }
+body.dark .tb-btn[aria-pressed="true"]:hover { background: #1e3a5f; }
+body.dark .tb-btn.active { background: #1a3a5c; color: #58a6ff; }
+
+body.dark .tb-h-wrap:hover .tb-h-btn-main,
+body.dark .tb-h-wrap:hover .tb-h-btn-caret {
+    background: #353535;
+}
+
+body.dark .tb-dropdown-menu {
+    background: #2a2a2a;
+    border-color: #444;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+body.dark .tb-dropdown-item { color: #dcdcdc; }
+body.dark .tb-dropdown-item:hover { background: #1f6feb; color: #fff; }
+body.dark .tb-dropdown-item[data-active="true"] { background: #1a3a5c; color: #58a6ff; }
+
+/* 格式刷深色 */
+body.dark .tb-btn[data-tool="painter"].active {
+    background: #1a3a5c;
+    color: #58a6ff;
+}
+body.dark .tb-btn[data-tool="painter"].active.continuous {
+    background: #1f6feb;
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.4);
+}
+body.dark.format-painter-active #editor ::selection,
+body.dark.format-painter-active #editor .cm-selectionBackground {
+    background: rgba(88, 166, 255, 0.35) !important;
+}
+
+/* 表格下拉深色 */
+body.dark .tb-table-menu {
+    background: #2a2a2a;
+    border-color: #444;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+body.dark .tb-table-cell {
+    background: #353535;
+    border-color: #555;
+}
+body.dark .tb-table-cell.hl {
+    background: #1a3a5c;
+    border-color: #58a6ff;
+}
+body.dark .tb-table-label { color: #999; }
+
+/* 溢出菜单深色 */
+body.dark .tb-overflow-menu {
+    background: #2a2a2a;
+    border-color: #444;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+body.dark .tb-overflow-item { color: #dcdcdc; }
+body.dark .tb-overflow-item:hover { background: #1f6feb; color: #fff; }
+
+/* ============================================================
+   窄窗口时工具栏不再换行，由 JS 溢出菜单接管
+   ============================================================ */
+#toolbar > * { flex-shrink: 0; }

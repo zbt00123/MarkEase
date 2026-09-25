@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>插入图片</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="css/image_picker.css">
+</head>
+<body>
+<div id="picker">
+    <header id="picker-tabs">
+        <button class="tab active" data-tab="local">本地图片</button>
+        <button class="tab" data-tab="remote">网络图片</button>
+    </header>
+
+    <!-- ============ 本地图片 ============ -->
+    <section id="panel-local" class="panel active">
+        <aside id="local-sidebar">
+            <div class="side-group">
+                <div class="side-title">快捷访问</div>
+                <div id="side-shortcuts"></div>
+            </div>
+            <div class="side-group">
+                <div class="side-title">此电脑</div>
+                <div id="side-drives"></div>
+            </div>
+        </aside>
+
+        <div id="local-main">
+            <div id="local-toolbar">
+                <button id="btn-back" title="后退">←</button>
+                <button id="btn-forward" title="前进">→</button>
+                <button id="btn-up" title="上一级">↑</button>
+                <div id="breadcrumb"></div>
+                <div id="view-controls">
+                    <button id="btn-view-grid" class="view-btn active" title="图标视图">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                            <rect x="1" y="1" width="5" height="5"/><rect x="8" y="1" width="5" height="5"/>
+                            <rect x="1" y="8" width="5" height="5"/><rect x="8" y="8" width="5" height="5"/>
+                        </svg>
+                    </button>
+                    <button id="btn-view-list" class="view-btn" title="列表视图">
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                            <rect x="1" y="2" width="12" height="2"/><rect x="1" y="6" width="12" height="2"/>
+                            <rect x="1" y="10" width="12" height="2"/>
+                        </svg>
+                    </button>
+                    <input id="size-slider" type="range" min="1" max="3" step="1"
+                           value="2" title="图标大小">
+                    <!-- ★ 图标视图下的排序控件 -->
+                    <div id="sort-control" class="sort-control" title="排列方式">
+                        <svg class="sort-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M3 3h10v1.5H3zM3 7.25h7v1.5H3zM3 11.5h4v1.5H3z"/>
+                        </svg>
+                        <select id="sort-select">
+                            <option value="name">名称</option>
+                            <option value="type" selected>类别</option>
+                            <option value="size">大小</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 列表视图表头（仅列表视图下显示） -->
+            <div id="list-header" class="list-header hidden">
+                <span class="lh-icon"></span>
+                <span class="lh-col" data-sort="name">
+                    名称 <span class="sort-arrow"></span>
+                </span>
+                <span class="lh-col" data-sort="type">
+                    类别 <span class="sort-arrow"></span>
+                </span>
+                <span class="lh-col" data-sort="size">
+                    大小 <span class="sort-arrow"></span>
+                </span>
+            </div>
+
+            <div id="local-grid" class="grid" data-size="2"></div>
+            <div id="local-footer">
+                <span id="local-selected">未选择</span>
+                <div class="footer-actions">
+                    <button id="btn-local-cancel" class="btn-plain">取消</button>
+                    <button id="btn-local-confirm" class="btn-primary" disabled>选择</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ 网络图片 ============ -->
+    <section id="panel-remote" class="panel">
+        <div class="panel-body remote-body">
+            <label for="remote-url">图片 URL</label>
+            <input id="remote-url" type="url"
+                   placeholder="https://example.com/image.jpg" autocomplete="off">
+            <div id="remote-status" class="status"></div>
+            <div class="footer-actions">
+                <button id="btn-remote-cancel" class="btn-plain">取消</button>
+                <button id="btn-remote-import" class="btn-primary">导入</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============ 冲突弹窗 ============ -->
+    <div id="conflict-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <h3>图片已存在</h3>
+            <p class="modal-hint">assets/ 中已存在同名文件，请选择处理方式：</p>
+            <div class="conflict-compare">
+                <div class="conflict-item">
+                    <div class="conflict-label">源文件</div>
+                    <div class="conflict-thumb"><img id="conflict-src-img" alt=""></div>
+                    <div class="conflict-name" id="conflict-src-name"></div>
+                    <div class="conflict-size" id="conflict-src-size"></div>
+                </div>
+                <div class="conflict-item">
+                    <div class="conflict-label">已存在文件</div>
+                    <div class="conflict-thumb"><img id="conflict-target-img" alt=""></div>
+                    <div class="conflict-name" id="conflict-target-name"></div>
+                    <div class="conflict-size" id="conflict-target-size"></div>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button id="conflict-cancel" class="btn-plain">取消</button>
+                <button id="conflict-keep-both" class="btn-plain">保留两者</button>
+                <button id="conflict-replace" class="btn-primary">替换</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/image_picker.js"></script>
+</body>
+</html>
