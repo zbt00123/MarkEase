@@ -21,3 +21,7 @@ logs/
 # 忽略开发文档
 开发手册/
 scripts/
+
+*.pyc
+*.pyo
+.venv/
