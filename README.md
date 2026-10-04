@@ -2,18 +2,16 @@
 
 > 一款运行于 Windows 平台、**完全离线**、GitHub 风格的 Markdown 编辑器
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/zbt00123/MarkEase/releases) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
+[![Release](https://img.shields.io/github/v/release/zbt00123/MarkEase)](https://github.com/zbt00123/MarkEase/releases) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
 
 > ⚠️ **杀毒软件可能误报**，请将 `MarkEase.exe` 添加信任。
 > 本程序使用 WebView2 渲染，启动时已禁用其后台网络与组件更新；如仍告警，请加入白名单。
 
 ---
 
-## 🎉 v2.0.0 全新发布
+## 🎉 最新版本
 
-相比 **v1.3.1**，v2.0.0 是一次**架构级重构 + 功能大爆发**。
-
-## ✨ 2.0.0 核心亮点
+## ✨ 核心亮点
 
 ### ⚡ 强大的编辑体验
 
@@ -108,7 +106,7 @@
 ### 📦 下载使用
 
 1. 前往 [Releases](https://github.com/zbt00123/MarkEase/releases) 下载
-2. 解压 `MarkEase_v2.0.0_Windows_x64_portable.7z`
+2. 解压 `MarkEase_v<版本号>_Windows_x64_portable.7z`（版本号见 Releases 页）
 3. 双击 `MarkEase.exe`
 
 > 首次启动会自动添加右键「新建 → Markdown 文件」项。
@@ -121,99 +119,3 @@ git clone https://github.com/zbt00123/MarkEase.git
 cd MarkEase
 pip install -r requirements.txt
 python main.py
-```
-
-
----
-
-## 🛠️ 技术栈
-
-| 组件 | 技术 |
-|------|------|
-| 桌面框架 | [pywebview](https://pywebview.flowrl.com/) (WebView2) |
-| 编辑器内核 | [CodeMirror 6](https://codemirror.net/) |
-| Markdown 解析 | [marked.js](https://marked.js.org/) |
-| 代码高亮 | [highlight.js](https://highlightjs.org/) |
-| 数学公式 | [KaTeX](https://katex.org/) |
-| 预览样式 | [github-markdown-css](https://github.com/sindresorhus/github-markdown-css) |
-| PDF 处理 | [PyMuPDF](https://pymupdf.readthedocs.io/) |
-| PDF 导出 | pythonnet + WebView2 `PrintToPdfAsync` |
-| 打包 | [PyInstaller](https://pyinstaller.org/) |
-
----
-
-## ⌨️ 快捷键
-
-| 操作 | 快捷键 |
-|------|--------|
-| 新建 / 打开 / 保存 | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` |
-| 另存为 | `Ctrl+Shift+S` |
-| 撤销 / 重做 | `Ctrl+Z` / `Ctrl+Y` |
-| 剪切 / 复制 / 粘贴 | `Ctrl+X` / `Ctrl+C` / `Ctrl+V` |
-| 查找 / 替换 | `Ctrl+F` / `Ctrl+H` |
-| 编辑 / 分屏 / 预览 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` |
-| 显示目录 | `Ctrl+B` |
-| 缩放 + / - / 重置 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` |
-| 插入图片 | `Ctrl+Shift+I` |
-| 退出 | `Ctrl+Q` |
-
----
-
-## 📖 使用技巧
-
-### ✅ 任务列表
-
-- **单行**：点击 `- [ ]` / `- [x]` 切换
-- **多行**：选中多行 + 点击任一 checkbox → 批量切换
-
-### 📚 多行格式批量操作
-
-选中多行后点工具栏：引用 / 无序列表 / 有序列表 / 任务列表 / 代码块。
-
-> 任务列表按钮**只加前缀**，不改已有勾选状态。
-
-### 🧮 数学公式
-
-- 行内：`$a^2 + b^2 = c^2$`
-- 块级：`$$ E = mc^2 $$`
-- 代码块：```` ```math ````
-
-### 📊 表格
-
-- **插入**：工具栏表格图标 → 网格选行列
-- **编辑**：预览区**双击单元格** → 直接改 → `Enter` 提交
-
-### 🎯 折叠块
-
-选中内容 → 工具栏折叠图标 → 变成 `<details>`，折叠状态自动记忆。
-
----
-
-## 🤝 贡献
-
-欢迎提交 [Issue](https://github.com/zbt00123/MarkEase/issues) 和 [Pull Request](https://github.com/zbt00123/MarkEase/pulls)。
-
----
-
-## 📄 许可证
-
-本项目仅供学习使用，采用 MIT 许可证。详见 [LICENSE](LICENSE)。
-
----
-
-## 🙏 致谢
-
-- [pywebview](https://pywebview.flowrl.com/) — 桌面窗口框架
-- [CodeMirror 6](https://codemirror.net/) — 编辑器内核
-- [marked.js](https://marked.js.org/) — Markdown 解析器
-- [highlight.js](https://highlightjs.org/) — 代码高亮
-- [KaTeX](https://katex.org/) — 数学公式渲染
-- [github-markdown-css](https://github.com/sindresorhus/github-markdown-css) — GitHub 风格样式
-- [PyMuPDF](https://pymupdf.readthedocs.io/) — PDF 处理
-- [GitHub Octicons](https://github.com/primer/octicons) — 图标风格参考
-
-> 详细许可信息见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
-
----
-
-**如果觉得不错，请给个 ⭐ Star 支持一下！**

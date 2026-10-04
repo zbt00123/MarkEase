@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-阶段 15 修订 6：
+阶段 15 修订 9：
+- 版本号唯一来源：version_info.txt（APP_INFO['version'] 动态读取）
+- 兼容 pywebview 4.x / 5.x 的 FileDialog 常量（消除 OPEN_DIALOG 弃用警告）
 - 关于窗口：窗口标题本地化、on_top 置顶、notify_about_refresh 热刷新
 - set_startup_file / get_startup_file（支持双击 .md 启动）
-- APP_INFO['version'] = '2.0.0'
 - 保留文件关联接口
 """
 
@@ -16,6 +17,17 @@ import subprocess
 import tempfile
 import time
 import webview
+
+# ★ 兼容 pywebview 4.x / 5.x 的 FileDialog 常量
+#   - pywebview 4.x：使用 webview.OPEN_DIALOG / webview.SAVE_DIALOG
+#   - pywebview 5.x+：使用 webview.FileDialog.OPEN / webview.FileDialog.SAVE
+#   这里做一次兼容映射，后续代码统一用 _OPEN_DIALOG / _SAVE_DIALOG
+try:
+    _OPEN_DIALOG = webview.FileDialog.OPEN
+    _SAVE_DIALOG = webview.FileDialog.SAVE
+except AttributeError:
+    _OPEN_DIALOG = webview.OPEN_DIALOG
+    _SAVE_DIALOG = webview.SAVE_DIALOG
 
 try:
     import clr
@@ -49,9 +61,36 @@ DEFAULT_SETTINGS = {
     'shell_new_registered': 0,
 }
 
+
+def _read_version_from_file():
+    """
+    从 version_info.txt 读取 FileVersion。
+    ★ 这是项目唯一的版本号来源。
+    改版本号时，只需修改 version_info.txt 即可，其他文件自动同步。
+    """
+    try:
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        vi_path = os.path.join(base, 'version_info.txt')
+        if not os.path.exists(vi_path) and getattr(sys, 'frozen', False):
+            vi_path = os.path.join(sys._MEIPASS, 'version_info.txt')
+        if os.path.exists(vi_path):
+            with open(vi_path, 'r', encoding='utf-8') as f:
+                txt = f.read()
+            m = re.search(
+                r"StringStruct\(u'FileVersion',\s*u'([^']+)'\)", txt)
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    return '0.0.0'
+
+
+_APP_VERSION = _read_version_from_file()
+
+
 APP_INFO = {
     'name': 'MarkEase',
-    'version': '2.0.0',
+    'version': _APP_VERSION,   # ★ 动态读取，唯一来源是 version_info.txt
     'author': 'ZBT Studio',
     'author_url': 'https://github.com/zbt00123/',
     'outline_by': 'ChatGPT',
@@ -234,7 +273,6 @@ class AboutApi:
                 pass
         return {'ok': True}
 
-    # ★ 阶段 15 修订 6：运行时修改原生窗口标题
     def set_window_title(self, title):
         if self._window is None:
             return {'ok': False, 'error': '窗口未就绪'}
@@ -266,22 +304,7 @@ class AboutApi:
     def get_version(self):
         info = dict(APP_INFO)
         info['ok'] = True
-        try:
-            vi_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                'version_info.txt')
-            if not os.path.exists(vi_path):
-                if getattr(sys, 'frozen', False):
-                    vi_path = os.path.join(sys._MEIPASS, 'version_info.txt')
-            if os.path.exists(vi_path):
-                with open(vi_path, 'r', encoding='utf-8') as f:
-                    txt = f.read()
-                m = re.search(
-                    r"StringStruct\(u'FileVersion',\s*u'([^']+)'\)", txt)
-                if m:
-                    info['version'] = m.group(1)
-        except Exception:
-            pass
+        info['version'] = _read_version_from_file()   # ★ 单一来源
         return info
 
     def _find_icon_path(self):
@@ -337,10 +360,10 @@ class Api:
         self._current_content = ''
         self._picker_windows = []
 
-        # ★ 阶段 15 修订 6：关于窗口引用（用于热刷新）
+        # 关于窗口引用（用于热刷新）
         self._about_window = None
 
-        # ★ 阶段 15 修订 4：启动文件（双击 .md 时由 main.py 注入）
+        # 启动文件（双击 .md 时由 main.py 注入）
         self._startup_file = ''
 
         from app.asset_server import AssetServer
@@ -371,7 +394,7 @@ class Api:
     def set_window(self, window):
         self._window = window
 
-    # ---------- ★ 阶段 15 修订 4：启动文件 ----------
+    # ---------- 启动文件 ----------
     def set_startup_file(self, path):
         """由 main.py 调用，记录启动时要打开的文件路径。"""
         self._startup_file = path or ''
@@ -437,18 +460,8 @@ class Api:
         return os.path.join(self._get_base_dir(), 'resources', 'translations')
 
     def _read_file_version(self):
-        try:
-            vi_path = os.path.join(self._get_base_dir(), 'version_info.txt')
-            if os.path.exists(vi_path):
-                with open(vi_path, 'r', encoding='utf-8') as f:
-                    txt = f.read()
-                m = re.search(
-                    r"StringStruct\(u'FileVersion',\s*u'([^']+)'\)", txt)
-                if m:
-                    return m.group(1)
-        except Exception:
-            pass
-        return APP_INFO.get('version', '2.0.0')
+        # ★ 直接调用全局函数，保持单一来源
+        return _read_version_from_file()
 
     def _resolve_system_language(self):
         try:
@@ -546,14 +559,10 @@ class Api:
     # ---------- 检查更新 ----------
     def _fetch_latest_release(self):
         """
-        ★ 阶段 15 修订 6：强制直连，绕过系统代理。
-
-        用户开启 VPN / 系统代理时，可能会拦截对 GitHub API 的请求。
-        这里清除所有代理环境变量 + 使用空 ProxyHandler 强制直连。
+        强制直连，绕过系统代理。
         """
         import urllib.request
 
-        # 清除代理环境变量
         for env_key in (
             'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY',
             'http_proxy', 'https_proxy', 'all_proxy',
@@ -800,7 +809,7 @@ class Api:
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
-    # ---------- ★ 阶段 15 修订 6：关于窗口 ----------
+    # ---------- 关于窗口 ----------
     def _get_about_window_title(self):
         """按当前语言返回关于窗口标题，兜底 '关于 MarkEase'。"""
         fallback = '关于 MarkEase'
@@ -831,7 +840,7 @@ class Api:
             except Exception:
                 self._about_window = None
 
-        # ★ 根据当前语言读取 about_title 作为初始标题
+        # 根据当前语言读取 about_title 作为初始标题
         title = self._get_about_window_title()
 
         about_api = AboutApi(web_dir=self._web_dir, main_api=self)
@@ -847,7 +856,7 @@ class Api:
                 height=580,
                 min_size=(460, 500),
                 resizable=True,
-                on_top=True,   # ★ 置顶
+                on_top=True,   # 置顶
             )
         except TypeError:
             # 兼容不支持 on_top 的旧版 pywebview
@@ -890,7 +899,6 @@ class Api:
 
         return {'ok': True}
 
-    # ★ 新增：通知关于窗口刷新（语言/主题变化时由主窗口调用）
     def notify_about_refresh(self):
         w = self._about_window
         if w is None:
@@ -1129,7 +1137,7 @@ class Api:
             return {'ok': False, 'error': '窗口未就绪'}
 
         result = self._window.create_file_dialog(
-            webview.OPEN_DIALOG,
+            _OPEN_DIALOG,
             allow_multiple=False,
             file_types=(
                 'Markdown 文件 (*.md;*.markdown)',
@@ -1171,7 +1179,7 @@ class Api:
             return {'ok': False, 'error': '窗口未就绪'}
 
         result = self._window.create_file_dialog(
-            webview.SAVE_DIALOG,
+            _SAVE_DIALOG,
             save_filename='未命名.md',
             file_types=(
                 'Markdown 文件 (*.md)',
@@ -1214,7 +1222,7 @@ class Api:
             return {'ok': False, 'error': '窗口未就绪'}
 
         result = self._window.create_file_dialog(
-            webview.OPEN_DIALOG,
+            _OPEN_DIALOG,
             allow_multiple=False,
             file_types=('PDF 文件 (*.pdf)', '所有文件 (*.*)')
         )
@@ -1322,7 +1330,7 @@ class Api:
             default_name = base + '.pdf'
 
         result = self._window.create_file_dialog(
-            webview.SAVE_DIALOG,
+            _SAVE_DIALOG,
             save_filename=default_name,
             file_types=('PDF 文件 (*.pdf)',)
         )

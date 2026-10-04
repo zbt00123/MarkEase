@@ -112,26 +112,6 @@ html.dark .splash-text.error { color: #f85149; }
 .toc-level-5 { padding-left: 60px; font-size: 18px; }
 .toc-level-6 { padding-left: 72px; font-size: 18px; }
 
-/* 目录拖动分隔条 */
-#toc-resizer {
-    position: absolute;
-    top: 0;
-    right: -3px;
-    width: 6px;
-    height: 100%;
-    cursor: col-resize;
-    background: transparent;
-    z-index: 10;
-    user-select: none;
-    transition: background-color 0.12s ease;
-}
-#toc-resizer:hover {
-    background: rgba(9, 105, 218, 0.35);
-}
-body.dark #toc-resizer:hover {
-    background: rgba(88, 166, 255, 0.45);
-}
-
 /* ---------- 编辑 / 预览 ---------- */
 #editor-container,
 #preview-container {
@@ -729,6 +709,7 @@ body.dark .markdown-body {
     #toolbar,
     #statusbar,
     #toc,
+    #toc-resizer,
     #editor-container,
     #splash {
         display: none !important;
@@ -1008,7 +989,6 @@ body.dark .update-notes blockquote {
 
 /* ============================================================
    阶段 14 修订：深色模式下弹窗文字颜色（通用）
-   —— 放在文件末尾，覆盖前面浅色定义
    ============================================================ */
 body.dark .modal-overlay .modal {
     background: #2a2a2a;
@@ -1121,36 +1101,6 @@ body.dark #preview .task-list-checkbox {
 }
 body.dark #preview .task-list-checkbox:hover {
     color: #79c0ff;
-}
-
-/* 深色弹窗文字（上一轮已加，这里再确认） */
-body.dark .modal-overlay .modal { color: #dcdcdc; }
-body.dark .modal-overlay .modal h1,
-body.dark .modal-overlay .modal h2,
-body.dark .modal-overlay .modal h3,
-body.dark .modal-overlay .modal h4,
-body.dark .modal-overlay .modal h5,
-body.dark .modal-overlay .modal h6 { color: #e6edf3; }
-body.dark .modal-overlay .modal p,
-body.dark .message-modal-body { color: #dcdcdc; }
-body.dark #message-modal h3 { color: #e6edf3; }
-
-#message-modal .modal.message-modal {
-    max-width: 460px;
-    width: 92%;
-}
-#message-modal h3 {
-    margin: 0 0 10px;
-    font-size: 15px;
-    color: #1e1e1e;
-}
-.message-modal-body {
-    margin: 0 0 14px;
-    font-size: 13px;
-    line-height: 1.65;
-    color: #1e1e1e;
-    white-space: pre-wrap;
-    word-break: break-word;
 }
 
 /* ============================================================
@@ -1267,45 +1217,11 @@ body.dark .message-modal-body { color: #dcdcdc; }
 body.dark #message-modal h3 { color: #e6edf3; }
 
 /* ============================================================
-   ★★★ 阶段 15：TOC 拖拽条 + 深色滚动条（追加段落，不覆盖上方） ★★★
+   ★★★ 阶段 15：深色滚动条统一（追加段落，不覆盖上方） ★★★
    ============================================================ */
 
 /* ------------------------------------------------------------
-   1) TOC 拖拽条覆盖在滚动条之上
-   —— 原样式：#toc-resizer { right: -3px; width: 6px; z-index: 10 }
-   —— 新样式：right: 0; width: 8px; z-index: 30，覆盖在滚动条上方
-   —— 同时 #toc 加 scrollbar-gutter: stable，避免滚动条出现时
-      挤压内容导致拖拽条与滚动条位置错乱
-   ------------------------------------------------------------ */
-#toc {
-    /* ★ 预留滚动条槽位（Chromium 94+ / WebView2 支持） */
-    scrollbar-gutter: stable;
-}
-
-#toc-resizer {
-    /* ★ 从 -3px 改为 0：直接贴在 TOC 右边缘 */
-    right: 0;
-    /* ★ 加宽到 8px，便于抓取 */
-    width: 8px;
-    /* ★ 高于滚动条（滚动条在容器内不构成层叠，30 足够） */
-    z-index: 30;
-    background: transparent;
-    cursor: col-resize;
-}
-
-#toc-resizer:hover,
-#toc-resizer.dragging {
-    background: rgba(9, 105, 218, 0.35);
-}
-body.dark #toc-resizer:hover,
-body.dark #toc-resizer.dragging {
-    background: rgba(88, 166, 255, 0.45);
-}
-
-/* ------------------------------------------------------------
-   2) 深色滚动条：全局
-   —— 只在 body.dark / html.dark 下生效
-   —— 覆盖主窗口所有滚动容器（TOC / 编辑器 / 预览 / 弹窗等）
+   1) 深色模式下让浏览器原生控件（含滚动条）也走深色
    ------------------------------------------------------------ */
 html.dark,
 body.dark {
@@ -1315,7 +1231,9 @@ body.dark {
     scrollbar-width: thin;
 }
 
-/* 滚动条整体 */
+/* ------------------------------------------------------------
+   2) 深色滚动条：全局
+   ------------------------------------------------------------ */
 body.dark ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -1327,7 +1245,6 @@ body.dark ::-webkit-scrollbar-track {
 body.dark ::-webkit-scrollbar-thumb {
     background: #555;
     border-radius: 5px;
-    /* 用 2px 透明边框 + background-clip 做内缩效果 */
     border: 2px solid transparent;
     background-clip: content-box;
 }
@@ -1345,7 +1262,6 @@ body.dark ::-webkit-scrollbar-corner {
 
 /* ------------------------------------------------------------
    3) 深色滚动条：各滚动容器（更具体的选择器，优先级更高）
-   —— TOC / 编辑器 / CodeMirror 内滚 / 预览区
    ------------------------------------------------------------ */
 body.dark #toc::-webkit-scrollbar,
 body.dark #editor-container::-webkit-scrollbar,
@@ -1386,8 +1302,7 @@ body.dark #preview-container::-webkit-scrollbar-thumb:active {
 }
 
 /* ------------------------------------------------------------
-   4) 浅色模式滚动条：统一风格（可选但推荐）
-   —— 使用 :not(.dark) 明确只作用于浅色
+   4) 浅色模式滚动条：统一风格
    ------------------------------------------------------------ */
 body:not(.dark) ::-webkit-scrollbar {
     width: 10px;
@@ -1416,5 +1331,46 @@ body:not(.dark) ::-webkit-scrollbar-corner {
 }
 
 /* ============================================================
-   ★★★ 阶段 15 段落结束 ★★★
+   ★★★ 阶段 15 修订 13：TOC 拖拽条重定位（放在滚动条右侧） ★★★
+   —— 从 #toc 内部移到 #main 内，位于 #toc 与 #editor-container 之间
+   —— 用 position: absolute + left 动态定位（left 值由 JS 计算）
+   —— 这样它就在 TOC 滚动条的【右侧】，不再与滚动条重合
+   ============================================================ */
+
+#main {
+    position: relative;   /* 让 #toc-resizer 的 absolute 相对 #main */
+}
+
+#toc-resizer {
+    position: absolute;
+    top: 0;
+    left: 220px;          /* 初始值，JS 会在启动时立即校准 */
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    background: transparent;
+    z-index: 40;
+    user-select: none;
+    transition: background-color 0.12s ease;
+    /* 让拖拽条视觉中心正好落在 #toc 右边缘：向左偏移 3px */
+    margin-left: -3px;
+}
+
+#toc-resizer:hover,
+#toc-resizer.dragging {
+    background: rgba(9, 105, 218, 0.5);
+}
+
+body.dark #toc-resizer:hover,
+body.dark #toc-resizer.dragging {
+    background: rgba(88, 166, 255, 0.6);
+}
+
+/* TOC 隐藏时，拖拽条也隐藏（兄弟选择器：#toc.hidden 之后的 #toc-resizer） */
+#toc.hidden ~ #toc-resizer {
+    display: none;
+}
+
+/* ============================================================
+   ★★★ 阶段 15 修订 13 段落结束 ★★★
    ============================================================ */

@@ -1,18 +1,45 @@
 # -*- coding: utf-8 -*-
 """
-MarkEase 主入口（阶段 15 修订：支持命令行传入文件路径）
+MarkEase 主入口（阶段 15 修订：修复启动缓存导致的偶发空白问题）
 
 - 忽略系统 VPN 对 127.0.0.1 的代理
 - 禁用 WebView2 后台网络/组件更新/同步（降低 360「BITS 任务」告警概率）
 - 前端从 asset server 的 HTTP 地址加载
 - background_color 依据主题
-- ★ 支持双击 .md / .markdown / .pdf 启动（命令行参数）
+- 支持双击 .md / .markdown / .pdf 启动（命令行参数）
+- ★ 修复：显式指定 WebView2 user data folder，避免 pywebview 内部
+        "删除失败 → 复用旧缓存" 导致的偶发空白
 """
 
 import os
 import sys
 
 # ★★★ 必须在 import webview 之前设置 ★★★
+
+# ------------------------------------------------------------------
+# 1) 显式指定 WebView2 user data folder（稳定路径，避免缓存冲突）
+#
+#    背景：pywebview 每次 webview.start() 会创建一个临时 user data folder，
+#         退出时尝试删除。若删除失败（如 BrowserProcess 提前退出），
+#         下次启动可能复用一个"半旧"的 folder，导致 JS 缓存与磁盘上的
+#         app.js 不一致 → 打开文档时白屏。
+#
+#    解决：显式指定到一个固定路径，让 WebView2 始终用同一个 folder，
+#         并让缓存自然老化（浏览器会自动淘汰）。
+# ------------------------------------------------------------------
+_USER_DATA_DIR = os.path.join(
+    os.path.expanduser('~'), '.markease', 'webview2_data'
+)
+try:
+    os.makedirs(_USER_DATA_DIR, exist_ok=True)
+    os.environ['WEBVIEW2_USER_DATA_FOLDER'] = _USER_DATA_DIR
+    print(f'[MarkEase] webview2 user data: {_USER_DATA_DIR}')
+except Exception as e:
+    print(f'[MarkEase] cannot create user data dir: {e}')
+
+# ------------------------------------------------------------------
+# 2) 反 360 / VPN 绕过参数
+# ------------------------------------------------------------------
 _existing = os.environ.get('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', '')
 
 _EXTRA_ARGS = [
@@ -25,6 +52,9 @@ _EXTRA_ARGS = [
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-features=Translate,OptimizationHints,MediaRouter,msEdgeUpdateCheck',
+    # ★ 关键：关闭 HTTP 磁盘缓存（开发期必开；发布后可去掉以加快启动）
+    #   若你希望保留缓存（加快启动），注释掉下面这一行即可
+    '--disk-cache-size=1',
 ]
 
 for _arg in _EXTRA_ARGS:
@@ -101,7 +131,7 @@ def main():
 
     api = Api(web_dir)
 
-    # ★ 解析命令行传入的文件（双击 .md 场景）
+    # 解析命令行传入的文件（双击 .md 场景）
     startup_file = _parse_startup_file()
     if startup_file:
         print(f'[MarkEase] startup file: {startup_file}')

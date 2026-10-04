@@ -1,4 +1,4 @@
-// MarkEase 主逻辑（阶段 15 修订 10：修复图片路径 + 防抖 + 关于窗口热刷新）
+// MarkEase 主逻辑（阶段 15 修订 18：修复 TOC 跳转后滚动跳回旧位置）
 import { EditorState, Compartment, EditorSelection, StateField, StateEffect } from './vendor/state.mjs';
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, Decoration } from './vendor/view.mjs';
 import { defaultKeymap, history, historyKeymap, undo, redo, isolateHistory } from './vendor/commands.mjs';
@@ -74,7 +74,6 @@ let currentDocDir = '';
 let mode = 'split';
 let zoomLevel = 100;
 
-// ★ 阶段 15 修订 6：脏标记（是否有未保存的修改）
 let isDirty = false;
 
 let previewComposing = false;
@@ -83,16 +82,24 @@ let activeEditableEl = null;
 let currentLangChoice = 'system';
 let lastUpdateInfo = null;
 
-// 阶段 15：同步滚动状态
 let _syncAnchors = [];
 let _editorScrollRaf = null;
 let _previewScrollRaf = null;
+let _editorTocRaf = null;
 let _scrollLock = null;
 let _scrollLockTimer = null;
 
-// ★ 阶段 15 修订 10：预览防抖
+// ★ 修订 18：TOC 跳转后锁定时长（毫秒）
+//   原来 90ms 太短，点击后用户立即滚动就会打断
+const SCROLL_LOCK_MS = 90;
+const TOC_JUMP_LOCK_MS = 280;
+
 let _lastPreviewUpdateTs = 0;
 const MIN_PREVIEW_INTERVAL = 60;
+
+let _tocScrolling = false;
+
+let _lastActiveTocLine = null;
 
 const themeCompartment = new Compartment();
 
@@ -116,7 +123,6 @@ function T(key, fallback) {
     return fallback || key;
 }
 
-// ★ 阶段 15 修订 10：同步文件状态到 window，供 render.js 兜底使用
 function syncGlobalFileState() {
     window.__currentDocDir = currentDocDir || '';
     window.__currentFile = currentFile || '';
@@ -226,7 +232,6 @@ window.addEventListener('pywebviewready', async () => {
         await loadSettings(settings);
         initZoomBar();
 
-        // ★ 阶段 15 修订 4：检查启动时传入的文件（双击 .md 场景）
         await openStartupFileIfAny();
 
         setMode('split');
@@ -278,7 +283,6 @@ window.addEventListener('pywebviewready', async () => {
     }
 });
 
-// ★ 阶段 15 修订 10：先设路径，后 setContent
 async function openStartupFileIfAny() {
     if (!(window.pywebview && window.pywebview.api &&
           window.pywebview.api.get_startup_file)) {
@@ -289,9 +293,6 @@ async function openStartupFileIfAny() {
         if (!r) return;
 
         if (r.ok && r.content != null) {
-            // ★★★ 关键修复：先设 currentFile / currentDocDir，再 setContent ★★★
-            //    因为 setContent 内部会立即触发 updatePreview，
-            //    若 docDir 为空，img 相对路径就无法改写为 asset URL。
             currentFile = r.path || '';
             currentDocDir = r.path
                 ? r.path.replace(/[\\/][^\\/]+$/, '')
@@ -342,7 +343,6 @@ function hideSplash() {
 
 function initEditor() {
     const updateListener = EditorView.updateListener.of(update => {
-        // ★ 阶段 15 修订 6：任何文档改动都标记为脏
         if (update.docChanged) {
             isDirty = true;
             if (!isSyncing) {
@@ -598,7 +598,6 @@ async function onSetLanguage(lang) {
         window.Toolbar.refreshI18n();
     }
 
-    // ★ 阶段 15 修订 6：通知关于窗口刷新语言
     try {
         if (window.pywebview && window.pywebview.api &&
             window.pywebview.api.notify_about_refresh) {
@@ -673,6 +672,13 @@ function setMode(newMode) {
     }
     if (mode === 'preview') setTimeout(() => updatePreview(), 30);
     if (mode === 'split') setTimeout(() => { updateSyncAnchors(); }, 30);
+    if (typeof window.__updateTocResizerPosition === 'function') {
+        setTimeout(window.__updateTocResizerPosition, 60);
+    }
+    setTimeout(() => {
+        if (mode === 'edit') updateTocByEditorScroll();
+        else updateActiveTocByScroll();
+    }, 80);
 }
 
 function toggleToc() {
@@ -683,6 +689,16 @@ function toggleToc() {
     }
     if (window.Toolbar && typeof window.Toolbar.relayout === 'function') {
         setTimeout(() => window.Toolbar.relayout(), 30);
+    }
+    if (typeof window.__updateTocResizerPosition === 'function') {
+        window.__updateTocResizerPosition();
+        setTimeout(window.__updateTocResizerPosition, 60);
+    }
+    if (!tocEl.classList.contains('hidden')) {
+        setTimeout(() => {
+            if (mode === 'edit') updateTocByEditorScroll();
+            else updateActiveTocByScroll();
+        }, 60);
     }
 }
 
@@ -698,7 +714,6 @@ function setContent(text) {
         changes: { from: 0, to: editorView.state.doc.length, insert: text }
     });
     isSyncing = false;
-    // ★ 阶段 15 修订 6：程序化设置内容 → 不算未保存修改
     isDirty = false;
     updatePreview();
     updateStats();
@@ -706,12 +721,13 @@ function setContent(text) {
 }
 
 // ---------------- 预览 ----------------
-// ★ 阶段 15 修订 10：每次渲染前同步全局文件状态（防时序问题）
 function updatePreview() {
     syncGlobalFileState();
 
     const previewContainer = previewEl.parentElement;
-    const scrollTop = previewContainer ? previewContainer.scrollTop : 0;
+    const savedScrollTop = (!_tocScrolling && previewContainer)
+        ? previewContainer.scrollTop
+        : null;
 
     activeEditableEl = null;
     window.renderMarkdown(getContent(), {
@@ -723,7 +739,9 @@ function updatePreview() {
     updateSyncAnchors();
     updateActiveTocByScroll();
 
-    if (previewContainer) previewContainer.scrollTop = scrollTop;
+    if (savedScrollTop != null && previewContainer) {
+        previewContainer.scrollTop = savedScrollTop;
+    }
 }
 
 function updateStats() {
@@ -756,56 +774,258 @@ function stripMdInline(text) {
 }
 
 function rebuildToc() {
-    const lines = getContent().split('\n');
+    const content = getContent();
+    const lines = content.split('\n');
+
     const headings = [];
     for (let i = 0; i < lines.length; i++) {
         const m = lines[i].match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
-        if (m) headings.push({ level: m[1].length, text: m[2], line: i });
+        if (m) {
+            headings.push({
+                level: m[1].length,
+                text: m[2],
+                line: i,
+            });
+        }
     }
+
     tocListEl.innerHTML = '';
     headings.forEach(h => {
         const el = document.createElement('div');
         el.className = 'toc-item toc-level-' + h.level;
         el.textContent = stripMdInline(h.text);
-        el.dataset.line = h.line;
+        el.dataset.line = String(h.line);
         el.addEventListener('click', () => scrollEditorToLine(h.line));
         tocListEl.appendChild(el);
     });
-    previewEl.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((el, i) => {
-        if (headings[i]) el.setAttribute('data-line', headings[i].line);
-    });
+
+    _lastActiveTocLine = null;
+
+    applyTocAnchors(headings);
 }
 
+function applyTocAnchors(headings) {
+    if (!previewEl) return;
+
+    previewEl.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(el => {
+        el.removeAttribute('data-line');
+    });
+
+    if (!headings || headings.length === 0) return;
+
+    const domHeads = Array.from(
+        previewEl.querySelectorAll('h1,h2,h3,h4,h5,h6')
+    );
+    if (domHeads.length === 0) return;
+
+    function norm(s) {
+        return String(s || '')
+            .replace(/<[^>]+>/g, '')
+            .replace(/\s+/g, '')
+            .toLowerCase();
+    }
+
+    let domIdx = 0;
+
+    for (let hi = 0; hi < headings.length; hi++) {
+        const h = headings[hi];
+        const wantLevel = h.level;
+        const wantText = norm(stripMdInline(h.text));
+
+        for (let j = domIdx; j < domHeads.length; j++) {
+            const el = domHeads[j];
+            const elLevel = parseInt(el.tagName.substring(1), 10);
+            if (elLevel !== wantLevel) continue;
+            const elText = norm(el.textContent);
+            if (elText === wantText) {
+                el.setAttribute('data-line', String(h.line));
+                domIdx = j + 1;
+                break;
+            }
+        }
+    }
+}
+
+// ★ 修订 18：TOC 点击 → 三种模式都定位
+//   关键修复：滚动锁延长到 TOC_JUMP_LOCK_MS，防止用户点击后立即滚动被同步逻辑打断
+//            跳转前重建 syncAnchors，避免用旧锚点
 function scrollEditorToLine(line) {
     if (!editorView) return;
     const doc = editorView.state.doc;
     if (line < 0 || line >= doc.lines) return;
-    const lineInfo = doc.line(line + 1);
-    editorView.dispatch({
-        selection: { anchor: lineInfo.from },
-        scrollIntoView: true
+
+    // ★ 跳转前先重建锚点（用当前真实布局）
+    try { updateSyncAnchors(); } catch (e) { /* ignore */ }
+
+    // ============ 1) 编辑器侧定位 ============
+    if (mode !== 'preview') {
+        try {
+            const lineInfo = doc.line(line + 1);
+            editorView.dispatch({
+                selection: { anchor: lineInfo.from }
+            });
+
+            requestAnimationFrame(() => {
+                try {
+                    const block = editorView.lineBlockAt(lineInfo.from);
+                    const scroller = document.querySelector('#editor .cm-scroller');
+                    if (scroller && block) {
+                        const h = scroller.clientHeight;
+                        const target = block.top - h / 3;
+                        scroller.scrollTop = Math.max(0, target);
+                    }
+                } catch (e) { /* ignore */ }
+            });
+        } catch (e) { /* ignore */ }
+    }
+
+    // ============ 2) 预览侧定位 ============
+    const previewContainer = previewEl.parentElement;
+    if (!previewContainer) {
+        if (mode !== 'preview') editorView.focus();
+        return;
+    }
+
+    // ★ 用长锁：覆盖编辑器 + 预览的双 RAF + 用户可能的立即滚动
+    _acquireScrollLockLong('editor');
+    _tocScrolling = true;
+
+    const doPreviewScroll = () => {
+        try {
+            const target = previewEl.querySelector('[data-line="' + line + '"]');
+            if (!target) return;
+            const containerRect = previewContainer.getBoundingClientRect();
+            const targetRect = target.getBoundingClientRect();
+            const targetTop = targetRect.top - containerRect.top +
+                              previewContainer.scrollTop;
+            const h = previewContainer.clientHeight;
+            const desired = targetTop - h / 3;
+            previewContainer.scrollTop = Math.max(0, desired);
+        } catch (e) { /* ignore */ }
+    };
+
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            doPreviewScroll();
+            setTimeout(() => {
+                _setActiveTocItem(String(line), true);
+                _tocScrolling = false;
+                // ★ 跳转完成后重建锚点，供后续同步使用
+                try { updateSyncAnchors(); } catch (e) { /* ignore */ }
+            }, 60);
+        });
     });
-    editorView.focus();
-    const target = previewEl.querySelector('[data-line="' + line + '"]');
-    if (target) {
-        _acquireScrollLock('editor');
-        target.scrollIntoView({ behavior: 'auto', block: 'start' });
-        _releaseScrollLockSoon('editor');
+
+    if (mode !== 'preview') {
+        editorView.focus();
     }
 }
 
+function _setActiveTocItem(lineStr, forceScroll) {
+    if (lineStr == null) return;
+    if (lineStr === _lastActiveTocLine && !forceScroll) return;
+
+    document.querySelectorAll('.toc-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.line === lineStr);
+    });
+
+    _lastActiveTocLine = lineStr;
+
+    scrollTocToActive();
+}
+
+function scrollTocToActive() {
+    if (!tocEl || !tocListEl) return;
+    if (tocEl.classList.contains('hidden')) return;
+
+    const activeEl = tocListEl.querySelector('.toc-item.active');
+    if (!activeEl) return;
+
+    const tocRect = tocEl.getBoundingClientRect();
+    const itemRect = activeEl.getBoundingClientRect();
+
+    if (itemRect.top >= tocRect.top && itemRect.bottom <= tocRect.bottom) {
+        return;
+    }
+
+    const itemTopRel = itemRect.top - tocRect.top + tocEl.scrollTop;
+    const desired = itemTopRel - (tocEl.clientHeight - itemRect.height) / 2;
+    const maxTop = tocEl.scrollHeight - tocEl.clientHeight;
+    tocEl.scrollTop = Math.max(0, Math.min(maxTop, desired));
+}
+
+// 预览/分屏模式 TOC 高亮：视口中线之上最靠下的标题
 function updateActiveTocByScroll() {
+    if (!previewEl || !previewEl.parentElement) return;
+
     const heads = previewEl.querySelectorAll('[data-line]');
-    let activeLine = -1;
+    if (heads.length === 0) {
+        _setActiveTocItem(null);
+        return;
+    }
+
+    const containerRect = previewEl.parentElement.getBoundingClientRect();
+    const pivot = containerRect.top + containerRect.height / 2;
+
+    let activeLine = null;
+
     for (let i = 0; i < heads.length; i++) {
         const rect = heads[i].getBoundingClientRect();
-        const containerRect = previewEl.parentElement.getBoundingClientRect();
-        if (rect.top - containerRect.top <= 60) activeLine = heads[i].getAttribute('data-line');
-        else break;
+        if (rect.top < pivot) {
+            activeLine = heads[i].getAttribute('data-line');
+        } else {
+            break;
+        }
     }
-    document.querySelectorAll('.toc-item').forEach(el => {
-        el.classList.toggle('active', el.dataset.line == activeLine);
-    });
+
+    if (activeLine == null) {
+        activeLine = heads[0].getAttribute('data-line');
+    }
+
+    _setActiveTocItem(activeLine);
+}
+
+// 编辑模式 TOC 高亮：编辑器视口中线对应的源位置反推
+function updateTocByEditorScroll() {
+    if (!editorView) return;
+
+    const scroller = document.querySelector('#editor .cm-scroller');
+    if (!scroller) return;
+
+    let block;
+    try {
+        block = editorView.lineBlockAtHeight(
+            scroller.scrollTop + scroller.clientHeight / 2
+        );
+    } catch (e) { return; }
+    if (!block) return;
+
+    const pivotPos = block.from;
+
+    const tocItems = document.querySelectorAll('.toc-item');
+    if (tocItems.length === 0) return;
+
+    const doc = editorView.state.doc;
+    let activeLine = null;
+
+    for (let i = 0; i < tocItems.length; i++) {
+        const line = parseInt(tocItems[i].dataset.line, 10);
+        if (!Number.isFinite(line)) continue;
+        try {
+            const lineFrom = doc.line(line + 1).from;
+            if (lineFrom < pivotPos) {
+                activeLine = tocItems[i].dataset.line;
+            } else {
+                break;
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    if (activeLine == null && tocItems.length > 0) {
+        activeLine = tocItems[0].dataset.line;
+    }
+
+    _setActiveTocItem(activeLine);
 }
 
 // ---------------- 目录宽度拖动 ----------------
@@ -815,13 +1035,37 @@ function setupTocResizer() {
 
     let dragging = false;
     let startX = 0;
-    let startW = 0;
+    let startWidth = 0;
+
+    function updateResizerPosition() {
+        if (!resizer || !tocEl || !mainEl) return;
+        if (tocEl.classList.contains('hidden')) {
+            resizer.style.display = 'none';
+            return;
+        }
+        resizer.style.display = '';
+        const tocRect = tocEl.getBoundingClientRect();
+        const mainRect = mainEl.getBoundingClientRect();
+        const leftPx = tocRect.right - mainRect.left;
+        resizer.style.left = leftPx + 'px';
+    }
+
+    updateResizerPosition();
+
+    if (window.ResizeObserver) {
+        const ro = new ResizeObserver(() => updateResizerPosition());
+        ro.observe(tocEl);
+    }
+
+    window.addEventListener('resize', updateResizerPosition);
+
+    window.__updateTocResizerPosition = updateResizerPosition;
 
     resizer.addEventListener('mousedown', (e) => {
         if (e.button !== 0) return;
         dragging = true;
         startX = e.clientX;
-        startW = tocEl.offsetWidth;
+        startWidth = tocEl.clientWidth;
         e.preventDefault();
         e.stopPropagation();
         document.body.style.cursor = 'col-resize';
@@ -832,8 +1076,9 @@ function setupTocResizer() {
     document.addEventListener('mousemove', (e) => {
         if (!dragging) return;
         const dx = e.clientX - startX;
-        const newW = Math.max(120, Math.min(600, startW + dx));
+        const newW = Math.max(120, Math.min(600, startWidth + dx));
         tocEl.style.width = newW + 'px';
+        updateResizerPosition();
     });
 
     document.addEventListener('mouseup', () => {
@@ -842,14 +1087,16 @@ function setupTocResizer() {
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         resizer.classList.remove('dragging');
+        updateResizerPosition();
         if (window.Toolbar && typeof window.Toolbar.relayout === 'function') {
             window.Toolbar.relayout();
         }
+        updateSyncAnchors();
     });
 }
 
 // ============================================================
-//  同步滚动（源位置映射 + RAF 节流 + 方向锁）
+//  同步滚动
 // ============================================================
 function _acquireScrollLock(src) {
     _scrollLock = src;
@@ -857,7 +1104,17 @@ function _acquireScrollLock(src) {
     _scrollLockTimer = setTimeout(() => {
         if (_scrollLock === src) _scrollLock = null;
         _scrollLockTimer = null;
-    }, 90);
+    }, SCROLL_LOCK_MS);
+}
+
+// ★ 修订 18：长锁，用于 TOC 跳转
+function _acquireScrollLockLong(src) {
+    _scrollLock = src;
+    if (_scrollLockTimer) clearTimeout(_scrollLockTimer);
+    _scrollLockTimer = setTimeout(() => {
+        if (_scrollLock === src) _scrollLock = null;
+        _scrollLockTimer = null;
+    }, TOC_JUMP_LOCK_MS);
 }
 
 function _releaseScrollLockSoon(src) {
@@ -865,7 +1122,7 @@ function _releaseScrollLockSoon(src) {
     _scrollLockTimer = setTimeout(() => {
         if (_scrollLock === src) _scrollLock = null;
         _scrollLockTimer = null;
-    }, 90);
+    }, SCROLL_LOCK_MS);
 }
 
 function annotatePreviewBlocks() {
@@ -1072,25 +1329,42 @@ function syncPreviewToEditor() {
 }
 
 function onEditorScrollEvent() {
+    if (mode === 'edit') {
+        if (_editorTocRaf) return;
+        _editorTocRaf = requestAnimationFrame(() => {
+            _editorTocRaf = null;
+            updateTocByEditorScroll();
+        });
+        return;
+    }
+
     if (mode !== 'split') return;
     if (_scrollLock === 'preview') return;
+
     _acquireScrollLock('editor');
     if (_editorScrollRaf) return;
     _editorScrollRaf = requestAnimationFrame(() => {
         _editorScrollRaf = null;
         try { syncEditorToPreview(); } catch (e) { console.warn('[sync e→p]', e); }
         _releaseScrollLockSoon('editor');
+
+        requestAnimationFrame(() => {
+            try { updateActiveTocByScroll(); } catch (e) { /* ignore */ }
+        });
     });
 }
 
 function onPreviewScrollEvent() {
-    if (mode !== 'split') return;
-    if (_scrollLock === 'editor') return;
+    if (mode !== 'preview' && mode !== 'split') return;
+    if (mode === 'split' && _scrollLock === 'editor') return;
+
     _acquireScrollLock('preview');
     if (_previewScrollRaf) return;
     _previewScrollRaf = requestAnimationFrame(() => {
         _previewScrollRaf = null;
-        try { syncPreviewToEditor(); } catch (e) { console.warn('[sync p→e]', e); }
+        try {
+            if (mode === 'split') syncPreviewToEditor();
+        } catch (e) { console.warn('[sync p→e]', e); }
         updateActiveTocByScroll();
         _releaseScrollLockSoon('preview');
     });
@@ -1582,7 +1856,6 @@ function setupPreviewEditing() {
     }
 }
 
-// ---------- 表格单元格编辑：启动 ----------
 function startTableCellEdit(cell, e) {
     if (!cell) return;
     if (cell.getAttribute('contenteditable') === 'true') return;
@@ -1606,7 +1879,6 @@ function startTableCellEdit(cell, e) {
     }
 }
 
-// ---------- 表格单元格编辑：提交 ----------
 function applyTableCellEdit(cell) {
     if (!cell || !cell.getAttribute) return;
     if (cell.getAttribute('data-md-editable') !== '1') return;
@@ -1664,7 +1936,6 @@ function applyTableCellEdit(cell) {
     setStatus('表格编辑已同步到 Markdown');
 }
 
-// ---------- 表格编辑工具函数 ----------
 function splitTableRow(line) {
     let s = String(line).trim();
     if (s.startsWith('|')) s = s.slice(1);
@@ -2136,7 +2407,6 @@ function applyPreviewEdit(el) {
 }
 
 // ---------------- 文件 ----------------
-// ★ 阶段 15 修订 6：新建（脏标记驱动，自定义确认弹窗）
 async function onNew() {
     if (isDirty) {
         const ok = await showConfirm(
@@ -2148,7 +2418,7 @@ async function onNew() {
 
     currentFile = '';
     currentDocDir = '';
-    syncGlobalFileState();          // ★ 阶段 15 修订 10
+    syncGlobalFileState();
 
     setContent('');
     setFilePathDisplay('');
@@ -2156,7 +2426,6 @@ async function onNew() {
     try { await window.pywebview.api.set_current_file(''); } catch (e) {}
 }
 
-// ★ 阶段 15 修订 10：先设路径，后 setContent
 async function onOpen() {
     const result = await window.pywebview.api.open_file_dialog();
     if (!result.ok) {
@@ -2164,7 +2433,6 @@ async function onOpen() {
         return;
     }
 
-    // ★★★ 先设路径，再 setContent ★★★
     currentFile = result.path || '';
     currentDocDir = result.path
         ? result.path.replace(/[\\/][^\\/]+$/, '')
@@ -2197,17 +2465,16 @@ async function onSave() {
     if (result.path && result.path.toLowerCase().endsWith('.pdf')) {
         currentFile = '';
         currentDocDir = '';
-        syncGlobalFileState();      // ★ 阶段 15 修订 10
+        syncGlobalFileState();
         setFilePathDisplay('', '（已导出 PDF）');
         setStatus('已导出 PDF：' + result.path);
         return;
     }
     currentFile = result.path;
     currentDocDir = result.path.replace(/[\\/][^\\/]+$/, '');
-    syncGlobalFileState();          // ★ 阶段 15 修订 10
+    syncGlobalFileState();
     setFilePathDisplay(result.path);
     setStatus('已保存');
-    // ★ 阶段 15 修订 6：保存成功 → 清除脏标记
     isDirty = false;
     try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
 }
@@ -2221,17 +2488,16 @@ async function onSaveAs() {
     if (result.path && result.path.toLowerCase().endsWith('.pdf')) {
         currentFile = '';
         currentDocDir = '';
-        syncGlobalFileState();      // ★ 阶段 15 修订 10
+        syncGlobalFileState();
         setFilePathDisplay('', '（已导出 PDF）');
         setStatus('已导出 PDF：' + result.path);
         return;
     }
     currentFile = result.path;
     currentDocDir = result.path.replace(/[\\/][^\\/]+$/, '');
-    syncGlobalFileState();          // ★ 阶段 15 修订 10
+    syncGlobalFileState();
     setFilePathDisplay(result.path);
     setStatus('已另存为');
-    // ★ 阶段 15 修订 6：另存成功 → 清除脏标记
     isDirty = false;
     try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
 }
@@ -2285,7 +2551,6 @@ function insertImageMarkdown_fromText(mdText, unsaved) {
 }
 
 // ---------------- PDF ----------------
-// ★ 阶段 15 修订 10：先设路径，后 setContent
 async function onImportPdf() {
     setStatus('正在导入 PDF...');
     const result = await window.pywebview.api.import_pdf_dialog();
@@ -2356,10 +2621,6 @@ function showMessage(title, body) {
     modal.classList.remove('hidden');
 }
 
-// ============================================================
-//  ★ 阶段 15 修订 6：通用「确认」弹窗（Promise 化）
-//  —— 替代 window.confirm()，避免出现 "127.0.0.1:6237 显示" 原生弹窗
-// ============================================================
 function showConfirm(title, message) {
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
@@ -2606,7 +2867,6 @@ function applyTheme(theme) {
         localStorage.setItem('markease_theme', theme);
     } catch (e) { /* ignore */ }
 
-    // ★ 阶段 15 修订 6：通知关于窗口刷新主题（若未打开则自动跳过）
     try {
         if (window.pywebview && window.pywebview.api &&
             window.pywebview.api.notify_about_refresh) {

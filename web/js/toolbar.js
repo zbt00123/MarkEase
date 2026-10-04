@@ -1,4 +1,5 @@
 // MarkEase 工具栏逻辑（阶段 15 修订：tooltip 固定显示在按钮上方，防鼠标遮挡）
+// 阶段 15 修订 11：插入链接时自动填充选区文本到「名称」框
 (function () {
     'use strict';
 
@@ -212,6 +213,37 @@
         };
         view.dom.addEventListener('mouseup', saveHandler, true);
         view.dom.addEventListener('keyup', saveHandler, true);
+    }
+
+    // ★ 阶段 15 修订 11：读取当前选区文本
+    //   优先级：_savedSelection（toolbar mousedown 时保存）→ view.state.selection.main
+    function getCurrentSelectionText() {
+        if (!view) return '';
+
+        // 1) 尝试从 _savedSelection 读取
+        try {
+            if (_savedSelection && _savedSelection.ranges && _savedSelection.ranges.length > 0) {
+                const r = _savedSelection.main;
+                if (r && !r.empty) {
+                    const txt = view.state.sliceDoc(r.from, r.to);
+                    if (txt) return txt;
+                }
+            }
+        } catch (e) { /* ignore */ }
+
+        // 2) 兜底：从实时选区读取
+        try {
+            const sel = view.state.selection;
+            if (sel && sel.ranges && sel.ranges.length > 0) {
+                const r = sel.main;
+                if (r && !r.empty) {
+                    const txt = view.state.sliceDoc(r.from, r.to);
+                    if (txt) return txt;
+                }
+            }
+        } catch (e) { /* ignore */ }
+
+        return '';
     }
 
     // ============================================================
@@ -1657,6 +1689,7 @@
 
     // ============================================================
     //  插入链接弹窗
+    //  ★ 阶段 15 修订 11：打开时自动填充当前选区文本到「名称」框
     // ============================================================
     function openLinkDialog() {
         ensureLinkModalBuilt();
@@ -1666,13 +1699,25 @@
         const nameInput = _linkModal.querySelector('.tb-link-name');
         const iconCheck = _linkModal.querySelector('.tb-link-icon');
 
+        // ★ 读取当前选区文本（优先 _savedSelection，兜底实时选区）
+        const selText = getCurrentSelectionText();
+
         urlInput.value = '';
-        nameInput.value = '';
+        nameInput.value = selText || '';
         iconCheck.checked = false;
 
         _linkModal.classList.remove('hidden');
         _linkModal.style.display = '';
-        setTimeout(() => { urlInput.focus(); urlInput.select(); }, 20);
+
+        setTimeout(() => {
+            urlInput.focus();
+            // 若名称已自动填充，则选中网址框；否则选中名称框
+            if (selText) {
+                urlInput.select();
+            } else {
+                nameInput.select();
+            }
+        }, 20);
     }
 
     function closeLinkDialog() {
