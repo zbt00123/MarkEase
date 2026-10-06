@@ -119,8 +119,25 @@
                     <div class="menu-entry" data-action="save_as"><span data-i18n="save_as">另存为</span><span class="shortcut">Ctrl+Shift+S</span></div>
                     <div class="menu-separator"></div>
                     <div class="menu-entry" data-action="insert_image"><span data-i18n="insert_image">插入图片</span><span class="shortcut">Ctrl+Shift+I</span></div>
-                    <div class="menu-entry" data-action="import_pdf"><span data-i18n="import_pdf">导入 PDF</span></div>
-                    <div class="menu-entry" data-action="export_pdf"><span data-i18n="export_pdf">导出 PDF</span></div>
+                    <div class="menu-separator"></div>
+                    <!-- ★ 阶段 16：导入二级菜单 -->
+                    <div class="menu-entry has-submenu" data-submenu="import">
+                        <span data-i18n="import">导入</span>
+                        <span class="menu-arrow">▶</span>
+                        <div class="submenu">
+                            <div class="menu-entry" data-action="import_pdf"><span data-i18n="import_pdf">导入 PDF</span></div>
+                            <div class="menu-entry" data-action="import_html"><span data-i18n="import_html">导入 HTML</span></div>
+                        </div>
+                    </div>
+                    <!-- ★ 阶段 16：导出二级菜单 -->
+                    <div class="menu-entry has-submenu" data-submenu="export">
+                        <span data-i18n="export">导出</span>
+                        <span class="menu-arrow">▶</span>
+                        <div class="submenu">
+                            <div class="menu-entry" data-action="export_pdf"><span data-i18n="export_pdf">导出 PDF</span></div>
+                            <div class="menu-entry" data-action="export_html"><span data-i18n="export_html">导出 HTML</span></div>
+                        </div>
+                    </div>
                     <div class="menu-separator"></div>
                     <div class="menu-entry" data-action="exit"><span data-i18n="exit">退出</span><span class="shortcut">Ctrl+Q</span></div>
                 </div>

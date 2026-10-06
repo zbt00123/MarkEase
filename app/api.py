@@ -2,26 +2,46 @@
 """
 阶段 15 修订 9：
 - 版本号唯一来源：version_info.txt（APP_INFO['version'] 动态读取）
-- 兼容 pywebview 4.x / 5.x 的 FileDialog 常量（消除 OPEN_DIALOG 弃用警告）
+- 兼容 pywebview 4.x / 5.x 的 FileDialog 常量
 - 关于窗口：窗口标题本地化、on_top 置顶、notify_about_refresh 热刷新
 - set_startup_file / get_startup_file（支持双击 .md 启动）
-- 保留文件关联接口
+
+阶段 16：
+- export_html / import_html_dialog / import_dropped_pdf / import_dropped_html
+- 阶段 16 第 6 批：import_dropped_pdf_bytes（无 path 时的字节流导入）
+- 阶段 16 第 7 批：_import_pdf_by_path 返回 doc_dir；import_dropped_pdf_bytes 走 data URL
+- 阶段 16 第 8 批：_export_pdf_to_path 嵌入前绝对化图片路径
+- 本轮：PDF 网络图片预加载 / proxy 代理
+
+★ 本轮修订（图片自动迁移到 assets/）：
+    1. _import_pdf_by_path：PDF 内图片落盘到 <pdf_dir>/assets/，
+       MD 里用相对路径 assets/image_NNN.png；
+       doc_dir 设为 <pdf_dir>
+    2. save_file / save_file_as：保存前扫描 content 中所有本地图片
+       （Temp 路径 / data URL），迁移到 <doc_dir>/assets/ 并改写为
+       相对路径。返回新的 content 给前端刷新。
+    3. 新增 finalize_imported_html(doc_dir, markdown_content)：
+       第三方 HTML 转换后调用，把 data URL 图片落盘到
+       <doc_dir>/assets/，返回改写后的 Markdown。
 """
 
 import os
 import sys
 import json
 import re
+import base64
+import hashlib
 import shutil
 import subprocess
 import tempfile
 import time
 import webview
+from converters.html_exporter import (
+    export_html as _export_html_impl,
+    absolutize_image_paths_in_markdown as _absolutize_md,
+)
+from converters.html_importer import import_html_file as _import_html_impl
 
-# ★ 兼容 pywebview 4.x / 5.x 的 FileDialog 常量
-#   - pywebview 4.x：使用 webview.OPEN_DIALOG / webview.SAVE_DIALOG
-#   - pywebview 5.x+：使用 webview.FileDialog.OPEN / webview.FileDialog.SAVE
-#   这里做一次兼容映射，后续代码统一用 _OPEN_DIALOG / _SAVE_DIALOG
 try:
     _OPEN_DIALOG = webview.FileDialog.OPEN
     _SAVE_DIALOG = webview.FileDialog.SAVE
@@ -40,6 +60,7 @@ except ImportError:
 SETTINGS_FILE = os.path.join(os.path.expanduser('~'), '.markease', 'settings.json')
 EMBED_NAME = 'markease_source.md'
 MAX_IMAGE_SIZE = 20 * 1024 * 1024
+MAX_DROP_PDF_SIZE = 100 * 1024 * 1024
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'}
 
 GITHUB_REPO = 'zbt00123/MarkEase'
@@ -47,7 +68,6 @@ GITHUB_RELEASES_API = f'https://api.github.com/repos/{GITHUB_REPO}/releases/late
 GITHUB_RELEASES_PAGE = f'https://github.com/{GITHUB_REPO}/releases'
 UPDATE_CHECK_INTERVAL = 30 * 24 * 60 * 60
 
-# ShellNew 注册逻辑版本号（改动注册表结构 / 图标策略时递增）
 CURRENT_SHELL_NEW_VERSION = 2
 
 DEFAULT_SETTINGS = {
@@ -62,12 +82,41 @@ DEFAULT_SETTINGS = {
 }
 
 
+# ============================================================
+#  图片迁移：正则和常量
+# ============================================================
+
+# Markdown 图片语法：![alt](url) 或 ![alt](<url>) 或 ![alt](url "title")
+_MD_IMG_RE = re.compile(
+    r'(!\[[^\]]*\]\()(\s*)(<[^>]*>|[^)\s]+)([^)]*)(\))'
+)
+
+# HTML <img src="...">
+_HTML_IMG_RE = re.compile(
+    r'(<img\b[^>]*?\bsrc\s*=\s*)(["\'])([^"\']*)(\2[^>]*>)',
+    re.IGNORECASE
+)
+
+# data:image/xxx;base64,...
+_DATA_URL_RE = re.compile(
+    r'^data:image/([a-zA-Z0-9.+-]+);base64,(.+)$',
+    re.DOTALL
+)
+
+_DATA_URL_EXT = {
+    'png': '.png',
+    'jpeg': '.jpg',
+    'jpg': '.jpg',
+    'gif': '.gif',
+    'webp': '.webp',
+    'bmp': '.bmp',
+    'svg+xml': '.svg',
+    'x-icon': '.ico',
+    'vnd.microsoft.icon': '.ico',
+}
+
+
 def _read_version_from_file():
-    """
-    从 version_info.txt 读取 FileVersion。
-    ★ 这是项目唯一的版本号来源。
-    改版本号时，只需修改 version_info.txt 即可，其他文件自动同步。
-    """
     try:
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         vi_path = os.path.join(base, 'version_info.txt')
@@ -90,7 +139,7 @@ _APP_VERSION = _read_version_from_file()
 
 APP_INFO = {
     'name': 'MarkEase',
-    'version': _APP_VERSION,   # ★ 动态读取，唯一来源是 version_info.txt
+    'version': _APP_VERSION,
     'author': 'ZBT Studio',
     'author_url': 'https://github.com/zbt00123/',
     'outline_by': 'ChatGPT',
@@ -210,19 +259,11 @@ def _normalize_lang_code(lang: str) -> str:
     low = s.lower()
 
     mapping = {
-        'zh_cn': 'zh_CN',
-        'zh_hans': 'zh_CN',
-        'zh_sg': 'zh_CN',
-        'zh_tw': 'zh_TW',
-        'zh_hk': 'zh_TW',
-        'zh_hant': 'zh_TW',
-        'en': 'en_US',
-        'en_us': 'en_US',
-        'en_gb': 'en_US',
-        'ja': 'ja_JP',
-        'ja_jp': 'ja_JP',
-        'ko': 'ko_KR',
-        'ko_kr': 'ko_KR',
+        'zh_cn': 'zh_CN', 'zh_hans': 'zh_CN', 'zh_sg': 'zh_CN',
+        'zh_tw': 'zh_TW', 'zh_hk': 'zh_TW', 'zh_hant': 'zh_TW',
+        'en': 'en_US', 'en_us': 'en_US', 'en_gb': 'en_US',
+        'ja': 'ja_JP', 'ja_jp': 'ja_JP',
+        'ko': 'ko_KR', 'ko_kr': 'ko_KR',
     }
     if low in mapping:
         return mapping[low]
@@ -304,7 +345,7 @@ class AboutApi:
     def get_version(self):
         info = dict(APP_INFO)
         info['ok'] = True
-        info['version'] = _read_version_from_file()   # ★ 单一来源
+        info['version'] = _read_version_from_file()
         return info
 
     def _find_icon_path(self):
@@ -353,17 +394,18 @@ class AboutApi:
 # ============================================================
 class Api:
     def __init__(self, web_dir):
+        self._web_dir = web_dir or ''
+        if self._web_dir:
+            self._app_root = os.path.dirname(os.path.abspath(self._web_dir))
+        else:
+            self._app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self._window = None
-        self._web_dir = web_dir
         self._settings = Settings()
         self._current_file = ''
         self._current_content = ''
         self._picker_windows = []
 
-        # 关于窗口引用（用于热刷新）
         self._about_window = None
-
-        # 启动文件（双击 .md 时由 main.py 注入）
         self._startup_file = ''
 
         from app.asset_server import AssetServer
@@ -371,7 +413,6 @@ class Api:
         self._asset_port = self._asset_server.start()
         print(f'[MarkEase] asset server: http://127.0.0.1:{self._asset_port}')
 
-        # 首次启动 / 版本升级时重写 ShellNew 注册
         try:
             from app import file_assoc
             try:
@@ -394,32 +435,198 @@ class Api:
     def set_window(self, window):
         self._window = window
 
+    # ============================================================
+    #  图片迁移工具
+    # ============================================================
+    def _is_local_abs_path(self, s):
+        if not s:
+            return False
+        if re.match(r'^[A-Za-z]:[\\/]', s):
+            return True
+        if s.startswith('/') and not s.startswith('//'):
+            return True
+        return False
+
+    def _is_under_dir(self, path, dir_path):
+        try:
+            p = os.path.normcase(os.path.abspath(path))
+            d = os.path.normcase(os.path.abspath(dir_path))
+            return p.startswith(d + os.sep) or p == d
+        except Exception:
+            return False
+
+    def _unique_target_path(self, assets_dir, base, ext, src_data=None):
+        target = os.path.join(assets_dir, base + ext)
+        if not os.path.exists(target):
+            return target, False
+        if src_data is not None:
+            try:
+                with open(target, 'rb') as f:
+                    if f.read() == src_data:
+                        return target, True
+            except Exception:
+                pass
+        counter = 1
+        while True:
+            cand = os.path.join(assets_dir, f'{base}-{counter}{ext}')
+            if not os.path.exists(cand):
+                return cand, False
+            counter += 1
+
+    def _migrate_images_to_doc_dir(self, content, doc_dir):
+        """
+        扫描 content 中的图片引用（Markdown + HTML），把所有可迁移到
+        <doc_dir>/assets/ 的图片落盘，并改写 content 为相对路径。
+
+        迁移对象：
+          - data:image/...;base64,...  （第三方 HTML 转换产物）
+          - 本地绝对路径图片（含 Temp 目录、其他 assets/ 目录）
+
+        保持不动：
+          - http(s)://、blob:、file:
+          - 已在 <doc_dir>/assets/ 下的图片（仅改写为相对路径）
+          - 相对路径
+
+        返回 (new_content, migrated_count, migrated_paths)
+        """
+        if not content or not doc_dir:
+            return content, 0, []
+
+        doc_dir_abs = os.path.abspath(doc_dir)
+        assets_dir = os.path.join(doc_dir_abs, 'assets')
+
+        migrated_count = [0]
+        migrated_paths = []
+
+        def ensure_assets_dir():
+            os.makedirs(assets_dir, exist_ok=True)
+
+        def migrate_one(url):
+            if not url:
+                return None
+            raw = url
+            if raw.startswith('<') and raw.endswith('>'):
+                raw = raw[1:-1]
+
+            # 1) data URL → 落盘
+            m = _DATA_URL_RE.match(raw)
+            if m:
+                try:
+                    mime_sub = m.group(1).lower()
+                    b64 = m.group(2)
+                    data = base64.b64decode(b64)
+                except Exception:
+                    return None
+                ext = _DATA_URL_EXT.get(mime_sub, '.png')
+                base = 'image_' + hashlib.md5(data).hexdigest()[:10]
+                ensure_assets_dir()
+                target, already = self._unique_target_path(
+                    assets_dir, base, ext, src_data=data)
+                if not already:
+                    try:
+                        with open(target, 'wb') as f:
+                            f.write(data)
+                    except Exception:
+                        return None
+                try:
+                    rel = os.path.relpath(target, doc_dir_abs).replace('\\', '/')
+                except Exception:
+                    rel = 'assets/' + os.path.basename(target)
+                migrated_count[0] += 1
+                migrated_paths.append(rel)
+                return rel
+
+            # 2) 本地绝对路径
+            if self._is_local_abs_path(raw):
+                src_abs = os.path.abspath(raw)
+                if not os.path.isfile(src_abs):
+                    return None
+                # 已在 <doc_dir>/assets/ 下 → 只改写为相对路径
+                if self._is_under_dir(src_abs, assets_dir):
+                    try:
+                        rel = os.path.relpath(src_abs, doc_dir_abs).replace('\\', '/')
+                        return rel
+                    except Exception:
+                        return None
+                # 复制到 assets/
+                try:
+                    with open(src_abs, 'rb') as f:
+                        data = f.read()
+                except Exception:
+                    return None
+                base_name, ext = os.path.splitext(os.path.basename(src_abs))
+                if not ext:
+                    ext = '.png'
+                ext = ext.lower()
+                ensure_assets_dir()
+                target, already = self._unique_target_path(
+                    assets_dir, base_name, ext, src_data=data)
+                if not already:
+                    try:
+                        with open(target, 'wb') as f:
+                            f.write(data)
+                    except Exception:
+                        return None
+                try:
+                    rel = os.path.relpath(target, doc_dir_abs).replace('\\', '/')
+                except Exception:
+                    rel = 'assets/' + os.path.basename(target)
+                migrated_count[0] += 1
+                migrated_paths.append(rel)
+                return rel
+
+            return None
+
+        # 1) Markdown 图片语法
+        def repl_md(match):
+            head = match.group(1)
+            space1 = match.group(2)
+            url = match.group(3)
+            rest = match.group(4) or ''
+            tail = match.group(5)
+            new_url = migrate_one(url)
+            if new_url is None:
+                return match.group(0)
+            return f'{head}{space1}{new_url}{rest}{tail}'
+
+        new_content = _MD_IMG_RE.sub(repl_md, content)
+
+        # 2) HTML <img src="...">
+        def repl_html(match):
+            prefix = match.group(1)
+            quote = match.group(2)
+            url = match.group(3)
+            rest = match.group(4)
+            new_url = migrate_one(url)
+            if new_url is None:
+                return match.group(0)
+            if new_url.startswith('<') and new_url.endswith('>'):
+                new_url = new_url[1:-1]
+            return f'{prefix}{quote}{new_url}{quote}{rest}'
+
+        new_content = _HTML_IMG_RE.sub(repl_html, new_content)
+
+        return new_content, migrated_count[0], migrated_paths
+
     # ---------- 启动文件 ----------
     def set_startup_file(self, path):
-        """由 main.py 调用，记录启动时要打开的文件路径。"""
         self._startup_file = path or ''
         return {'ok': True}
 
     def get_startup_file(self):
-        """
-        由前端在初始化完成后调用。
-        返回启动时传入的文件内容（读一次后清空，避免重复加载）。
-        """
         if not self._startup_file:
             return {'ok': False}
 
         path = self._startup_file
-        self._startup_file = ''  # 读一次即清空
+        self._startup_file = ''
 
         try:
             ext = os.path.splitext(path)[1].lower()
 
-            # PDF：走导入逻辑
             if ext == '.pdf':
                 result = self._import_pdf_by_path(path)
                 return result
 
-            # 其他文本文件：直接读
             with open(path, 'r', encoding='utf-8') as f:
                 content = f.read()
             self._current_file = path
@@ -460,7 +667,6 @@ class Api:
         return os.path.join(self._get_base_dir(), 'resources', 'translations')
 
     def _read_file_version(self):
-        # ★ 直接调用全局函数，保持单一来源
         return _read_version_from_file()
 
     def _resolve_system_language(self):
@@ -479,11 +685,9 @@ class Api:
 
         return 'zh_CN'
 
-    # ---------- 前端就绪通知 ----------
     def frontend_ready(self):
         return {'ok': True}
 
-    # ---------- 资源 URL ----------
     def get_asset_base_url(self):
         return {'ok': True, 'url': f'http://127.0.0.1:{self._asset_port}'}
 
@@ -558,9 +762,6 @@ class Api:
 
     # ---------- 检查更新 ----------
     def _fetch_latest_release(self):
-        """
-        强制直连，绕过系统代理。
-        """
         import urllib.request
 
         for env_key in (
@@ -659,7 +860,6 @@ class Api:
 
         try:
             import urllib.request
-            import hashlib
             from urllib.parse import urlparse
 
             req = urllib.request.Request(
@@ -811,7 +1011,6 @@ class Api:
 
     # ---------- 关于窗口 ----------
     def _get_about_window_title(self):
-        """按当前语言返回关于窗口标题，兜底 '关于 MarkEase'。"""
         fallback = '关于 MarkEase'
         try:
             lang = self._settings.get('language', 'system')
@@ -832,7 +1031,6 @@ class Api:
         return fallback
 
     def open_about_window(self):
-        # 若已存在，先聚焦（不重复打开）
         if self._about_window is not None:
             try:
                 self._about_window.restore()
@@ -840,7 +1038,6 @@ class Api:
             except Exception:
                 self._about_window = None
 
-        # 根据当前语言读取 about_title 作为初始标题
         title = self._get_about_window_title()
 
         about_api = AboutApi(web_dir=self._web_dir, main_api=self)
@@ -856,10 +1053,9 @@ class Api:
                 height=580,
                 min_size=(460, 500),
                 resizable=True,
-                on_top=True,   # 置顶
+                on_top=True,
             )
         except TypeError:
-            # 兼容不支持 on_top 的旧版 pywebview
             try:
                 about_window = webview.create_window(
                     title=title,
@@ -1142,6 +1338,7 @@ class Api:
             file_types=(
                 'Markdown 文件 (*.md;*.markdown)',
                 'PDF 文件 (*.pdf)',
+                'HTML 文件 (*.html;*.htm)',
                 '所有文件 (*.*)'
             )
         )
@@ -1153,6 +1350,13 @@ class Api:
 
         if ext == '.pdf':
             return self._import_pdf_by_path(path)
+
+        if ext in ('.html', '.htm'):
+            r = _import_html_impl(path)
+            if r and r.get('ok'):
+                r['path'] = path
+                r['imported'] = True
+            return r
 
         try:
             with open(path, 'r', encoding='utf-8') as f:
@@ -1167,10 +1371,18 @@ class Api:
         if not self._current_file:
             return self.save_file_as(content)
         try:
+            doc_dir = os.path.dirname(os.path.abspath(self._current_file))
+            new_content, migrated, _ = self._migrate_images_to_doc_dir(
+                content, doc_dir)
             with open(self._current_file, 'w', encoding='utf-8') as f:
-                f.write(content)
-            self._current_content = content
-            return {'ok': True, 'path': self._current_file}
+                f.write(new_content)
+            self._current_content = new_content
+            return {
+                'ok': True,
+                'path': self._current_file,
+                'content': new_content,
+                'migrated_images': migrated,
+            }
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
@@ -1201,11 +1413,19 @@ class Api:
         if not path.lower().endswith(('.md', '.markdown')):
             path += '.md'
         try:
+            doc_dir = os.path.dirname(os.path.abspath(path))
+            new_content, migrated, _ = self._migrate_images_to_doc_dir(
+                content, doc_dir)
             with open(path, 'w', encoding='utf-8') as f:
-                f.write(content)
+                f.write(new_content)
             self._current_file = path
-            self._current_content = content
-            return {'ok': True, 'path': path}
+            self._current_content = new_content
+            return {
+                'ok': True,
+                'path': path,
+                'content': new_content,
+                'migrated_images': migrated,
+            }
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
@@ -1232,12 +1452,25 @@ class Api:
         return self._import_pdf_by_path(result[0])
 
     def _import_pdf_by_path(self, path: str):
+        """
+        ★ 本轮修订：
+          - PDF 内图片落盘到 <pdf_dir>/assets/
+          - MD 里用相对路径 assets/image_NNN.png
+          - doc_dir 设为 <pdf_dir>
+        """
         from converters.pdf_importer import PdfImporter
         if not PdfImporter.is_available():
             return {'ok': False, 'error': 'PyMuPDF 未安装，无法导入 PDF'}
 
         try:
-            markdown_text = PdfImporter.convert(path, image_placeholder='[图片]')
+            pdf_dir = os.path.dirname(os.path.abspath(path))
+            assets_dir = os.path.join(pdf_dir, 'assets')
+
+            markdown_text = PdfImporter.convert(
+                path,
+                image_placeholder='[图片]',
+                image_dir_override=assets_dir,   # ★ 图片落盘到 <pdf_dir>/assets/
+            )
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -1253,8 +1486,60 @@ class Api:
             'path': '',
             'content': markdown_text,
             'source_pdf': path,
+            'doc_dir': pdf_dir,
             'imported': True,
         }
+
+    # ============================================================
+    #  图片加载等待（PDF 导出用）
+    # ============================================================
+    def _wait_images_loaded(self, timeout_sec=15.0):
+        if self._window is None:
+            return
+
+        poll_js = (
+            "(function(){ "
+            "var imgs = document.querySelectorAll('#preview img[src]'); "
+            "var total = 0; var loaded = 0; "
+            "imgs.forEach(function(img){ "
+            "  var s = img.getAttribute('src') || ''; "
+            "  if (!s) return; "
+            "  total++; "
+            "  if (img.complete && img.naturalWidth > 0) loaded++; "
+            "}); "
+            "return JSON.stringify({ total: total, loaded: loaded }); "
+            "})()"
+        )
+
+        time.sleep(0.3)
+        elapsed = 0.3
+        interval = 0.15
+
+        while elapsed < timeout_sec:
+            try:
+                raw = self._window.evaluate_js(poll_js)
+            except Exception as e:
+                print(f'[MarkEase] _wait_images_loaded poll failed: {e}')
+                break
+            if not raw:
+                break
+            try:
+                data = json.loads(raw)
+            except Exception:
+                break
+            try:
+                total = int(data.get('total', 0))
+                loaded = int(data.get('loaded', 0))
+            except Exception:
+                break
+
+            if total == 0 or loaded >= total:
+                break
+
+            time.sleep(interval)
+            elapsed += interval
+
+        time.sleep(0.2)
 
     def _export_pdf_to_path(self, content, pdf_path):
         if self._window is None:
@@ -1271,6 +1556,12 @@ class Api:
                 os.remove(pdf_path)
             except Exception:
                 pass
+
+        # 等待所有预览图片加载完成
+        try:
+            self._wait_images_loaded(timeout_sec=15.0)
+        except Exception as e:
+            print(f'[MarkEase] _wait_images_loaded failed: {e}')
 
         task_holder = [None]
         error_holder = [None]
@@ -1309,7 +1600,16 @@ class Api:
         if not os.path.exists(pdf_path):
             return {'ok': False, 'error': '未生成 PDF 文件'}
 
-        embed_ok = embed_markdown_into_pdf(pdf_path, content)
+        try:
+            doc_dir = ''
+            if self._current_file:
+                doc_dir = os.path.dirname(os.path.abspath(self._current_file))
+            md_to_embed = _absolutize_md(content or '', doc_dir)
+        except Exception:
+            md_to_embed = content or ''
+
+        embed_ok = embed_markdown_into_pdf(pdf_path, md_to_embed)
+
         size = os.path.getsize(pdf_path)
         return {
             'ok': True,
@@ -1342,6 +1642,237 @@ class Api:
             pdf_path += '.pdf'
 
         return self._export_pdf_to_path(content, pdf_path)
+
+    # ============================================================
+    #  HTML 导入 / 导出
+    # ============================================================
+
+    def export_html(self, payload):
+        try:
+            html = (payload or {}).get('html') or ''
+            markdown = (payload or {}).get('markdown') or ''
+            title = (payload or {}).get('title') or 'MarkEase 导出'
+            doc_dir = (payload or {}).get('doc_dir') or ''
+
+            if not html:
+                return {'ok': False, 'error': '无内容可导出'}
+
+            default_name = 'document.html'
+            if self._current_file:
+                base = os.path.splitext(os.path.basename(self._current_file))[0]
+                default_name = base + '.html'
+
+            result = self._window.create_file_dialog(
+                _SAVE_DIALOG,
+                save_filename=default_name,
+                file_types=('HTML 文件 (*.html;*.htm)', '所有文件 (*.*)')
+            )
+            if not result:
+                return {'ok': False, 'cancelled': True}
+
+            if isinstance(result, (list, tuple)):
+                out_path = result[0] if result else ''
+            else:
+                out_path = result
+            if not out_path:
+                return {'ok': False, 'cancelled': True}
+
+            if not out_path.lower().endswith(('.html', '.htm')):
+                out_path += '.html'
+
+            app_root = getattr(self, '_app_root', '') or ''
+            if not app_root:
+                app_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+            r = _export_html_impl(
+                content_html=html,
+                markdown_text=markdown,
+                output_path=out_path,
+                title=title,
+                doc_dir=doc_dir,
+                app_root=app_root,
+            )
+            return r
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    def import_html_dialog(self):
+        try:
+            result = self._window.create_file_dialog(
+                _OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=('HTML 文件 (*.html;*.htm)', '所有文件 (*.*)')
+            )
+            if not result:
+                return {'ok': False, 'cancelled': True}
+
+            if isinstance(result, (list, tuple)):
+                path = result[0] if result else ''
+            else:
+                path = result
+            if not path:
+                return {'ok': False, 'cancelled': True}
+
+            r = _import_html_impl(path)
+            return r
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    # ★ 新增：第三方 HTML 转换后落盘 data URL 图片
+    def finalize_imported_html(self, doc_dir, markdown_content):
+        """
+        第三方 HTML 转换完成后，把 data URL 图片落盘到 <doc_dir>/assets/，
+        MD 中改为相对路径。
+
+        doc_dir 为空 → 不落盘，原样返回。
+        """
+        if not doc_dir or not markdown_content:
+            return {'ok': True, 'content': markdown_content, 'migrated_images': 0}
+        try:
+            new_content, migrated, _ = self._migrate_images_to_doc_dir(
+                markdown_content, doc_dir)
+            return {
+                'ok': True,
+                'content': new_content,
+                'migrated_images': migrated,
+            }
+        except Exception as e:
+            return {'ok': False, 'error': str(e), 'content': markdown_content}
+
+    def import_dropped_pdf(self, path):
+        try:
+            if not path or not os.path.isfile(path):
+                return {'ok': False, 'error': '文件不存在'}
+            r = self._import_pdf_by_path(path)
+            if not r or not r.get('ok'):
+                return r or {'ok': False, 'error': 'PDF 解析失败'}
+            r['source_pdf'] = path
+            r['path'] = ''
+            r['imported'] = True
+            return r
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    def import_dropped_pdf_bytes(self, filename, data_base64):
+        import base64 as _b64
+
+        if not data_base64:
+            return {'ok': False, 'error': '空数据'}
+
+        from converters.pdf_importer import PdfImporter
+        if not PdfImporter.is_available():
+            return {'ok': False, 'error': 'PyMuPDF 未安装，无法导入 PDF'}
+
+        try:
+            b64 = str(data_base64)
+            if b64.startswith('data:'):
+                comma = b64.find(',')
+                if comma >= 0:
+                    b64 = b64[comma + 1:]
+            raw = _b64.b64decode(b64)
+        except Exception as e:
+            return {'ok': False, 'error': f'base64 解码失败: {e}'}
+
+        if not raw:
+            return {'ok': False, 'error': '解码后数据为空'}
+        if len(raw) > MAX_DROP_PDF_SIZE:
+            return {'ok': False,
+                    'error': f'PDF 超过 {MAX_DROP_PDF_SIZE // 1024 // 1024}MB'}
+        if not raw.startswith(b'%PDF-'):
+            return {'ok': False, 'error': '文件不是有效的 PDF'}
+
+        tmp_dir = None
+        try:
+            tmp_dir = tempfile.mkdtemp(prefix='markease_pdf_')
+            tmp_pdf = os.path.join(tmp_dir, 'drop.pdf')
+            with open(tmp_pdf, 'wb') as f:
+                f.write(raw)
+
+            try:
+                markdown_text = PdfImporter.convert(
+                    tmp_pdf,
+                    image_placeholder='[图片]',
+                    extract_images=False,
+                    image_data_url_mode=True,
+                    max_image_bytes=500 * 1024,
+                    max_total_bytes=20 * 1024 * 1024,
+                )
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                return {'ok': False, 'error': f'PDF 解析失败: {e}'}
+
+            if not markdown_text.strip():
+                return {'ok': False, 'error': 'PDF 无可提取文本'}
+
+            self._current_file = ''
+            self._current_content = markdown_text
+            return {
+                'ok': True,
+                'path': '',
+                'content': markdown_text,
+                'source_pdf': filename or 'dropped.pdf',
+                'doc_dir': '',
+                'imported': True,
+                'from_bytes': True,
+            }
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+        finally:
+            if tmp_dir:
+                try:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
+    # ★ 本轮新增：从 HTML 视觉层恢复 Markdown 里缺失的本地图片
+    def recover_missing_images(self, doc_dir, markdown_content, html_text):
+        """
+        拖拽无路径的 HTML 场景：
+        前端拿到 HTML 文本后，调用此方法恢复 Markdown 里缺失的本地图片。
+
+        参数：
+            doc_dir            原始文档目录（HTML meta 里读取）
+            markdown_content   Markdown 内容
+            html_text          完整的 HTML 文本
+
+        返回：
+            {'ok': True, 'content': new_md, 'recovered': N}
+        """
+        try:
+            from converters.html_importer import recover_images_in_markdown
+            new_content, recovered = recover_images_in_markdown(
+                markdown_content or '',
+                doc_dir or '',
+                html_text or '',
+            )
+            return {
+                'ok': True,
+                'content': new_content,
+                'recovered': recovered,
+            }
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {
+                'ok': False,
+                'error': str(e),
+                'content': markdown_content,
+                'recovered': 0,
+            }
+
+    def import_dropped_html(self, path):
+        try:
+            if not path or not os.path.isfile(path):
+                return {'ok': False, 'error': '文件不存在'}
+            r = _import_html_impl(path)
+            if not r or not r.get('ok'):
+                return r or {'ok': False, 'error': 'HTML 解析失败'}
+            r['path'] = ''
+            r['imported'] = True
+            return r
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
 
     # ---------- 设置 / 主题 / 语言 ----------
     def get_settings(self):

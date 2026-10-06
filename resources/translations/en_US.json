@@ -4,7 +4,7 @@
     "open": "Open",
     "save": "Save",
     "save_as": "Save As",
-    "export_pdf": "Export as PDF",
+    "export_pdf": "Export PDF",
     "exit": "Exit",
     "edit": "Edit",
     "undo": "Undo",
@@ -100,6 +100,8 @@
     "heading_6_placeholder": "Heading",
     "bold": "Bold",
     "italic": "Italic",
+    "underline": "Underline",
+    "underline_hint": "Underline",
     "strikethrough": "Strikethrough",
     "quote": "Quote",
     "quote_placeholder": "Quote",
@@ -119,7 +121,6 @@
     "table": "Insert Table",
     "table_header": "Column 1 | Column 2 | Column 3",
     "table_cell": "Content",
-    "set_default_program": "Set as Default Program",
     "set_default_success_title": "Success",
     "set_default_success_message": "MarkEase has been set as the default program for .md and .markdown files.",
     "set_default_failed_title": "Failed",
@@ -179,5 +180,25 @@
     "register_shell_new_success_msg": "Added \"{name}\" to desktop right-click → New.",
     "register_shell_new_failed_title": "Registration Failed",
     "register_shell_new_failed_msg": "Failed to write registry: {error}",
-    "settings": "Settings"
+    "settings": "Settings",
+
+    "import": "Import",
+    "export": "Export",
+    "import_html": "Import HTML",
+    "export_html": "Export HTML",
+    "importing_html": "Importing HTML...",
+    "exporting_html": "Exporting HTML...",
+    "import_html_success": "HTML imported",
+    "import_html_success_roundtrip": "HTML imported (lossless)",
+    "import_html_failed": "HTML import failed",
+    "export_html_success": "HTML exported",
+    "export_html_failed": "HTML export failed",
+    "imported_from_html": "(from HTML)",
+    "imported_from_pdf": "(from PDF)",
+
+    "footnote": "Footnote",
+    "footnote_hint": "Insert Footnote",
+    "footnote_back": "Back to reference",
+
+    "ok": "OK"
 }

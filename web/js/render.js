@@ -1,21 +1,48 @@
-// MarkEase 渲染管线（阶段 15 修订 9：img src 提前改写 + 多重兜底）
+// MarkEase 渲染管线（阶段 16-13 修复 2）
+//   ★ 本轮修改：
+//     1) BUILD_TAG 更新为 render-v22
+//     2) preprocessHtmlBlocks 新增 <ins> / <u> 预处理
+//        —— 把内部 markdown 提前用 marked.parseInline 解析
+//        —— 解决 <ins>**粗体**</ins> 渲染成源代码的问题
+//     3) restoreHtmlBlocks 改为多轮循环替换，处理嵌套占位符
 (function (global) {
     'use strict';
 
-    var BUILD_TAG = 'render-v9';
+    var BUILD_TAG = 'render-v22';
     console.log('[MarkEase] ' + BUILD_TAG + ' loaded');
 
     var KATEX_OPTS = {
         throwOnError: false,
         strict: false,
         trust: false,
-        output: 'html'
+        output: 'htmlAndMathml'
     };
 
     var FOLD_STATE_KEY = 'markease_fold_state_v1';
 
+    function _escHtml(s) {
+        if (typeof global.escapeHtml === 'function') {
+            try { return global.escapeHtml(s); } catch (e) { /* fallthrough */ }
+        }
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function _escapeAttr(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/'/g, '&#39;');
+    }
+
     // ============================================================
-    //  ★ 路径解析工具（所有 img 处理都靠这几个函数）
+    //  路径解析工具
     // ============================================================
     function _getDocDir(options) {
         if (options && options.docDir) return String(options.docDir);
@@ -27,23 +54,36 @@
         return global.__assetBaseUrl || '';
     }
 
+    function _toProxyUrl(remoteUrl) {
+        var baseUrl = _getAssetBase();
+        if (!baseUrl) return remoteUrl;
+        if (!remoteUrl) return remoteUrl;
+        if (remoteUrl.indexOf(baseUrl) === 0) return remoteUrl;
+        return baseUrl + '/proxy?url=' + encodeURIComponent(remoteUrl);
+    }
+
+    function _fromProxyUrl(proxiedUrl) {
+        if (!proxiedUrl) return proxiedUrl;
+        var baseUrl = _getAssetBase();
+        if (!baseUrl) return proxiedUrl;
+        var prefix = baseUrl + '/proxy?url=';
+        if (proxiedUrl.indexOf(prefix) !== 0) return proxiedUrl;
+        try {
+            return decodeURIComponent(proxiedUrl.slice(prefix.length));
+        } catch (e) {
+            return proxiedUrl;
+        }
+    }
+
     function _resolveToAbsPath(src, docDir) {
         if (!src) return null;
-
-        // 已有协议
         if (/^file:\/\//i.test(src)) {
             return decodeURIComponent(src.replace(/^file:\/\/\/?/i, ''));
         }
-        if (/^[a-z]+:\/\//i.test(src)) return null;   // http/https 等不动
+        if (/^[a-z]+:\/\//i.test(src)) return null;
         if (/^data:/i.test(src) || /^blob:/i.test(src)) return null;
-
-        // Windows 盘符
         if (/^[A-Za-z]:[\/\\]/.test(src)) return src;
-
-        // Unix 绝对路径（不处理 // 开头的 UNC）
         if (src.charAt(0) === '/' && !/^\/\//.test(src)) return src;
-
-        // 相对路径 → 拼到文档目录
         if (!docDir) return null;
         var normDir = String(docDir).replace(/\\/g, '/').replace(/\/+$/, '');
         if (!normDir) return null;
@@ -53,7 +93,7 @@
     function _toAssetUrl(absPath) {
         if (!absPath) return null;
         var baseUrl = _getAssetBase();
-        if (!baseUrl) return null;   // 无 asset 服务
+        if (!baseUrl) return null;
         var normalized = String(absPath).replace(/\\/g, '/').replace(/^\/+/, '');
         return baseUrl + '/fs/' + encodeURIComponent(normalized);
     }
@@ -64,25 +104,36 @@
         return 'file:///' + normalized;
     }
 
-    // ★ 把 src 改写为可加载的 URL（优先 asset server，其次 file:///）
     function _rewriteSrc(src, docDir) {
         if (!src) return src;
-        if (/^(https?:|data:|blob:)/i.test(src)) return src;
+
+        if (/^data:/i.test(src)) return src;
+        if (/^blob:/i.test(src)) return src;
+        if (/^file:/i.test(src)) return src;
+
+        var baseUrl = _getAssetBase();
+        if (baseUrl && src.indexOf(baseUrl) === 0) return src;
+
+        if (/^https?:/i.test(src)) {
+            return _toProxyUrl(src);
+        }
+
+        if (src.indexOf('base64') !== -1 || src.indexOf('[图片') !== -1) return src;
 
         var absPath = _resolveToAbsPath(src, docDir);
         if (!absPath) return src;
-
         var assetUrl = _toAssetUrl(absPath);
         if (assetUrl) return assetUrl;
-
-        // ★ asset server 不可用时，回退到 file:///（WebView2 通常允许）
         return _toFileUrl(absPath) || src;
     }
 
     // ============================================================
     //  DOM → Markdown
     // ============================================================
-    function domToMarkdown(el) {
+    function domToMarkdown(el, opts) {
+        opts = opts || {};
+        var skipNestedLists = opts.skipNestedLists === true;
+
         let out = '';
         const nodes = el.childNodes;
         for (let i = 0; i < nodes.length; i++) {
@@ -91,23 +142,34 @@
                 out += node.nodeValue;
             } else if (node.nodeType === 1) {
                 const tag = node.tagName.toLowerCase();
+
+                if (skipNestedLists && (tag === 'ul' || tag === 'ol')) {
+                    continue;
+                }
+
                 if (tag === 'img') {
                     const src = node.getAttribute('src') || '';
                     const alt = node.getAttribute('alt') || '';
                     const width = node.getAttribute('width') || '';
                     const height = node.getAttribute('height') || '';
                     let realSrc = src;
-                    if (/^http:\/\/127\.0\.0\.1:\d+\/fs\//i.test(src)) {
+
+                    if (/^http:\/\/127\.0\.0\.1:\d+\/proxy\?url=/i.test(src)) {
+                        realSrc = _fromProxyUrl(src);
+                    }
+                    else if (/^http:\/\/127\.0\.0\.1:\d+\/fs\//i.test(src)) {
                         try {
                             realSrc = decodeURIComponent(src.replace(
                                 /^http:\/\/127\.0\.0\.1:\d+\/fs\//i, ''));
                         } catch (e) { /* 保留 */ }
-                    } else if (/^file:\/\//i.test(src)) {
+                    }
+                    else if (/^file:\/\//i.test(src)) {
                         try {
                             realSrc = decodeURIComponent(src.replace(
                                 /^file:\/\/\/?/i, ''));
                         } catch (e) { /* 保留 */ }
                     }
+
                     if (width || height) {
                         let attrs = ' src="' + String(realSrc).replace(/"/g, '&quot;') + '"';
                         if (alt) attrs += ' alt="' + String(alt).replace(/"/g, '&quot;') + '"';
@@ -122,7 +184,15 @@
                     }
                     continue;
                 }
-                const inner = domToMarkdown(node);
+
+                if (tag === 'sup' && node.getAttribute &&
+                    node.getAttribute('data-footnote-ref') === '1') {
+                    const idx = node.getAttribute('data-footnote-index') || '';
+                    out += '[^' + idx + ']';
+                    continue;
+                }
+
+                const inner = domToMarkdown(node, opts);
                 switch (tag) {
                     case 'br': out += '\n'; break;
                     case 'strong':
@@ -131,8 +201,14 @@
                     case 'i': out += '*' + inner + '*'; break;
                     case 'del':
                     case 's': out += '~~' + inner + '~~'; break;
+                    case 'ins':
+                    case 'u': out += '<ins>' + inner + '</ins>'; break;
                     case 'code': out += '`' + inner + '`'; break;
                     case 'a': {
+                        if (node.getAttribute &&
+                            node.getAttribute('data-footnote-backref') === '1') {
+                            break;
+                        }
                         if (node.querySelector('img')) {
                             const href = node.getAttribute('href') || '';
                             let attrs = ' href="' + String(href).replace(/"/g, '&quot;') + '"';
@@ -150,7 +226,16 @@
                         }
                         break;
                     }
-                    case 'span': out += inner; break;
+                    case 'span': {
+                        if (node.classList) {
+                            if (node.classList.contains('task-list-bullet') ||
+                                node.classList.contains('task-list-checkbox')) {
+                                break;
+                            }
+                        }
+                        out += inner;
+                        break;
+                    }
                     case 'div':
                     case 'p':
                         if (out && !out.endsWith('\n')) out += '\n';
@@ -191,10 +276,14 @@
     function collectCodeRanges(md) {
         var ranges = [];
         var m;
-        var reBlock = /(```[\s\S]*?```|~~~[\s\S]*?~~~)/g;
+
+        var reBlock = /(^|\n)([ \t]*)(```|~~~)([^\n]*)\n([\s\S]*?)\n\2\3[ \t]*(?=\n|$)/g;
         while ((m = reBlock.exec(md)) !== null) {
-            ranges.push([m.index, m.index + m[0].length]);
+            var start = m.index + m[1].length;
+            var end = m.index + m[0].length;
+            ranges.push([start, end]);
         }
+
         var reInline = /`[^`\n]*`/g;
         while ((m = reInline.exec(md)) !== null) {
             var skip = false;
@@ -205,6 +294,7 @@
             }
             if (!skip) ranges.push([m.index, m.index + m[0].length]);
         }
+
         ranges.sort(function (a, b) { return a[0] - b[0]; });
         return ranges;
     }
@@ -217,6 +307,210 @@
             }
             return false;
         };
+    }
+
+    // ============================================================
+    //  脚注预处理
+    // ============================================================
+    function preprocessFootnotes(md) {
+        var source = String(md == null ? '' : md);
+        var footnotes = [];
+        var seen = {};
+
+        var codeRanges = collectCodeRanges(source);
+        var isInCode = makeIsInCode(codeRanges);
+
+        var defReplacements = [];
+        var lineStart = 0;
+        var lineEnd = 0;
+        var n = source.length;
+        var defRe = /^([ \t]*\[\^([^\]\s]+)\]:[ \t]*)(.*)$/;
+
+        while (lineStart <= n) {
+            lineEnd = source.indexOf('\n', lineStart);
+            if (lineEnd === -1) lineEnd = n;
+            var line = source.slice(lineStart, lineEnd);
+
+            if (!isInCode(lineStart)) {
+                var m = defRe.exec(line);
+                if (m) {
+                    var prefix = m[1] || '';
+                    var key = m[2];
+                    var content = m[3] || '';
+                    var contentStart = lineStart + prefix.length;
+                    var contentEnd = lineEnd;
+
+                    if (!Object.prototype.hasOwnProperty.call(seen, key)) {
+                        seen[key] = true;
+                        footnotes.push({
+                            index: key,
+                            content: content,
+                            contentStart: contentStart,
+                            contentEnd: contentEnd,
+                        });
+                    }
+                    defReplacements.push({
+                        start: lineStart,
+                        end: lineEnd,
+                        placeholder: '\n\n@@MKFNDEF_' + key + '@@\n\n'
+                    });
+                }
+            }
+
+            if (lineEnd === n) break;
+            lineStart = lineEnd + 1;
+        }
+
+        var result = source;
+        for (var di = defReplacements.length - 1; di >= 0; di--) {
+            var d = defReplacements[di];
+            result = result.slice(0, d.start) + d.placeholder + result.slice(d.end);
+        }
+
+        codeRanges = collectCodeRanges(result);
+        isInCode = makeIsInCode(codeRanges);
+
+        result = result.replace(/\[\^([^\]\s]+)\](?!:)/g, function (m, key, offset) {
+            if (isInCode(offset)) return m;
+            if (!Object.prototype.hasOwnProperty.call(seen, key)) {
+                return m;
+            }
+            return '@@MKFNREF_' + key + '@@';
+        });
+
+        return { text: result, footnotes: footnotes };
+    }
+
+    function renderInlineMarkdown(text) {
+        if (typeof marked === 'undefined') return _escHtml(text);
+        try {
+            if (typeof marked.parseInline === 'function') {
+                return marked.parseInline(String(text == null ? '' : text));
+            }
+            var html = marked.parse(String(text == null ? '' : text));
+            return html.replace(/^\s*<p>/, '').replace(/<\/p>\s*$/, '');
+        } catch (e) {
+            return _escHtml(text);
+        }
+    }
+
+    // ============================================================
+    //  脚注后处理
+    // ============================================================
+    function postprocessFootnotes(html, footnotes) {
+        if (!html) return html;
+
+        html = html.replace(
+            /<p>\s*@@MKFNDEF_([^@\s]+)@@\s*<\/p>\s*/g,
+            ''
+        );
+        html = html.replace(/@@MKFNDEF_[^@\s]+@@/g, '');
+
+        var refCounter = {};
+        html = html.replace(/@@MKFNREF_([^@\s]+)@@/g, function (m, key) {
+            var c = (refCounter[key] || 0) + 1;
+            refCounter[key] = c;
+            var idSuffix = (c === 1) ? '' : ('-' + c);
+            var kEsc = _escapeAttr(key);
+            return '<sup class="footnote-ref" data-footnote-ref="1" ' +
+                   'data-footnote-index="' + kEsc + '">' +
+                   '<a href="#fn-' + kEsc + '" id="fnref-' + kEsc + idSuffix +
+                   '" role="doc-noteref">' + _escHtml(key) + '</a>' +
+                   '</sup>';
+        });
+
+        if (footnotes && footnotes.length > 0) {
+            var items = [];
+            for (var i = 0; i < footnotes.length; i++) {
+                var fn = footnotes[i];
+                var kEsc2 = _escapeAttr(fn.index);
+                var contentHtml = renderInlineMarkdown(fn.content || '');
+                if (typeof global.sanitizeHtml === 'function') {
+                    try {
+                        contentHtml = global.sanitizeHtml(contentHtml);
+                    } catch (e) { /* 保持已 escape 文本 */ }
+                }
+                var startAttr = (typeof fn.contentStart === 'number') ? fn.contentStart : '';
+                var endAttr = (typeof fn.contentEnd === 'number') ? fn.contentEnd : '';
+                var oldTextAttr = _escapeAttr(fn.content || '');
+
+                items.push(
+                    '<li id="fn-' + kEsc2 + '" data-footnote-item="1" ' +
+                    'data-footnote-index="' + kEsc2 + '">' +
+                    '<p data-md-editable="footnote" ' +
+                    'data-md-start="' + startAttr + '" ' +
+                    'data-md-end="' + endAttr + '" ' +
+                    'data-md-old-text="' + oldTextAttr + '" ' +
+                    'contenteditable="false" spellcheck="false">' +
+                    contentHtml +
+                    '</p>' +
+                    '<a href="#fnref-' + kEsc2 + '" ' +
+                    'class="footnote-backref" data-footnote-backref="1" ' +
+                    'data-no-edit="1" contenteditable="false" ' +
+                    'role="doc-backlink" aria-label="返回引用">↩</a>' +
+                    '</li>'
+                );
+            }
+            html +=
+                '<section class="footnotes" data-footnotes="1" ' +
+                'role="doc-endnotes" aria-label="脚注">' +
+                '<hr class="footnotes-sep">' +
+                '<ol class="footnotes-list">' + items.join('') + '</ol>' +
+                '</section>';
+        }
+
+        return html;
+    }
+
+    // ============================================================
+    //  脚注点击跳转
+    // ============================================================
+    function setupFootnoteClick(previewEl) {
+        if (!previewEl) return;
+        if (previewEl.__footnoteClickBound) return;
+        previewEl.__footnoteClickBound = true;
+
+        previewEl.addEventListener('click', function (e) {
+            var a = null;
+            var el = e.target;
+            while (el && el !== previewEl) {
+                if (el.nodeType === 1 && el.tagName &&
+                    el.tagName.toLowerCase() === 'a') {
+                    var href = el.getAttribute('href') || '';
+                    if (/^#fn(ref)?-/.test(href)) {
+                        a = el;
+                        break;
+                    }
+                    break;
+                }
+                el = el.parentElement;
+            }
+            if (!a) return;
+
+            var href2 = a.getAttribute('href') || '';
+            if (!/^#fn(ref)?-/.test(href2)) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+
+            var targetId = href2.slice(1);
+            var target = document.getElementById(targetId);
+            if (!target) return;
+
+            var container = previewEl.parentElement;
+            if (container) {
+                var cRect = container.getBoundingClientRect();
+                var tRect = target.getBoundingClientRect();
+                var targetTop = tRect.top - cRect.top + container.scrollTop;
+                var desired = targetTop - container.clientHeight / 3;
+                container.scrollTop = Math.max(0, desired);
+            }
+
+            target.classList.add('footnote-flash');
+            setTimeout(function () {
+                target.classList.remove('footnote-flash');
+            }, 1200);
+        }, true);
     }
 
     // ============================================================
@@ -291,9 +585,6 @@
         return { text: out.join('\n'), taskItems: taskItems };
     }
 
-    // ============================================================
-    //  任务列表还原
-    // ============================================================
     function restoreTaskListHtml(html, taskItems) {
         if (!taskItems || taskItems.length === 0) return html;
         var out = html;
@@ -315,128 +606,60 @@
     }
 
     // ============================================================
-    //  ★ HTML 块保护：提取 <a> 与 <img>，同时【立即改写 img 的 src】
-    //
-    //  为什么在这里改写（而不是 marked 之后）？
-    //    restoreHtmlBlocks 用字符串替换把 <img> 塞回 HTML，
-    //    那一刻浏览器可能还没执行到 rewriteImgSrcInHtml。
-    //    直接在提取阶段就把 src 改成 asset URL，可保证任何后续流程
-    //    拿到的都是可直接加载的地址。
+    //  列表松散段落修复
+    //  解包 li 的第一个直接 <p>（允许后面有嵌套列表）
     // ============================================================
-    function preprocessHtmlBlocks(md, docDir) {
-        var htmlList = [];
-        var result = String(md);
-
-        // 1) <a ...>...</a>
-        var reA = /<a\b[^>]*>[\s\S]*?<\/a>/gi;
-        result = result.replace(reA, function (match) {
-            var idx = htmlList.length;
-            var placeholder = '@@MKHTML' + idx + 'MKHTML@@';
-            htmlList.push({ placeholder: placeholder, html: match });
-            return placeholder;
-        });
-
-        // 2) <img ...> / <img ... />（★ 立即改写 src）
-        var reImg = /<img\b([^>]*?)\/?>/gi;
-        result = result.replace(reImg, function (match) {
-            var idx = htmlList.length;
-            var placeholder = '@@MKHTML' + idx + 'MKHTML@@';
-
-            var rewritten = match;
-            if (docDir) {
-                rewritten = match.replace(
-                    /(\bsrc\s*=\s*)(["'])([^"']*)(\2)/i,
-                    function (m, prefix, quote1, srcVal) {
-                        var newSrc = _rewriteSrc(srcVal, docDir);
-                        return prefix + quote1 + newSrc + quote1;
-                    }
-                );
-            }
-
-            htmlList.push({ placeholder: placeholder, html: rewritten });
-            return placeholder;
-        });
-
-        return { text: result, htmlList: htmlList };
-    }
-
-    function restoreHtmlBlocks(html, htmlList) {
-        if (!htmlList || htmlList.length === 0) return html;
-        var out = html;
-        for (var i = 0; i < htmlList.length; i++) {
-            var item = htmlList[i];
-            out = out.split(item.placeholder).join(item.html);
-        }
-        return out;
-    }
-
-    // ---------- marked 自定义渲染 ----------
-    if (typeof marked !== 'undefined') {
-        var mdRenderer = new marked.Renderer();
-
-        mdRenderer.code = function (code, infostring, escaped) {
-            var info = (infostring || '').trim();
-            var lang = (info.match(/^\S+/) || [''])[0].toLowerCase();
-
-            if (lang === 'math' || lang === 'latex' || lang === 'katex' || lang === 'tex') {
-                return '<div class="math-block" data-tex="' +
-                       encodeURIComponent(code) + '">' +
-                       window.escapeHtml(code) + '</div>\n';
-            }
-
-            if (typeof hljs !== 'undefined') {
-                var highlighted;
-                try {
-                    if (lang && hljs.getLanguage(lang)) {
-                        highlighted = hljs.highlight(code, {
-                            language: lang,
-                            ignoreIllegals: true
-                        }).value;
-                    } else {
-                        highlighted = hljs.highlightAuto(code).value;
-                    }
-                } catch (e) {
-                    highlighted = window.escapeHtml(code);
-                }
-                var cls = 'hljs' + (lang ? ' language-' + lang : '');
-                return '<pre><code class="' + cls + '">' + highlighted + '</code></pre>\n';
-            }
-            return '<pre><code>' + window.escapeHtml(code) + '</code></pre>\n';
-        };
-
-        mdRenderer.html = function (html) {
-            var trimmed = String(html).trim();
-            if (/^<(details|summary|a|picture)\b/i.test(trimmed) ||
-                /^<\/(details|summary|a|picture)\b/i.test(trimmed)) {
-                return html + '\n';
-            }
-            if (/^<(img|br|source)\b/i.test(trimmed)) {
-                return html + '\n';
-            }
-            return '<p>' + window.escapeHtml(html) + '</p>\n';
-        };
-
-        marked.setOptions({
-            renderer: mdRenderer,
-            breaks: true,
-            gfm: true
-        });
-    }
-
-    // ---------- KaTeX ----------
-    function renderKatexToString(tex, display) {
-        if (typeof katex === 'undefined') {
-            return '<code>' + window.escapeHtml(tex) + '</code>';
-        }
+    function fixLooseListParagraphs(html) {
+        if (!html) return html;
+        if (typeof DOMParser === 'undefined') return html;
         try {
-            var opts = Object.assign({}, KATEX_OPTS, { displayMode: !!display });
-            return katex.renderToString(tex, opts);
+            var doc = new DOMParser().parseFromString(
+                '<div id="__fix_loose_root__">' + html + '</div>',
+                'text/html'
+            );
+            var root = doc.getElementById('__fix_loose_root__');
+            if (!root) return html;
+
+            var lis = root.querySelectorAll('li');
+            for (var i = 0; i < lis.length; i++) {
+                var li = lis[i];
+
+                var firstP = null;
+                var firstNonWhitespace = null;
+                for (var c = 0; c < li.childNodes.length; c++) {
+                    var child = li.childNodes[c];
+                    if (child.nodeType === 3) {
+                        if (child.nodeValue && child.nodeValue.trim()) {
+                            firstNonWhitespace = child;
+                            break;
+                        }
+                    } else if (child.nodeType === 1) {
+                        firstNonWhitespace = child;
+                        if (child.tagName.toLowerCase() === 'p') {
+                            firstP = child;
+                        }
+                        break;
+                    }
+                }
+
+                if (!firstP || firstNonWhitespace !== firstP) continue;
+
+                var frag = doc.createDocumentFragment();
+                while (firstP.firstChild) {
+                    frag.appendChild(firstP.firstChild);
+                }
+                li.replaceChild(frag, firstP);
+            }
+            return root.innerHTML;
         } catch (e) {
-            return '<span class="katex-error">[公式错误] ' +
-                   window.escapeHtml(tex) + '</span>';
+            console.warn('[fixLooseListParagraphs]', e);
+            return html;
         }
     }
 
+    // ============================================================
+    //  数学公式
+    // ============================================================
     function preprocessMath(md) {
         var mathList = [];
         var codeRanges = collectCodeRanges(md);
@@ -481,7 +704,8 @@
         var result = md;
         for (var j = 0; j < allMatches.length; j++) {
             var item = allMatches[j];
-            var placeholder = '@@MKPH' + j + 'MKPH@@';
+            var prefix = item.display ? '@@MATHBLOCK_' : '@@MATHINLINE_';
+            var placeholder = prefix + j + '@@';
             mathList.push({
                 placeholder: placeholder,
                 tex: item.tex,
@@ -493,6 +717,199 @@
         }
 
         return { text: result, mathList: mathList };
+    }
+
+    function replaceMathPlaceholders(html, mathList) {
+        if (!html || !mathList || mathList.length === 0) return html;
+        var out = html;
+        for (var i = 0; i < mathList.length; i++) {
+            var item = mathList[i];
+            var katexHtml = renderKatexToString(item.tex, item.display);
+            if (item.display) {
+                katexHtml = '<div class="math-block">' + katexHtml + '</div>';
+            } else {
+                katexHtml = '<span class="katex-inline">' + katexHtml + '</span>';
+            }
+            out = out.split(item.placeholder).join(katexHtml);
+        }
+        return out;
+    }
+
+    // ============================================================
+    //  HTML 块保护（★ 本轮：新增 <ins>/<u> 内部 markdown 解析）
+    // ============================================================
+    function preprocessHtmlBlocks(md, docDir) {
+        var htmlList = [];
+        var result = String(md);
+
+        var codeRanges = collectCodeRanges(result);
+        var isInCode = makeIsInCode(codeRanges);
+
+        // ★ 处理 <ins> 和 <u>：把内部 markdown 提前用 marked.parseInline 解析
+        function preprocessUnderlineTag(tagName) {
+            var openTag = '<' + tagName + '>';
+            var closeTag = '</' + tagName + '>';
+            var re = new RegExp(
+                '<' + tagName + '\\b[^>]*>([\\s\\S]*?)<\\/' + tagName + '>',
+                'gi'
+            );
+            result = result.replace(re, function (match, inner, offset) {
+                if (isInCode(offset)) return match;
+                var innerHtml;
+                if (typeof marked !== 'undefined' &&
+                    typeof marked.parseInline === 'function') {
+                    try {
+                        innerHtml = marked.parseInline(inner);
+                    } catch (e) {
+                        innerHtml = _escHtml(inner);
+                    }
+                } else {
+                    innerHtml = _escHtml(inner);
+                }
+                var idx = htmlList.length;
+                var placeholder = '@@MKHTML' + idx + 'MKHTML@@';
+                htmlList.push({
+                    placeholder: placeholder,
+                    html: '<ins>' + innerHtml + '</ins>'
+                });
+                return placeholder;
+            });
+        }
+
+        preprocessUnderlineTag('ins');
+        preprocessUnderlineTag('u');
+
+        // 处理 <a>
+        var reA = /<a\b[^>]*>[\s\S]*?<\/a>/gi;
+        result = result.replace(reA, function (match, offset) {
+            if (isInCode(offset)) return match;
+            var idx = htmlList.length;
+            var placeholder = '@@MKHTML' + idx + 'MKHTML@@';
+            htmlList.push({ placeholder: placeholder, html: match });
+            return placeholder;
+        });
+
+        // 处理 <img>
+        var reImg = /<img\b([^>]*?)\/?>/gi;
+        result = result.replace(reImg, function (match, p1, offset) {
+            if (isInCode(offset)) return match;
+            var idx = htmlList.length;
+            var placeholder = '@@MKHTML' + idx + 'MKHTML@@';
+
+            var rewritten = match;
+            if (docDir !== undefined) {
+                rewritten = match.replace(
+                    /(\bsrc\s*=\s*)(["'])([^"']*)(\2)/i,
+                    function (m, prefix, quote1, srcVal) {
+                        var newSrc = _rewriteSrc(srcVal, docDir || '');
+                        return prefix + quote1 + newSrc + quote1;
+                    }
+                );
+            }
+
+            htmlList.push({ placeholder: placeholder, html: rewritten });
+            return placeholder;
+        });
+
+        return { text: result, htmlList: htmlList };
+    }
+
+    // ★ 多轮循环替换，处理嵌套占位符
+    function restoreHtmlBlocks(html, htmlList) {
+        if (!htmlList || htmlList.length === 0) return html;
+        var out = html;
+        var maxIter = 5;
+        for (var it = 0; it < maxIter; it++) {
+            var before = out;
+            for (var i = 0; i < htmlList.length; i++) {
+                var item = htmlList[i];
+                if (out.indexOf(item.placeholder) >= 0) {
+                    out = out.split(item.placeholder).join(item.html);
+                }
+            }
+            if (out === before) break;
+        }
+        return out;
+    }
+
+    // ============================================================
+    //  marked 自定义渲染
+    // ============================================================
+    if (typeof marked !== 'undefined') {
+        var mdRenderer = new marked.Renderer();
+
+        mdRenderer.code = function (code, infostring, escaped) {
+            var info = (infostring || '').trim();
+            var lang = (info.match(/^\S+/) || [''])[0].toLowerCase();
+
+            if (lang === 'math' || lang === 'latex' || lang === 'katex' || lang === 'tex') {
+                return '<div class="math-block" data-tex="' +
+                       encodeURIComponent(code) + '">' +
+                       _escHtml(code) + '</div>\n';
+            }
+
+            if (typeof hljs !== 'undefined') {
+                var highlighted;
+                try {
+                    if (lang && hljs.getLanguage(lang)) {
+                        highlighted = hljs.highlight(code, {
+                            language: lang,
+                            ignoreIllegals: true
+                        }).value;
+                    } else {
+                        highlighted = hljs.highlightAuto(code).value;
+                    }
+                } catch (e) {
+                    highlighted = _escHtml(code);
+                }
+                var cls = 'hljs' + (lang ? ' language-' + lang : '');
+                return '<pre><code class="' + cls + '">' + highlighted + '</code></pre>\n';
+            }
+            return '<pre><code>' + _escHtml(code) + '</code></pre>\n';
+        };
+
+        mdRenderer.html = function (html) {
+            var trimmed = String(html).trim();
+
+            if (/^<\/?(ins|u|span|sub|sup|mark|kbd|abbr|cite|q|dfn|time|var|samp|small|big|del|s|strike|tt|font|em|strong|b|i)\b/i.test(trimmed)) {
+                return html;
+            }
+
+            if (/^<(details|summary|a|picture)\b/i.test(trimmed) ||
+                /^<\/(details|summary|a|picture)\b/i.test(trimmed)) {
+                return html + '\n';
+            }
+            if (/^<(img|br|source)\b/i.test(trimmed)) {
+                return html + '\n';
+            }
+            return '<p>' + _escHtml(html) + '</p>\n';
+        };
+
+        marked.setOptions({
+            renderer: mdRenderer,
+            breaks: true,
+            gfm: true,
+            pedantic: false,
+            smartLists: false,
+            smartypants: false,
+            xhtml: false
+        });
+    }
+
+    // ============================================================
+    //  KaTeX
+    // ============================================================
+    function renderKatexToString(tex, display) {
+        if (typeof katex === 'undefined') {
+            return '<code>' + _escHtml(tex) + '</code>';
+        }
+        try {
+            var opts = Object.assign({}, KATEX_OPTS, { displayMode: !!display });
+            return katex.renderToString(tex, opts);
+        } catch (e) {
+            return '<span class="katex-error">[公式错误] ' +
+                   _escHtml(tex) + '</span>';
+        }
     }
 
     function renderMathBlocks(root) {
@@ -510,18 +927,20 @@
                     throwOnError: false,
                     strict: false,
                     trust: false,
-                    output: 'html'
+                    output: 'htmlAndMathml'
                 });
             } catch (e) {
                 el.innerHTML = '<span class="katex-error">[公式错误] ' +
-                               window.escapeHtml(String(e.message || e)) +
+                               _escHtml(String(e.message || e)) +
                                '</span><br><code>' +
-                               window.escapeHtml(tex) + '</code>';
+                               _escHtml(tex) + '</code>';
             }
         }
     }
 
-    // ---------- 图片解析兜底（处理 Markdown 语法 ![]() 生成的 img）----------
+    // ============================================================
+    //  图片解析兜底
+    // ============================================================
     function resolveLocalImages(root, docDir) {
         if (!root) return;
         var imgs = root.querySelectorAll('img[src]');
@@ -530,13 +949,19 @@
             var src = img.getAttribute('src');
             if (!src) continue;
             if (img.getAttribute('data-resolved') === '1') continue;
-            if (/^(https?:|data:|blob:)/i.test(src)) {
+
+            if (/^(data:|blob:)/i.test(src)) {
                 img.setAttribute('data-resolved', '1');
                 continue;
             }
-            // 已经是 asset URL 或 file:// → 标记已解析
-            if (/^http:\/\/127\.0\.0\.1:\d+\/fs\//i.test(src) ||
-                /^file:\/\//i.test(src)) {
+
+            if (src.indexOf('base64') !== -1 || src.indexOf('[图片') !== -1) {
+                img.setAttribute('data-resolved', '1');
+                continue;
+            }
+
+            var baseUrl = _getAssetBase();
+            if (baseUrl && src.indexOf(baseUrl) === 0) {
                 img.setAttribute('data-resolved', '1');
                 continue;
             }
@@ -549,19 +974,40 @@
         }
     }
 
-    // ---------- 段落可编辑性判定 ----------
+    // ============================================================
+    //  段落可编辑性判定
+    // ============================================================
+    var BLOCK_TAGS_FOR_P = {
+        'div': 1, 'p': 1, 'ul': 1, 'ol': 1, 'li': 1,
+        'table': 1, 'pre': 1, 'blockquote': 1,
+        'h1': 1, 'h2': 1, 'h3': 1, 'h4': 1, 'h5': 1, 'h6': 1,
+        'details': 1, 'summary': 1
+    };
+
+    var BLOCK_TAGS_FOR_LI = {
+        'div': 1, 'p': 1,
+        'table': 1, 'pre': 1, 'blockquote': 1,
+        'h1': 1, 'h2': 1, 'h3': 1, 'h4': 1, 'h5': 1, 'h6': 1,
+        'details': 1, 'summary': 1
+    };
+
     function hasBlockChildren(el) {
-        var BLOCK_TAGS = {
-            'div': 1, 'p': 1, 'ul': 1, 'ol': 1, 'li': 1,
-            'table': 1, 'pre': 1, 'blockquote': 1,
-            'h1': 1, 'h2': 1, 'h3': 1, 'h4': 1, 'h5': 1, 'h6': 1,
-            'details': 1, 'summary': 1
-        };
         for (var i = 0; i < el.childNodes.length; i++) {
             var child = el.childNodes[i];
             if (child.nodeType === 1) {
                 var tag = child.tagName.toLowerCase();
-                if (BLOCK_TAGS[tag]) return true;
+                if (BLOCK_TAGS_FOR_P[tag]) return true;
+            }
+        }
+        return false;
+    }
+
+    function hasNonListBlockChildren(liEl) {
+        for (var i = 0; i < liEl.childNodes.length; i++) {
+            var child = liEl.childNodes[i];
+            if (child.nodeType === 1) {
+                var tag = child.tagName.toLowerCase();
+                if (BLOCK_TAGS_FOR_LI[tag]) return true;
             }
         }
         return false;
@@ -578,30 +1024,79 @@
         }
         var normStr = normArr.join('');
 
-        var blocks = root.querySelectorAll('p, h1, h2, h3, h4, h5, h6');
+        var candidates = [];
+
+        var ps = root.querySelectorAll('p, h1, h2, h3, h4, h5, h6');
+        for (var pi = 0; pi < ps.length; pi++) {
+            candidates.push({ el: ps[pi], kind: 'p' });
+        }
+
+        var lis = root.querySelectorAll('li');
+        for (var li = 0; li < lis.length; li++) {
+            var liEl = lis[li];
+            var hasDirectP = false;
+            for (var ci = 0; ci < liEl.children.length; ci++) {
+                if (liEl.children[ci].tagName.toLowerCase() === 'p') {
+                    hasDirectP = true;
+                    break;
+                }
+            }
+            if (hasDirectP) continue;
+            candidates.push({ el: liEl, kind: 'li' });
+        }
+
+        candidates.sort(function (a, b) {
+            if (a.el === b.el) return 0;
+            var pos = a.el.compareDocumentPosition(b.el);
+            if (pos & 4) return -1;
+            if (pos & 2) return 1;
+            return 0;
+        });
+
         var searchFromNorm = 0;
 
-        for (var bi = 0; bi < blocks.length; bi++) {
-            var el = blocks[bi];
+        for (var bi = 0; bi < candidates.length; bi++) {
+            var item = candidates[bi];
+            var el = item.el;
+            var kind = item.kind;
+
+            if (el.getAttribute && el.getAttribute('data-md-editable') === 'footnote') {
+                continue;
+            }
 
             if (el.closest && el.closest('details')) {
                 el.setAttribute('data-md-editable', '0');
                 continue;
             }
 
+            if (el.closest && el.closest('section.footnotes')) {
+                el.setAttribute('data-md-editable', '0');
+                continue;
+            }
+
+            if (el.closest && el.closest('td, th')) {
+                el.setAttribute('data-md-editable', '0');
+                continue;
+            }
+
             if (el.parentElement && el.parentElement !== root) {
                 var parentTag = el.parentElement.tagName.toLowerCase();
-                if (parentTag === 'li' || parentTag === 'blockquote' ||
-                    parentTag === 'td' || parentTag === 'th' ||
-                    parentTag === 'details' || parentTag === 'summary') {
+                if (parentTag === 'details' || parentTag === 'summary') {
                     el.setAttribute('data-md-editable', '0');
                     continue;
                 }
             }
 
-            if (hasBlockChildren(el)) {
-                el.setAttribute('data-md-editable', '0');
-                continue;
+            if (kind === 'li') {
+                if (hasNonListBlockChildren(el)) {
+                    el.setAttribute('data-md-editable', '0');
+                    continue;
+                }
+            } else {
+                if (hasBlockChildren(el)) {
+                    el.setAttribute('data-md-editable', '0');
+                    continue;
+                }
             }
 
             if (el.querySelector('img')) {
@@ -609,7 +1104,18 @@
                 continue;
             }
 
-            var mdText = domToMarkdown(el);
+            if (el.querySelector('.katex, .katex-inline, .math-block')) {
+                el.setAttribute('data-md-editable', '0');
+                continue;
+            }
+
+            var mdText;
+            if (kind === 'li') {
+                mdText = domToMarkdown(el, { skipNestedLists: true });
+            } else {
+                mdText = domToMarkdown(el);
+            }
+
             var targetNorm = mdText.replace(/\s+/g, '');
             if (!targetNorm) {
                 el.setAttribute('data-md-editable', '0');
@@ -638,7 +1144,7 @@
     }
 
     // ============================================================
-    //  表格定位 / 标注（省略内部实现，与之前相同）
+    //  表格
     // ============================================================
     function findMarkdownTables(md) {
         var source = String(md);
@@ -713,6 +1219,9 @@
         }
     }
 
+    // ============================================================
+    //  任务列表
+    // ============================================================
     function markTaskListItems(root) {
         var spans = root.querySelectorAll('.task-list-checkbox');
         if (spans.length === 0) return;
@@ -726,17 +1235,35 @@
             if (list && (list.tagName === 'UL' || list.tagName === 'OL')) {
                 list.classList.add('contains-task-list');
             }
-            if (!li.querySelector(':scope > .task-list-bullet')) {
-                var bullet = document.createElement('span');
-                bullet.className = 'task-list-bullet';
-                bullet.setAttribute('contenteditable', 'false');
-                bullet.textContent = '- ';
-                li.insertBefore(bullet, li.firstChild);
+
+            var target = li;
+            for (var c = 0; c < li.childNodes.length; c++) {
+                var child = li.childNodes[c];
+                if (child.nodeType === 1 &&
+                    child.tagName.toLowerCase() === 'p') {
+                    target = child;
+                    break;
+                }
             }
+
+            if (target.firstChild &&
+                target.firstChild.nodeType === 1 &&
+                target.firstChild.classList &&
+                target.firstChild.classList.contains('task-list-bullet')) {
+                continue;
+            }
+
+            var bullet = document.createElement('span');
+            bullet.className = 'task-list-bullet';
+            bullet.setAttribute('contenteditable', 'false');
+            bullet.textContent = '- ';
+            target.insertBefore(bullet, target.firstChild);
         }
     }
 
-    // ---------- 折叠 <details> ----------
+    // ============================================================
+    //  折叠 <details>
+    // ============================================================
     function loadFoldState() {
         try {
             var raw = localStorage.getItem(FOLD_STATE_KEY);
@@ -821,7 +1348,9 @@
         }
     }
 
-    // ---------- 主渲染 ----------
+    // ============================================================
+    //  主渲染
+    // ============================================================
     function renderMarkdown(markdownText, options) {
         options = options || {};
         var contentElement = options.target;
@@ -832,44 +1361,30 @@
             if (typeof marked !== 'undefined') {
                 var tableList = findMarkdownTables(markdownText);
 
-                var taskPre = preprocessTaskLists(markdownText);
+                var footnotePre = preprocessFootnotes(markdownText);
+                var taskPre = preprocessTaskLists(footnotePre.text);
+                var mathPre = preprocessMath(taskPre.text);
+                var htmlPre = preprocessHtmlBlocks(mathPre.text, docDir);
 
-                var pre = preprocessMath(taskPre.text);
+                var html = marked.parse(htmlPre.text);
 
-                // ★ 关键：把 docDir 传给预处理函数，img src 在这里就被改写
-                var pre2 = preprocessHtmlBlocks(pre.text, docDir);
-
-                var html = marked.parse(pre2.text);
-
-                html = restoreHtmlBlocks(html, pre2.htmlList);
+                html = restoreHtmlBlocks(html, htmlPre.htmlList);
                 html = restoreTaskListHtml(html, taskPre.taskItems);
-
-                // XSS 清洗
+                html = replaceMathPlaceholders(html, mathPre.mathList);
+                html = fixLooseListParagraphs(html);
                 html = window.sanitizeHtml(html);
-
-                // 注入 KaTeX
-                for (var i = 0; i < pre.mathList.length; i++) {
-                    var item = pre.mathList[i];
-                    var katexHtml = renderKatexToString(item.tex, item.display);
-                    if (item.display) {
-                        katexHtml = '<div class="math-block">' + katexHtml + '</div>';
-                    } else {
-                        katexHtml = '<span class="katex-inline">' + katexHtml + '</span>';
-                    }
-                    html = html.split(item.placeholder).join(katexHtml);
-                }
+                html = postprocessFootnotes(html, footnotePre.footnotes);
 
                 contentElement.innerHTML = html;
 
-                // ★ 二次兜底：处理 Markdown 语法 ![]() 生成的 img（路径解析）
                 resolveLocalImages(contentElement, docDir);
-
                 renderMathBlocks(contentElement);
                 locateDetailsInSource(contentElement, markdownText);
                 setupDetailsBlocks(contentElement);
                 annotateTables(contentElement, tableList);
                 markEditableBlocks(contentElement, markdownText);
                 markTaskListItems(contentElement);
+                setupFootnoteClick(contentElement);
             } else {
                 contentElement.textContent = markdownText;
             }
@@ -882,4 +1397,7 @@
     global.renderMarkdown = renderMarkdown;
     global.getEditableText = getEditableText;
     global.domToMarkdown = domToMarkdown;
+    global.setupFootnoteClick = setupFootnoteClick;
+    global.preprocessFootnotes = preprocessFootnotes;
+    global.postprocessFootnotes = postprocessFootnotes;
 })(window);

@@ -257,7 +257,6 @@ html.dark .splash-text.error { color: #f85149; }
     cursor: pointer;
 }
 
-/* 刻度线：CSS calc 对齐到 thumb 中心 */
 #zoom-tick-100 {
     position: absolute;
     left: calc(6px + 0.183673 * (100% - 12px));
@@ -464,7 +463,6 @@ body.format-painter-active #preview [contenteditable="true"] * {
     content: none !important;
 }
 
-/* 自定义 bullet "- "：可选中 */
 #preview .task-list-bullet {
     color: #57606a;
     -webkit-user-select: text;
@@ -475,7 +473,6 @@ body.dark #preview .task-list-bullet {
     color: #8b949e;
 }
 
-/* checkbox 用 span 替代，可选中 */
 #preview .task-list-checkbox {
     display: inline;
     font-family: Consolas, "Courier New", monospace;
@@ -498,7 +495,6 @@ body.dark #preview .task-list-checkbox:hover {
     color: #79c0ff;
 }
 
-/* 无序/有序列表前缀可选中（list-style-position: inside） */
 #preview ul:not(.contains-task-list),
 #preview ol {
     list-style-position: inside;
@@ -702,7 +698,7 @@ body.dark .markdown-body {
 }
 
 /* ============================================================
-   PDF 导出
+   PDF 导出（@media print）
    ============================================================ */
 @media print {
     #menubar,
@@ -743,6 +739,74 @@ body.dark .markdown-body {
     }
     #preview details.md-details > summary.md-summary::before {
         content: '' !important;
+    }
+
+    #preview code,
+    #preview tt {
+        background: #f0f0f0 !important;
+        color: #1e1e1e !important;
+        padding: .2em .4em !important;
+        border-radius: 6px !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+    #preview pre {
+        background: #f6f8fa !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+        border-radius: 6px !important;
+    }
+    #preview pre code {
+        background: transparent !important;
+        color: #1e1e1e !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    #preview .task-list-checkbox {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+        background: #fff !important;
+        border: 1.5px solid #6e7781 !important;
+        width: 13px !important;
+        height: 13px !important;
+        display: inline-block !important;
+        position: relative !important;
+        vertical-align: -2px !important;
+        margin-right: 6px !important;
+        border-radius: 3px !important;
+        box-sizing: border-box !important;
+        font-size: 0 !important;
+        line-height: 0 !important;
+        color: transparent !important;
+        overflow: hidden !important;
+        text-indent: -9999px !important;
+    }
+    #preview .task-list-checkbox[data-md-task-checked="1"] {
+        background: #0969da !important;
+        border-color: #0969da !important;
+    }
+    #preview .task-list-checkbox[data-md-task-checked="1"]::after {
+        content: '' !important;
+        position: absolute !important;
+        left: 3px !important;
+        top: 0 !important;
+        width: 4px !important;
+        height: 8px !important;
+        border: solid #fff !important;
+        border-width: 0 2px 2px 0 !important;
+        transform: rotate(45deg) scale(1) !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+    #preview .task-list-bullet {
+        color: #8b949e !important;
+        display: inline !important;
     }
 }
 
@@ -1045,8 +1109,6 @@ body.dark .message-modal-body { color: #dcdcdc; }
 /* ============================================================
    阶段 14 修订：任务列表样式修正
    ============================================================ */
-
-/* 移除列表默认标记 */
 #preview li.task-list-item,
 #preview li.task-list-item::marker,
 #preview li.task-list-item::before {
@@ -1067,7 +1129,6 @@ body.dark .message-modal-body { color: #dcdcdc; }
     margin-left: 0;
 }
 
-/* 自定义 bullet "- "：可选中 */
 #preview .task-list-bullet {
     color: #57606a;
     -webkit-user-select: text;
@@ -1080,7 +1141,6 @@ body.dark #preview .task-list-bullet {
     color: #8b949e;
 }
 
-/* checkbox 前缀：可点击、可选中 */
 #preview .task-list-checkbox {
     display: inline;
     font-family: Consolas, "Courier New", monospace;
@@ -1106,15 +1166,12 @@ body.dark #preview .task-list-checkbox:hover {
 /* ============================================================
    阶段 14 修订 17：任务列表图形 checkbox
    ============================================================ */
-
-/* ---- 列表容器：移除默认项目符号 ---- */
 #preview ul.contains-task-list,
 #preview ol.contains-task-list {
     list-style: none;
     padding-left: 0;
 }
 
-/* ---- 嵌套列表保留缩进 ---- */
 #preview li.task-list-item > ul.contains-task-list,
 #preview li.task-list-item > ol.contains-task-list,
 #preview li > ul.contains-task-list,
@@ -1123,7 +1180,6 @@ body.dark #preview .task-list-checkbox:hover {
     margin-left: 0;
 }
 
-/* ---- 列表项：移除 marker ---- */
 #preview li.task-list-item,
 #preview li.task-list-item::marker,
 #preview li.task-list-item::before {
@@ -1134,7 +1190,6 @@ body.dark #preview .task-list-checkbox:hover {
     content: none !important;
 }
 
-/* ---- 自定义 bullet "- "：可选中、灰色 ---- */
 #preview .task-list-bullet {
     color: #8b949e;
     -webkit-user-select: text;
@@ -1145,10 +1200,6 @@ body.dark #preview .task-list-checkbox:hover {
     margin-right: 2px;
 }
 
-/* ============================================================
-   ★ 图形 checkbox（用 CSS 画方框 + 对勾）
-   textContent 仍是 "[ ]" / "[x]"，copy 出来还是原文
-   ============================================================ */
 #preview .task-list-checkbox {
     display: inline-block;
     width: 13px;
@@ -1159,7 +1210,6 @@ body.dark #preview .task-list-checkbox:hover {
     margin-right: 6px;
     position: relative;
     background: #fff;
-    /* 隐藏内部文字，但 textContent 依然保留 */
     font-size: 0;
     line-height: 0;
     color: transparent;
@@ -1189,7 +1239,6 @@ body.dark #preview .task-list-checkbox:hover {
     transform: rotate(45deg) scale(1);
 }
 
-/* 深色 */
 body.dark #preview .task-list-checkbox {
     background: #2a2a2a;
     border-color: #8b949e;
@@ -1203,7 +1252,7 @@ body.dark #preview .task-list-bullet {
 }
 
 /* ============================================================
-   深色模式下弹窗文字（上一轮已加，确认保留）
+   深色模式下弹窗文字
    ============================================================ */
 body.dark .modal-overlay .modal { color: #dcdcdc; }
 body.dark .modal-overlay .modal h1,
@@ -1217,23 +1266,15 @@ body.dark .message-modal-body { color: #dcdcdc; }
 body.dark #message-modal h3 { color: #e6edf3; }
 
 /* ============================================================
-   ★★★ 阶段 15：深色滚动条统一（追加段落，不覆盖上方） ★★★
+   ★★★ 阶段 15：深色滚动条统一 ★★★
    ============================================================ */
-
-/* ------------------------------------------------------------
-   1) 深色模式下让浏览器原生控件（含滚动条）也走深色
-   ------------------------------------------------------------ */
 html.dark,
 body.dark {
     color-scheme: dark;
-    /* Firefox */
     scrollbar-color: #555 #2a2a2a;
     scrollbar-width: thin;
 }
 
-/* ------------------------------------------------------------
-   2) 深色滚动条：全局
-   ------------------------------------------------------------ */
 body.dark ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -1260,9 +1301,6 @@ body.dark ::-webkit-scrollbar-corner {
     background: transparent;
 }
 
-/* ------------------------------------------------------------
-   3) 深色滚动条：各滚动容器（更具体的选择器，优先级更高）
-   ------------------------------------------------------------ */
 body.dark #toc::-webkit-scrollbar,
 body.dark #editor-container::-webkit-scrollbar,
 body.dark #editor .cm-scroller::-webkit-scrollbar,
@@ -1301,9 +1339,6 @@ body.dark #preview-container::-webkit-scrollbar-thumb:active {
     background-clip: content-box;
 }
 
-/* ------------------------------------------------------------
-   4) 浅色模式滚动条：统一风格
-   ------------------------------------------------------------ */
 body:not(.dark) ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -1331,20 +1366,16 @@ body:not(.dark) ::-webkit-scrollbar-corner {
 }
 
 /* ============================================================
-   ★★★ 阶段 15 修订 13：TOC 拖拽条重定位（放在滚动条右侧） ★★★
-   —— 从 #toc 内部移到 #main 内，位于 #toc 与 #editor-container 之间
-   —— 用 position: absolute + left 动态定位（left 值由 JS 计算）
-   —— 这样它就在 TOC 滚动条的【右侧】，不再与滚动条重合
+   ★★★ 阶段 15 修订 13：TOC 拖拽条重定位 ★★★
    ============================================================ */
-
 #main {
-    position: relative;   /* 让 #toc-resizer 的 absolute 相对 #main */
+    position: relative;
 }
 
 #toc-resizer {
     position: absolute;
     top: 0;
-    left: 220px;          /* 初始值，JS 会在启动时立即校准 */
+    left: 220px;
     width: 6px;
     height: 100%;
     cursor: col-resize;
@@ -1352,7 +1383,6 @@ body:not(.dark) ::-webkit-scrollbar-corner {
     z-index: 40;
     user-select: none;
     transition: background-color 0.12s ease;
-    /* 让拖拽条视觉中心正好落在 #toc 右边缘：向左偏移 3px */
     margin-left: -3px;
 }
 
@@ -1366,11 +1396,535 @@ body.dark #toc-resizer.dragging {
     background: rgba(88, 166, 255, 0.6);
 }
 
-/* TOC 隐藏时，拖拽条也隐藏（兄弟选择器：#toc.hidden 之后的 #toc-resizer） */
 #toc.hidden ~ #toc-resizer {
     display: none;
 }
 
 /* ============================================================
-   ★★★ 阶段 15 修订 13 段落结束 ★★★
+   ★★★ 阶段 16 第 1 批：列表 / 段落渲染修复 ★★★
    ============================================================ */
+#preview li > p:only-child,
+#preview li > p:first-child:last-child {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+
+#preview li > p:not(:only-child):not(:first-child) {
+    margin-top: 8px;
+}
+
+#preview li.task-list-item > p:only-child {
+    display: inline;
+    margin: 0;
+}
+
+#preview blockquote > p {
+    margin: 6px 0;
+}
+#preview blockquote > p:only-child {
+    margin: 0;
+}
+#preview blockquote > p:first-child {
+    margin-top: 0;
+}
+#preview blockquote > p:last-child {
+    margin-bottom: 0;
+}
+
+#preview p > br {
+    display: inline;
+    content: '';
+}
+
+#preview ul, #preview ol {
+    padding-left: 2em;
+}
+#preview li {
+    margin: 2px 0;
+}
+#preview li > p {
+    margin: 0;
+}
+
+#preview li.task-list-item {
+    padding-left: 0;
+}
+
+/* ============================================================
+   ★★★ 阶段 16 第 4 批：KaTeX 渲染加固 ★★★
+   ============================================================ */
+#preview .math-block {
+    display: block;
+    margin: 12px 0;
+    text-align: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+#preview .math-block > .katex-display {
+    margin: 0;
+}
+
+#preview .katex-inline {
+    white-space: nowrap;
+}
+
+#preview .katex .katex-html {
+    display: inline-block;
+}
+#preview .katex-display > .katex > .katex-html {
+    display: block;
+}
+
+#preview .katex-error {
+    color: #d1242f;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 0.92em;
+}
+body.dark #preview .katex-error {
+    color: #f85149;
+}
+
+body.dark #preview .katex {
+    color: inherit;
+}
+
+/* ============================================================
+   ★★★ 阶段 16-10：脚注（Footnote）样式 ★★★
+   ============================================================ */
+
+#preview sup.footnote-ref {
+    font-size: 0.75em;
+    line-height: 0;
+    vertical-align: super;
+    margin: 0 1px;
+    font-weight: 600;
+}
+#preview sup.footnote-ref > a {
+    color: #0969da;
+    text-decoration: none;
+    padding: 1px 3px;
+    border-radius: 3px;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+#preview sup.footnote-ref > a:hover {
+    background: rgba(9, 105, 218, 0.12);
+    text-decoration: underline;
+}
+#preview sup.footnote-ref > a:focus-visible {
+    outline: 2px solid #0969da;
+    outline-offset: 1px;
+}
+
+#preview section.footnotes {
+    margin-top: 40px;
+    padding-top: 4px;
+    font-size: 0.92em;
+    color: #57606a;
+    border-top: none;
+}
+#preview section.footnotes > hr.footnotes-sep {
+    border: none;
+    border-top: 1px solid #d0d7de;
+    margin: 12px 0 10px;
+}
+#preview section.footnotes > ol.footnotes-list {
+    padding-left: 1.6em;
+    margin: 0;
+}
+#preview section.footnotes > ol.footnotes-list > li {
+    margin: 4px 0;
+    line-height: 1.6;
+    color: #57606a;
+}
+#preview section.footnotes > ol.footnotes-list > li > p {
+    margin: 0;
+    display: inline;
+}
+
+#preview a.footnote-backref {
+    color: #0969da;
+    text-decoration: none;
+    margin-left: 4px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 1em;
+    transition: background-color 0.12s ease, transform 0.12s ease;
+    display: inline-block;
+}
+#preview a.footnote-backref:hover {
+    background: rgba(9, 105, 218, 0.12);
+    transform: translateX(2px);
+}
+#preview a.footnote-backref:focus-visible {
+    outline: 2px solid #0969da;
+    outline-offset: 1px;
+}
+
+#preview .footnote-flash,
+#preview sup.footnote-flash,
+#preview li.footnote-flash {
+    background: rgba(255, 212, 0, 0.35);
+    border-radius: 3px;
+    transition: background-color 0.4s ease;
+}
+body.dark #preview .footnote-flash,
+body.dark #preview sup.footnote-flash,
+body.dark #preview li.footnote-flash {
+    background: rgba(255, 212, 0, 0.25);
+}
+
+body.dark #preview sup.footnote-ref > a {
+    color: #58a6ff;
+}
+body.dark #preview sup.footnote-ref > a:hover {
+    background: rgba(88, 166, 255, 0.18);
+}
+body.dark #preview section.footnotes {
+    color: #8b949e;
+}
+body.dark #preview section.footnotes > hr.footnotes-sep {
+    border-top-color: #30363d;
+}
+body.dark #preview section.footnotes > ol.footnotes-list > li {
+    color: #8b949e;
+}
+body.dark #preview a.footnote-backref {
+    color: #58a6ff;
+}
+body.dark #preview a.footnote-backref:hover {
+    background: rgba(88, 166, 255, 0.18);
+}
+
+/* 脚注段落的可编辑态视觉提示（与普通段落一致） */
+#preview section.footnotes p[data-md-editable="footnote"] {
+    outline: none;
+    cursor: text;
+    border-radius: 4px;
+    transition: background-color 0.15s ease;
+}
+#preview section.footnotes p[data-md-editable="footnote"]:hover {
+    background: rgba(42, 130, 218, 0.05);
+}
+#preview section.footnotes p[data-md-editable="footnote"]:focus {
+    background: rgba(42, 130, 218, 0.08);
+    box-shadow: 0 0 0 2px rgba(42, 130, 218, 0.3);
+}
+body.dark #preview section.footnotes p[data-md-editable="footnote"]:hover {
+    background: rgba(88, 166, 255, 0.08);
+}
+body.dark #preview section.footnotes p[data-md-editable="footnote"]:focus {
+    background: rgba(88, 166, 255, 0.12);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.4);
+}
+
+@media print {
+    #preview sup.footnote-ref > a {
+        color: #0969da !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+    #preview section.footnotes {
+        color: #333 !important;
+        page-break-inside: auto !important;
+    }
+    #preview section.footnotes > ol.footnotes-list > li {
+        color: #333 !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+    }
+    #preview a.footnote-backref {
+        color: #0969da !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
+
+/* ============================================================
+   ★★★ 阶段 16-10 修复 2：空脚注段落可编辑高度 ★★★
+   ============================================================ */
+#preview section.footnotes > ol.footnotes-list > li > p[data-md-editable="footnote"] {
+    min-height: 1.4em;
+    padding: 2px 0;
+    box-sizing: border-box;
+}
+
+/* ============================================================
+   ★★★ 阶段 16-10 修复 4：空脚注段落可编辑高度 + 右键菜单 ★★★
+   ============================================================ */
+
+/* ---- 空脚注段落可编辑高度 ---- */
+#preview section.footnotes > ol.footnotes-list > li > p[data-md-editable="footnote"] {
+    min-height: 1.4em;
+    padding: 2px 0;
+    box-sizing: border-box;
+}
+
+/* ---- 编辑器右键自定义菜单 ---- */
+.mk-context-menu {
+    background: #ffffff;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.25);
+    padding: 4px 0;
+    min-width: 168px;
+    font-family: "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    color: #24292f;
+    user-select: none;
+}
+.mk-context-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px 6px 14px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.1s ease;
+}
+.mk-context-item:hover {
+    background: #eef4ff;
+    color: #0969da;
+}
+.mk-context-label {
+    flex: 1 1 auto;
+    text-align: left;
+}
+.mk-context-shortcut {
+    flex: 0 0 auto;
+    margin-left: 22px;
+    font-size: 11.5px;
+    color: #8a9199;
+    font-family: Consolas, "Courier New", monospace;
+}
+.mk-context-item:hover .mk-context-shortcut {
+    color: #0969da;
+}
+.mk-context-sep {
+    height: 1px;
+    background: #e1e4e8;
+    margin: 4px 0;
+}
+
+/* 深色模式 */
+body.dark .mk-context-menu {
+    background: #2a2a2a;
+    border-color: #444;
+    color: #dcdcdc;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+body.dark .mk-context-item:hover {
+    background: #353535;
+    color: #58a6ff;
+}
+body.dark .mk-context-shortcut {
+    color: #8b949e;
+}
+body.dark .mk-context-item:hover .mk-context-shortcut {
+    color: #58a6ff;
+}
+body.dark .mk-context-sep {
+    background: #444;
+}
+
+/* ============================================================
+   ★★★ 阶段 16-11：列表 / 引用内容双击编辑样式 ★★★
+   ============================================================ */
+
+/* 列表项编辑态（含任务列表） */
+#preview li[data-md-editable="1"] {
+    outline: none;
+    cursor: text;
+    border-radius: 4px;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+#preview li[data-md-editable="1"]:hover {
+    background: rgba(42, 130, 218, 0.05);
+}
+#preview li[data-md-editable="1"]:focus {
+    background: rgba(42, 130, 218, 0.08);
+    box-shadow: 0 0 0 2px rgba(42, 130, 218, 0.3);
+}
+body.dark #preview li[data-md-editable="1"]:hover {
+    background: rgba(88, 166, 255, 0.08);
+}
+body.dark #preview li[data-md-editable="1"]:focus {
+    background: rgba(88, 166, 255, 0.12);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.4);
+}
+
+/* 任务列表项：编辑态下让 checkbox / bullet 依然是装饰元素（不响应文本输入） */
+#preview li.task-list-item[data-md-editable="1"] .task-list-bullet,
+#preview li.task-list-item[data-md-editable="1"] .task-list-checkbox {
+    pointer-events: none;
+}
+
+/* 引用内的段落编辑态（与普通段落视觉一致） */
+#preview blockquote p[data-md-editable="1"] {
+    outline: none;
+    cursor: text;
+    border-radius: 4px;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+#preview blockquote p[data-md-editable="1"]:hover {
+    background: rgba(42, 130, 218, 0.08);
+}
+#preview blockquote p[data-md-editable="1"]:focus {
+    background: rgba(42, 130, 218, 0.12);
+    box-shadow: 0 0 0 2px rgba(42, 130, 218, 0.3);
+}
+body.dark #preview blockquote p[data-md-editable="1"]:hover {
+    background: rgba(88, 166, 255, 0.08);
+}
+body.dark #preview blockquote p[data-md-editable="1"]:focus {
+    background: rgba(88, 166, 255, 0.12);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.4);
+}
+
+/* ============================================================
+   ★★★ 阶段 16-11 修复 2：列表编辑样式 ★★★
+   ============================================================ */
+
+/* li 编辑态：hover/focus 提示 */
+#preview li[data-md-editable="1"] {
+    outline: none;
+    cursor: text;
+    border-radius: 4px;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+#preview li[data-md-editable="1"]:hover {
+    background: rgba(42, 130, 218, 0.05);
+}
+#preview li[data-md-editable="1"]:focus {
+    background: rgba(42, 130, 218, 0.08);
+    box-shadow: 0 0 0 2px rgba(42, 130, 218, 0.3);
+}
+body.dark #preview li[data-md-editable="1"]:hover {
+    background: rgba(88, 166, 255, 0.08);
+}
+body.dark #preview li[data-md-editable="1"]:focus {
+    background: rgba(88, 166, 255, 0.12);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.4);
+}
+
+/* 任务列表 li 的装饰元素：编辑态下不响应指针 */
+#preview li.task-list-item[data-md-editable="1"] .task-list-bullet,
+#preview li.task-list-item[data-md-editable="1"] .task-list-checkbox {
+    pointer-events: none;
+}
+
+/* ============================================================
+   ★★★ 阶段 16-12：下划线（<u>）渲染样式（追加） ★★★
+   ============================================================ */
+#preview u {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+}
+body.dark #preview u {
+    text-decoration-color: #58a6ff;
+}
+
+/* ============================================================
+   ★★★ 阶段 16-12：列表第一个 <p> 兜底内联（追加） ★★★
+   ============================================================ */
+#preview li > p:first-child {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+
+
+/* ============================================================
+   ★★★ 阶段 16-13：下划线（<ins>）样式（追加） ★★★
+   ============================================================ */
+#preview ins {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+    text-decoration-skip-ink: auto;
+}
+body.dark #preview ins {
+    text-decoration-color: #58a6ff;
+}
+
+/* 兼容旧的 <u>（如果用户手动输入） */
+#preview u {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+}
+
+/* ============================================================
+   ★★★ 阶段 16-13：列表第一个 <p> 兜底内联（追加） ★★★
+   ============================================================ */
+#preview li > p:first-child {
+    display: inline;
+    margin: 0;
+    padding: 0;
+}
+
+/* ============================================================
+   ★★★ 阶段 16-13：嵌套 li 悬停高亮抑制（追加） ★★★
+   修复：光标在内层 li 时，外层 li 不应同时显示高亮背景。
+   原理：用 :has() 检测 li 内部是否有被 hover 的后代 li；
+        若有，则当前 li 取消高亮。
+   ============================================================ */
+
+/* ---- 普通编辑段落 hover / focus ---- */
+#preview li[data-md-editable="1"]:has(li[data-md-editable="1"]:hover) {
+    background: transparent;
+}
+#preview li[data-md-editable="1"]:has(li[data-md-editable="1"]:focus) {
+    background: transparent;
+    box-shadow: none;
+}
+
+/* ---- 深色模式 ---- */
+body.dark #preview li[data-md-editable="1"]:has(li[data-md-editable="1"]:hover) {
+    background: transparent;
+}
+body.dark #preview li[data-md-editable="1"]:has(li[data-md-editable="1"]:focus) {
+    background: transparent;
+    box-shadow: none;
+}
+
+/* ============================================================
+   ★★★ 阶段 16-13：嵌套 li 编辑态高亮抑制（追加） ★★★
+   修复：当内层 li 已进入编辑态（contenteditable=true 或 .preview-editing），
+        外层 li 不应再叠加高亮背景。
+   ============================================================ */
+#preview li[data-md-editable="1"]:has(li[data-md-editable="1"].preview-editing) {
+    background: transparent;
+    box-shadow: none;
+}
+body.dark #preview li[data-md-editable="1"]:has(li[data-md-editable="1"].preview-editing) {
+    background: transparent;
+    box-shadow: none;
+}
+
+/* 通用：嵌套 li 直接子级列表不参与高亮（兜底） */
+#preview li > ul > li[data-md-editable="1"]:hover,
+#preview li > ol > li[data-md-editable="1"]:hover {
+    background: rgba(42, 130, 218, 0.05);
+}
+body.dark #preview li > ul > li[data-md-editable="1"]:hover,
+body.dark #preview li > ol > li[data-md-editable="1"]:hover {
+    background: rgba(88, 166, 255, 0.08);
+}
+
+/* ============================================================
+   ★★★ 阶段 16-13：兼容不支持 :has() 的浏览器（降级） ★★★
+   若不支持 :has()，至少让编辑态显示正常，不叠加双重背景。
+   ============================================================ */
+@supports not selector(:has(*)) {
+    #preview li[data-md-editable="1"].preview-editing {
+        background: rgba(42, 130, 218, 0.08);
+        box-shadow: 0 0 0 2px rgba(42, 130, 218, 0.3);
+    }
+    body.dark #preview li[data-md-editable="1"].preview-editing {
+        background: rgba(88, 166, 255, 0.12);
+        box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.4);
+    }
+}

@@ -1,4 +1,9 @@
-// MarkEase 主逻辑（阶段 15 修订 18：修复 TOC 跳转后滚动跳回旧位置）
+// MarkEase 主逻辑（阶段 16-13 修复 2）
+//   ★ 本轮修改：
+//     1) 新增 extractLiInlineText：li 编辑时只提取 inline 内容
+//     2) applyPreviewEdit 用 extractLiInlineText 处理 li
+//     3) applyPreviewEdit 加三重异常防护（跨行 / 膨胀 / 无输入）
+//     4) enterEditable 增加 _editableHadInput 标记
 import { EditorState, Compartment, EditorSelection, StateField, StateEffect } from './vendor/state.mjs';
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, Decoration } from './vendor/view.mjs';
 import { defaultKeymap, history, historyKeymap, undo, redo, isolateHistory } from './vendor/commands.mjs';
@@ -79,6 +84,9 @@ let isDirty = false;
 let previewComposing = false;
 let activeEditableEl = null;
 
+// ★ 阶段 16-13：标记当前编辑元素是否真的被用户输入过
+let _editableHadInput = false;
+
 let currentLangChoice = 'system';
 let lastUpdateInfo = null;
 
@@ -89,8 +97,6 @@ let _editorTocRaf = null;
 let _scrollLock = null;
 let _scrollLockTimer = null;
 
-// ★ 修订 18：TOC 跳转后锁定时长（毫秒）
-//   原来 90ms 太短，点击后用户立即滚动就会打断
 const SCROLL_LOCK_MS = 90;
 const TOC_JUMP_LOCK_MS = 280;
 
@@ -98,7 +104,6 @@ let _lastPreviewUpdateTs = 0;
 const MIN_PREVIEW_INTERVAL = 60;
 
 let _tocScrolling = false;
-
 let _lastActiveTocLine = null;
 
 const themeCompartment = new Compartment();
@@ -112,6 +117,15 @@ const tocEl = document.getElementById('toc');
 const tocListEl = document.getElementById('toc-list');
 
 let pendingDragConflict = null;
+
+let _forceSaveAsNextTime = false;
+let _openedOriginalContent = '';
+let _openedFilePath = '';
+
+let _footnoteRefsSnapshot = null;
+let _footnoteCleanupTimer = null;
+
+let _ctxMenuEl = null;
 
 // ---------------- i18n 辅助 ----------------
 function T(key, fallback) {
@@ -181,6 +195,12 @@ window.SearchHighlight = {
 
 // ---------------- 启动 ----------------
 window.addEventListener('pywebviewready', async () => {
+    if (window.__markEaseInitialized) {
+        console.warn('[pywebviewready] skipped: already initialized');
+        return;
+    }
+    window.__markEaseInitialized = true;
+
     try {
         try {
             const r = await window.pywebview.api.get_asset_base_url();
@@ -229,10 +249,17 @@ window.addEventListener('pywebviewready', async () => {
         setupTocResizer();
         setupUpdateModal();
         setupMessageModal();
+        setupEditorCtrlClick();
+        setupEditorContextMenu();
+        setupPreviewContextMenu();
         await loadSettings(settings);
         initZoomBar();
 
         await openStartupFileIfAny();
+
+        _openedOriginalContent = getContent();
+        _openedFilePath = currentFile || '';
+        _forceSaveAsNextTime = false;
 
         setMode('split');
         updatePreview();
@@ -294,9 +321,9 @@ async function openStartupFileIfAny() {
 
         if (r.ok && r.content != null) {
             currentFile = r.path || '';
-            currentDocDir = r.path
-                ? r.path.replace(/[\\/][^\\/]+$/, '')
-                : '';
+            currentDocDir = r.doc_dir
+                ? String(r.doc_dir)
+                : (r.path ? r.path.replace(/[\\/][^\\/]+$/, '') : '');
             syncGlobalFileState();
 
             setContent(r.content);
@@ -321,8 +348,7 @@ async function openStartupFileIfAny() {
                 await window.pywebview.api.set_current_file(currentFile || '');
             } catch (e) { /* ignore */ }
 
-            console.log('[startup] opened:', r.path,
-                        'docDir:', currentDocDir);
+            console.log('[startup] opened:', r.path, 'docDir:', currentDocDir);
         } else if (!r.ok && r.path && r.error) {
             setStatus('打开启动文件失败: ' + r.error);
             console.warn('[startup] open failed:', r.error);
@@ -342,6 +368,11 @@ function hideSplash() {
 }
 
 function initEditor() {
+    if (editorView) {
+        console.warn('[initEditor] skipped: already initialized');
+        return;
+    }
+
     const updateListener = EditorView.updateListener.of(update => {
         if (update.docChanged) {
             isDirty = true;
@@ -352,6 +383,9 @@ function initEditor() {
                 updateStats();
                 if (window.pywebview && window.pywebview.api) {
                     window.pywebview.api.update_content(getContent());
+                }
+                if (!syncingFromPreview) {
+                    scheduleFootnoteCleanup();
                 }
             }
         }
@@ -383,6 +417,78 @@ function initEditor() {
     });
 }
 
+// ============================================================
+//  脚注引用自动清理
+// ============================================================
+function scheduleFootnoteCleanup() {
+    if (_footnoteCleanupTimer) clearTimeout(_footnoteCleanupTimer);
+    _footnoteCleanupTimer = setTimeout(() => {
+        _footnoteCleanupTimer = null;
+        cleanupOrphanFootnotes();
+    }, 200);
+}
+
+function cleanupOrphanFootnotes() {
+    if (!editorView) return;
+    if (syncingFromPreview || isSyncing) return;
+
+    const doc = editorView.state.doc;
+    const text = doc.toString();
+
+    const refsNow = new Set();
+    const refRe = /\[\^([^\]\s]+)\](?!:)/g;
+    let m;
+    while ((m = refRe.exec(text)) !== null) {
+        refsNow.add(m[1]);
+    }
+
+    if (_footnoteRefsSnapshot === null) {
+        _footnoteRefsSnapshot = refsNow;
+        return;
+    }
+
+    const orphans = new Set();
+    for (const key of _footnoteRefsSnapshot) {
+        if (!refsNow.has(key)) orphans.add(key);
+    }
+
+    _footnoteRefsSnapshot = refsNow;
+
+    if (orphans.size === 0) return;
+
+    const changes = [];
+    const lines = text.split('\n');
+    let offset = 0;
+    const defLineRe = /^[ \t]*\[\^([^\]\s]+)\]:/;
+    for (const line of lines) {
+        const dm = defLineRe.exec(line);
+        if (dm && orphans.has(dm[1])) {
+            const lineStart = offset;
+            const lineEnd = offset + line.length;
+            const hasNewline = lineEnd < text.length && text.charAt(lineEnd) === '\n';
+            changes.push({
+                from: lineStart,
+                to: hasNewline ? lineEnd + 1 : lineEnd,
+                insert: ''
+            });
+        }
+        offset += line.length + 1;
+    }
+
+    if (changes.length === 0) return;
+
+    changes.sort((a, b) => b.from - a.from);
+
+    try {
+        editorView.dispatch({
+            changes,
+            annotations: [isolateHistory.of('full')]
+        });
+    } catch (e) {
+        console.warn('[footnote cleanup] dispatch failed', e);
+    }
+}
+
 // ---------------- 菜单栏集成 ----------------
 function initMenubarByHandlers() {
     window.MenuBar.init({
@@ -393,6 +499,8 @@ function initMenubarByHandlers() {
         insert_image: onInsertImage,
         import_pdf: onImportPdf,
         export_pdf: onExportPdf,
+        import_html: onImportHtml,
+        export_html: onExportHtml,
         exit: onExit,
         undo: onUndo,
         redo: onRedo,
@@ -546,7 +654,16 @@ function initToolbarByHandlers() {
 
 function onUndo() {
     if (!editorView) return;
+    const beforeDoc = editorView.state.doc.toString();
     undo({ state: editorView.state, dispatch: editorView.dispatch });
+    const afterDoc = editorView.state.doc.toString();
+
+    if (_openedFilePath && currentFile === _openedFilePath) {
+        if (afterDoc !== beforeDoc) {
+            _forceSaveAsNextTime = true;
+        }
+    }
+
     setTimeout(() => {
         updatePreview();
         if (window.Toolbar) window.Toolbar.refresh();
@@ -620,6 +737,7 @@ function onLanguageChanged() {
     if (window.I18N && window.I18N.applyToDOM) {
         window.I18N.applyToDOM(document);
     }
+    closeContextMenu();
 }
 
 // ---------------- 缩放 ----------------
@@ -715,6 +833,7 @@ function setContent(text) {
     });
     isSyncing = false;
     isDirty = false;
+    _footnoteRefsSnapshot = null;
     updatePreview();
     updateStats();
     if (window.Toolbar) window.Toolbar.refresh();
@@ -846,18 +965,13 @@ function applyTocAnchors(headings) {
     }
 }
 
-// ★ 修订 18：TOC 点击 → 三种模式都定位
-//   关键修复：滚动锁延长到 TOC_JUMP_LOCK_MS，防止用户点击后立即滚动被同步逻辑打断
-//            跳转前重建 syncAnchors，避免用旧锚点
 function scrollEditorToLine(line) {
     if (!editorView) return;
     const doc = editorView.state.doc;
     if (line < 0 || line >= doc.lines) return;
 
-    // ★ 跳转前先重建锚点（用当前真实布局）
     try { updateSyncAnchors(); } catch (e) { /* ignore */ }
 
-    // ============ 1) 编辑器侧定位 ============
     if (mode !== 'preview') {
         try {
             const lineInfo = doc.line(line + 1);
@@ -879,14 +993,12 @@ function scrollEditorToLine(line) {
         } catch (e) { /* ignore */ }
     }
 
-    // ============ 2) 预览侧定位 ============
     const previewContainer = previewEl.parentElement;
     if (!previewContainer) {
         if (mode !== 'preview') editorView.focus();
         return;
     }
 
-    // ★ 用长锁：覆盖编辑器 + 预览的双 RAF + 用户可能的立即滚动
     _acquireScrollLockLong('editor');
     _tocScrolling = true;
 
@@ -910,7 +1022,6 @@ function scrollEditorToLine(line) {
             setTimeout(() => {
                 _setActiveTocItem(String(line), true);
                 _tocScrolling = false;
-                // ★ 跳转完成后重建锚点，供后续同步使用
                 try { updateSyncAnchors(); } catch (e) { /* ignore */ }
             }, 60);
         });
@@ -954,7 +1065,6 @@ function scrollTocToActive() {
     tocEl.scrollTop = Math.max(0, Math.min(maxTop, desired));
 }
 
-// 预览/分屏模式 TOC 高亮：视口中线之上最靠下的标题
 function updateActiveTocByScroll() {
     if (!previewEl || !previewEl.parentElement) return;
 
@@ -985,7 +1095,6 @@ function updateActiveTocByScroll() {
     _setActiveTocItem(activeLine);
 }
 
-// 编辑模式 TOC 高亮：编辑器视口中线对应的源位置反推
 function updateTocByEditorScroll() {
     if (!editorView) return;
 
@@ -1107,7 +1216,6 @@ function _acquireScrollLock(src) {
     }, SCROLL_LOCK_MS);
 }
 
-// ★ 修订 18：长锁，用于 TOC 跳转
 function _acquireScrollLockLong(src) {
     _scrollLock = src;
     if (_scrollLockTimer) clearTimeout(_scrollLockTimer);
@@ -1534,7 +1642,332 @@ function batchToggleTaskCheckbox(startLine, endLine, target) {
     }, 0);
 }
 
-// ---------------- 拖拽导入图片 ----------------
+// ============================================================
+//  Ctrl+点击脚注双向跳转
+// ============================================================
+function setupEditorCtrlClick() {
+    if (!editorView) return;
+    editorView.dom.addEventListener('mousedown', (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        if (e.button !== 0) return;
+
+        let pos;
+        try {
+            pos = editorView.posAtCoords({ x: e.clientX, y: e.clientY });
+        } catch (err) { return; }
+        if (pos == null) return;
+
+        const doc = editorView.state.doc;
+        const line = doc.lineAt(pos);
+        const lineText = line.text;
+
+        const defRe = /^([ \t]*)(\[\^([^\]\s]+)\]:)/;
+        const dm = defRe.exec(lineText);
+        if (dm) {
+            const indentLen = dm[1].length;
+            const bracketStart = line.from + indentLen;
+            const bracketEnd = line.from + indentLen + dm[2].length;
+            if (pos >= bracketStart && pos <= bracketEnd) {
+                const key = dm[3];
+                const jumpPos = findFirstFootnoteRefPos(doc, key);
+                if (jumpPos == null) {
+                    setStatus('未找到脚注 [^' + key + '] 的引用');
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+
+                const targetLine = doc.lineAt(jumpPos);
+                editorView.dispatch({
+                    selection: { anchor: targetLine.from, head: targetLine.to }
+                });
+                editorView.focus();
+
+                requestAnimationFrame(() => {
+                    try {
+                        const block = editorView.lineBlockAt(targetLine.from);
+                        const scroller = document.querySelector('#editor .cm-scroller');
+                        if (scroller && block) {
+                            const h = scroller.clientHeight;
+                            const targetTop = block.top - h / 3;
+                            scroller.scrollTop = Math.max(0, targetTop);
+                        }
+                    } catch (err) { /* ignore */ }
+                });
+
+                setStatus('已回到脚注 [^' + key + '] 引用位置');
+                return;
+            }
+        }
+
+        const refRe = /\[\^([^\]\s]+)\](?!:)/g;
+        let m;
+        let matchedKey = null;
+        while ((m = refRe.exec(lineText)) !== null) {
+            const absStart = line.from + m.index;
+            const absEnd = absStart + m[0].length;
+            if (pos >= absStart && pos <= absEnd) {
+                matchedKey = m[1];
+                break;
+            }
+        }
+        if (!matchedKey) return;
+
+        const allLines = doc.toString().split('\n');
+        let targetLineNum = -1;
+        const defLineRe = /^[ \t]*\[\^([^\]\s]+)\]:/;
+        for (let i = 0; i < allLines.length; i++) {
+            const d = defLineRe.exec(allLines[i]);
+            if (d && d[1] === matchedKey) {
+                targetLineNum = i;
+                break;
+            }
+        }
+
+        if (targetLineNum < 0) {
+            setStatus('未找到脚注 [^' + matchedKey + '] 的定义');
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const targetLine = doc.line(targetLineNum + 1);
+        editorView.dispatch({
+            selection: { anchor: targetLine.from, head: targetLine.to }
+        });
+        editorView.focus();
+
+        requestAnimationFrame(() => {
+            try {
+                const block = editorView.lineBlockAt(targetLine.from);
+                const scroller = document.querySelector('#editor .cm-scroller');
+                if (scroller && block) {
+                    const h = scroller.clientHeight;
+                    const targetTop = block.top - h / 3;
+                    scroller.scrollTop = Math.max(0, targetTop);
+                }
+            } catch (err) { /* ignore */ }
+        });
+
+        setStatus('已跳转到脚注 [^' + matchedKey + ']');
+    }, true);
+}
+
+function findFirstFootnoteRefPos(doc, key) {
+    const refPattern = '[^' + key + ']';
+    const defLineRe = /^[ \t]*\[\^([^\]\s]+)\]:/;
+
+    for (let ln = 1; ln <= doc.lines; ln++) {
+        const line = doc.line(ln);
+        const text = line.text;
+
+        if (defLineRe.test(text)) continue;
+
+        let idx = 0;
+        while ((idx = text.indexOf(refPattern, idx)) >= 0) {
+            const after = text.charAt(idx + refPattern.length);
+            if (after !== ':') {
+                return line.from + idx;
+            }
+            idx += refPattern.length;
+        }
+    }
+    return null;
+}
+
+// ============================================================
+//  右键菜单
+// ============================================================
+function closeContextMenu() {
+    if (_ctxMenuEl && _ctxMenuEl.parentNode) {
+        _ctxMenuEl.parentNode.removeChild(_ctxMenuEl);
+    }
+    _ctxMenuEl = null;
+}
+
+function _renderContextMenu(x, y, items) {
+    closeContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'mk-context-menu';
+    menu.style.position = 'fixed';
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    menu.style.zIndex = '50000';
+
+    for (const item of items) {
+        if (!item) continue;
+        if (item.type === 'sep') {
+            const sep = document.createElement('div');
+            sep.className = 'mk-context-sep';
+            menu.appendChild(sep);
+            continue;
+        }
+
+        const row = document.createElement('div');
+        row.className = 'mk-context-item';
+        if (item.key) row.setAttribute('data-ctx-action', item.key);
+
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'mk-context-label';
+        labelSpan.textContent = T(item.labelKey, item.fallback);
+
+        const shortcutSpan = document.createElement('span');
+        shortcutSpan.className = 'mk-context-shortcut';
+        shortcutSpan.textContent = item.shortcut || '';
+
+        row.appendChild(labelSpan);
+        row.appendChild(shortcutSpan);
+
+        row.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+        });
+        row.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const fn = item.action;
+            closeContextMenu();
+            try { if (typeof fn === 'function') fn(); }
+            catch (err) { console.warn('[ctx menu]', err); }
+        });
+
+        menu.appendChild(row);
+    }
+
+    document.body.appendChild(menu);
+    _ctxMenuEl = menu;
+
+    requestAnimationFrame(() => {
+        if (!_ctxMenuEl) return;
+        const rect = menu.getBoundingClientRect();
+        const maxX = window.innerWidth - rect.width - 4;
+        const maxY = window.innerHeight - rect.height - 4;
+        let nx = x, ny = y;
+        if (nx > maxX) nx = Math.max(4, maxX);
+        if (ny > maxY) ny = Math.max(4, maxY);
+        menu.style.left = nx + 'px';
+        menu.style.top = ny + 'px';
+    });
+}
+
+function showEditorContextMenu(x, y) {
+    const items = [
+        { key: 'undo', labelKey: 'undo', fallback: '撤销', shortcut: 'Ctrl+Z', action: () => onUndo() },
+        { key: 'redo', labelKey: 'redo', fallback: '重做', shortcut: 'Ctrl+Y', action: () => onRedo() },
+        { type: 'sep' },
+        { key: 'cut', labelKey: 'cut', fallback: '剪切', shortcut: 'Ctrl+X', action: () => document.execCommand('cut') },
+        { key: 'copy', labelKey: 'copy', fallback: '复制', shortcut: 'Ctrl+C', action: () => document.execCommand('copy') },
+        { key: 'paste', labelKey: 'paste', fallback: '粘贴', shortcut: 'Ctrl+V', action: () => document.execCommand('paste') },
+        { type: 'sep' },
+        {
+            key: 'select_all', labelKey: 'select_all', fallback: '全选', shortcut: 'Ctrl+A',
+            action: () => {
+                if (editorView) {
+                    editorView.dispatch({
+                        selection: { anchor: 0, head: editorView.state.doc.length }
+                    });
+                    editorView.focus();
+                }
+            }
+        },
+        {
+            key: 'find', labelKey: 'find', fallback: '查找', shortcut: 'Ctrl+F',
+            action: () => { if (window.FindBar) window.FindBar.open(false); }
+        },
+    ];
+    _renderContextMenu(x, y, items);
+}
+
+function showPreviewContextMenu(x, y, hasSelection) {
+    const items = [];
+
+    if (hasSelection) {
+        items.push({
+            key: 'copy', labelKey: 'copy', fallback: '复制', shortcut: 'Ctrl+C',
+            action: () => { try { document.execCommand('copy'); } catch (e) { /* ignore */ } }
+        });
+    }
+
+    items.push({
+        key: 'select_all', labelKey: 'select_all', fallback: '全选', shortcut: 'Ctrl+A',
+        action: () => {
+            if (previewEl) {
+                const range = document.createRange();
+                range.selectNodeContents(previewEl);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        }
+    });
+
+    items.push({ type: 'sep' });
+    items.push({
+        key: 'find', labelKey: 'find', fallback: '查找', shortcut: 'Ctrl+F',
+        action: () => { if (window.FindBar) window.FindBar.open(false); }
+    });
+
+    _renderContextMenu(x, y, items);
+}
+
+function setupEditorContextMenu() {
+    if (!editorView) return;
+
+    editorView.dom.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showEditorContextMenu(e.clientX, e.clientY);
+    });
+
+    document.addEventListener('mousedown', (e) => {
+        if (!_ctxMenuEl) return;
+        if (_ctxMenuEl.contains(e.target)) return;
+        closeContextMenu();
+    }, true);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && _ctxMenuEl) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeContextMenu();
+        }
+    }, true);
+
+    window.addEventListener('blur', () => {
+        closeContextMenu();
+    });
+
+    window.addEventListener('resize', () => {
+        closeContextMenu();
+    });
+}
+
+function setupPreviewContextMenu() {
+    const container = (previewEl && previewEl.parentElement) || previewEl;
+    if (!container) return;
+
+    container.addEventListener('contextmenu', (e) => {
+        if (isInsideContentEditable(e.target)) {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const sel = window.getSelection();
+        const hasSel = !!(sel && sel.rangeCount > 0 && !sel.isCollapsed &&
+            !isInsideContentEditable(sel.anchorNode) &&
+            !isInsideContentEditable(sel.focusNode));
+
+        showPreviewContextMenu(e.clientX, e.clientY, hasSel);
+    });
+}
+
+// ============================================================
+//  拖拽导入
+// ============================================================
 function setupDragDrop() {
     const targets = [
         document.getElementById('editor-container'),
@@ -1560,45 +1993,372 @@ function setupDragDrop() {
 }
 
 async function handleImageDrop(dt) {
-    const files = dt.files;
-    if (files && files.length > 0) {
-        const imageFiles = Array.from(files).filter(f =>
-            /^image\//.test(f.type) ||
-            /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(f.name)
-        );
-        if (imageFiles.length === 0) {
-            setStatus('拖入的文件不是图片');
+    const uriList = dt.getData('text/uri-list');
+    if (uriList) {
+        const firstUrl = String(uriList).split(/\r?\n/)[0].trim();
+        if (firstUrl && !firstUrl.startsWith('#') && /^https?:\/\//i.test(firstUrl)) {
+            console.log('[drag] uri-list URL:', firstUrl);
+            await importDroppedUrl(firstUrl);
             return;
         }
-        for (const f of imageFiles) {
-            await importDroppedLocalFile(f);
-        }
+    }
+
+    const plainText = (dt.getData('text/plain') || '').trim();
+    if (plainText && /^https?:\/\/\S+$/i.test(plainText)) {
+        console.log('[drag] text/plain URL:', plainText);
+        await importDroppedUrl(plainText);
         return;
     }
 
     const html = dt.getData('text/html');
     if (html) {
-        const m = html.match(/<img[^>]+\bsrc\s*=\s*["']([^"']+)["']/i);
-        if (m && m[1]) {
-            await importDroppedUrl(m[1]);
+        let imgSrc = null;
+        const m1 = html.match(/<img[^>]+\bsrc\s*=\s*["']([^"']+)["']/i);
+        if (m1 && m1[1]) imgSrc = m1[1];
+
+        if (imgSrc && /^(blob:|data:)/i.test(imgSrc)) {
+            const m2 = html.match(/\bdata-original\s*=\s*["']([^"']+)["']/i) ||
+                       html.match(/\bdata-src\s*=\s*["']([^"']+)["']/i) ||
+                       html.match(/\bdata-lazy-src\s*=\s*["']([^"']+)["']/i);
+            if (m2 && m2[1]) imgSrc = m2[1];
+        }
+
+        if (imgSrc && /^https?:\/\//i.test(imgSrc)) {
+            console.log('[drag] text/html img src:', imgSrc);
+            await importDroppedUrl(imgSrc);
             return;
         }
     }
 
-    let url = dt.getData('text/uri-list') || dt.getData('text/plain') || '';
-    url = String(url).split(/\r?\n/)[0].trim();
-    if (url && /^https?:\/\//i.test(url)) {
-        await importDroppedUrl(url);
+    const files = dt.files;
+    if (files && files.length > 0) {
+        console.log('[drag] files:', Array.from(files).map(f => ({
+            name: f.name, type: f.type, size: f.size,
+            hasPath: !!f.path,
+        })));
+
+        for (const f of files) {
+            const name = (f.name || '').toLowerCase();
+
+            if (name.endsWith('.pdf')) {
+                await _handleDroppedPdf(f);
+                continue;
+            }
+            if (name.endsWith('.html') || name.endsWith('.htm')) {
+                await _handleDroppedHtml(f);
+                continue;
+            }
+            if (name.endsWith('.md') || name.endsWith('.markdown') ||
+                name.endsWith('.txt')) {
+                await _handleDroppedMarkdown(f);
+                continue;
+            }
+            if (/^image\//.test(f.type) ||
+                /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(f.name)) {
+                await importDroppedLocalFile(f);
+                continue;
+            }
+            setStatus('不支持的文件类型: ' + (f.name || ''));
+        }
+        return;
+    }
+
+    if (plainText && /^https?:\/\//i.test(plainText)) {
+        await importDroppedUrl(plainText);
         return;
     }
 
     setStatus('未能识别拖入内容');
 }
 
+async function _handleDroppedPdf(file) {
+    if (isDirty) {
+        const ok = await showConfirm(
+            T('unsaved_content_title', '未保存的内容'),
+            T('unsaved_content_warning', '未保存的内容将丢失，继续？')
+        );
+        if (!ok) return;
+    }
+
+    const path = file.path || '';
+
+    if (path) {
+        setStatus('正在导入 PDF...');
+        try {
+            const r = await window.pywebview.api.import_dropped_pdf(path);
+            if (!r || !r.ok) {
+                setStatus('PDF 导入失败: ' + ((r && r.error) || '未知错误'));
+                return;
+            }
+            await _applyDroppedPdfResult(r, path);
+        } catch (e) {
+            setStatus('PDF 导入异常: ' + (e && e.message ? e.message : e));
+        }
+        return;
+    }
+
+    setStatus('正在读取 PDF...');
+    let buf;
+    try {
+        buf = await file.arrayBuffer();
+    } catch (e) {
+        setStatus('读取 PDF 失败: ' + (e && e.message ? e.message : e));
+        return;
+    }
+    if (!buf || buf.byteLength === 0) {
+        setStatus('PDF 文件为空');
+        return;
+    }
+
+    const sizeKB = Math.round(buf.byteLength / 1024);
+    setStatus('正在解析 PDF（' + sizeKB + ' KB）...');
+
+    let b64;
+    try {
+        b64 = arrayBufferToBase64(buf);
+    } catch (e) {
+        setStatus('PDF 编码失败: ' + (e && e.message ? e.message : e));
+        return;
+    }
+
+    try {
+        const r = await window.pywebview.api.import_dropped_pdf_bytes(
+            file.name || 'dropped.pdf', b64);
+        if (!r || !r.ok) {
+            setStatus('PDF 导入失败: ' + ((r && r.error) || '未知错误'));
+            return;
+        }
+        await _applyDroppedPdfResult(r, '');
+    } catch (e) {
+        setStatus('PDF 导入异常: ' + (e && e.message ? e.message : e));
+    }
+}
+
+function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const CHUNK = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        const sub = bytes.subarray(i, i + CHUNK);
+        binary += String.fromCharCode.apply(null, sub);
+    }
+    return btoa(binary);
+}
+
+async function _applyDroppedPdfResult(r, path) {
+    currentFile = '';
+    currentDocDir = (r && r.doc_dir) ? String(r.doc_dir) : '';
+    syncGlobalFileState();
+    setContent(r.content);
+    setFilePathDisplay('', T('imported_from_pdf', '（来自 PDF）'));
+    setStatus('PDF 导入完成');
+    try { await window.pywebview.api.set_current_file(''); } catch (e) {}
+
+    _openedOriginalContent = getContent();
+    _openedFilePath = '';
+    _forceSaveAsNextTime = false;
+}
+
+function extractMarkEaseMeta(htmlText) {
+    if (!htmlText) return null;
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlText, 'text/html');
+
+        const mdMeta = doc.querySelector('meta[name="markease-source-md"]');
+        if (!mdMeta) return null;
+
+        const mdB64 = mdMeta.getAttribute('content') || '';
+        if (!mdB64) return null;
+
+        const dirMeta = doc.querySelector('meta[name="markease-source-doc-dir"]');
+        const dirB64 = dirMeta ? (dirMeta.getAttribute('content') || '') : '';
+
+        function decodeB64Utf8(b64) {
+            if (!b64) return '';
+            const binary = atob(b64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            try {
+                return new TextDecoder('utf-8').decode(bytes);
+            } catch (e) {
+                return binary;
+            }
+        }
+
+        return {
+            markdown: decodeB64Utf8(mdB64),
+            docDir: dirB64 ? decodeB64Utf8(dirB64) : '',
+        };
+    } catch (e) {
+        console.warn('[extractMarkEaseMeta]', e);
+        return null;
+    }
+}
+
+async function _handleDroppedHtml(file) {
+    console.log('[drag html] name=', file.name, 'path=', file.path);
+
+    if (isDirty) {
+        const ok = await showConfirm(
+            T('unsaved_content_title', '未保存的内容'),
+            T('unsaved_content_warning', '未保存的内容将丢失，继续？')
+        );
+        if (!ok) return;
+    }
+
+    const path = file.path || '';
+
+    if (!path) {
+        let text;
+        try {
+            text = await file.text();
+        } catch (e) {
+            setStatus('无法读取 HTML 文件');
+            return;
+        }
+
+        const meta = extractMarkEaseMeta(text);
+        if (meta && meta.markdown) {
+            let content = meta.markdown;
+            const docDir = meta.docDir || '';
+
+            try {
+                if (window.pywebview && window.pywebview.api &&
+                    window.pywebview.api.recover_missing_images) {
+                    const rr = await window.pywebview.api.recover_missing_images(
+                        docDir, content, text);
+                    if (rr && rr.ok && rr.content != null) {
+                        content = rr.content;
+                        if (rr.recovered > 0) {
+                            console.log('[drag html] 从 HTML 恢复图片:',
+                                rr.recovered);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('[drag html] recover failed', e);
+            }
+
+            currentFile = '';
+            currentDocDir = docDir;
+            syncGlobalFileState();
+
+            setContent(content);
+            setFilePathDisplay('', T('imported_from_html', '（来自 HTML）'));
+            setStatus(T('import_html_success_roundtrip',
+                'HTML 导入完成（无损还原）'));
+            try { await window.pywebview.api.set_current_file(''); } catch (e) {}
+
+            _openedOriginalContent = getContent();
+            _openedFilePath = '';
+            _forceSaveAsNextTime = false;
+            return;
+        }
+
+        let content = convertHtmlToMarkdown(text);
+        if (content == null) {
+            setStatus('HTML 解析失败：无法提取内容');
+            return;
+        }
+
+        let docDir = '';
+        if (file.name) {
+            docDir = currentDocDir || '';
+        }
+
+        if (docDir) {
+            try {
+                const fr = await window.pywebview.api.finalize_imported_html(
+                    docDir, content);
+                if (fr && fr.ok && fr.content != null) {
+                    content = fr.content;
+                    if (fr.migrated_images > 0) {
+                        console.log('[html] data URL 图片落盘:',
+                            fr.migrated_images);
+                    }
+                }
+            } catch (e) {
+                console.warn('[html] finalize_imported_html failed', e);
+            }
+        }
+
+        currentFile = '';
+        currentDocDir = docDir;
+        syncGlobalFileState();
+        setContent(content);
+        setFilePathDisplay('', T('imported_from_html', '（来自 HTML）'));
+        setStatus(T('import_html_success', 'HTML 导入完成'));
+        try { await window.pywebview.api.set_current_file(''); } catch (e) {}
+
+        _openedOriginalContent = getContent();
+        _openedFilePath = '';
+        _forceSaveAsNextTime = false;
+        return;
+    }
+
+    setStatus('正在导入 HTML...');
+    try {
+        const r = await window.pywebview.api.import_dropped_html(path);
+        if (!r || !r.ok) {
+            setStatus('HTML 导入失败: ' + ((r && r.error) || '未知错误'));
+            return;
+        }
+        await _applyImportedHtmlResult(r, /* dirtyChecked */ true);
+    } catch (e) {
+        setStatus('HTML 导入异常: ' + (e && e.message ? e.message : e));
+    }
+}
+
+async function _handleDroppedMarkdown(file) {
+    console.log('[drag md] name=', file.name, 'path=', file.path);
+
+    if (isDirty) {
+        const ok = await showConfirm(
+            T('unsaved_content_title', '未保存的内容'),
+            T('unsaved_content_warning', '未保存的内容将丢失，继续？')
+        );
+        if (!ok) return;
+    }
+
+    let path = file.path || '';
+    let content = '';
+
+    try {
+        content = await file.text();
+    } catch (e) {
+        setStatus('读取文件失败: ' + (e && e.message ? e.message : e));
+        return;
+    }
+
+    currentFile = path || '';
+    currentDocDir = path ? path.replace(/[\\/][^\\/]+$/, '') : '';
+    syncGlobalFileState();
+
+    setContent(content);
+
+    if (path) {
+        setFilePathDisplay(path);
+    } else {
+        setFilePathDisplay('', '（来自拖拽）');
+    }
+    setStatus('已打开');
+
+    try {
+        await window.pywebview.api.set_current_file(currentFile || '');
+    } catch (e) { /* ignore */ }
+
+    _openedOriginalContent = getContent();
+    _openedFilePath = currentFile || '';
+    _forceSaveAsNextTime = false;
+}
+
 async function importDroppedLocalFile(file) {
     setStatus('正在导入本地图片...');
 
-    let path = file.path || '';
+    const path = file.path || '';
     if (path) {
         try {
             const r = await window.pywebview.api.import_dropped_file(path);
@@ -1638,17 +2398,23 @@ async function importDroppedLocalFile(file) {
 }
 
 async function importDroppedUrl(url) {
-    setStatus('正在下载网络图片...');
-    try {
-        const r = await window.pywebview.api.import_dropped_url(url);
-        if (r && r.ok) {
-            insertImageMarkdown(r.md_path, r.unsaved);
-        } else {
-            setStatus('下载失败: ' + ((r && r.error) || '未知错误'));
-        }
-    } catch (e) {
-        setStatus('下载异常: ' + (e && e.message ? e.message : e));
+    if (!url) {
+        setStatus('未能识别拖入内容');
+        return;
     }
+
+    let cleanUrl = String(url).trim();
+    if (cleanUrl.startsWith('<') && cleanUrl.endsWith('>')) {
+        cleanUrl = cleanUrl.slice(1, -1);
+    }
+
+    if (!/^https?:\/\//i.test(cleanUrl)) {
+        setStatus('不支持的图片地址: ' + cleanUrl.slice(0, 60));
+        return;
+    }
+
+    insertImageMarkdown(cleanUrl, false);
+    setStatus('已插入网络图片链接');
 }
 
 function insertImageMarkdown(mdPath, unsaved) {
@@ -1754,8 +2520,92 @@ async function resolveDragConflict(action) {
     }
 }
 
-// ---------------- 预览编辑（含表格单元格） ----------------
+// ============================================================
+//  预览编辑
+// ============================================================
 let _linkClickTimer = null;
+
+function enterEditable(el, e) {
+    if (!el) return;
+    if (el.getAttribute('contenteditable') === 'true') return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (activeEditableEl && activeEditableEl !== el) {
+        exitEditable(activeEditableEl);
+    }
+
+    el.setAttribute('contenteditable', 'true');
+    el.classList.add('preview-editing');
+    activeEditableEl = el;
+
+    // ★ 阶段 16-13：重置输入标记
+    _editableHadInput = false;
+
+    // ★ 阶段 16-13：监听 input 事件
+    const onInput = () => { _editableHadInput = true; };
+    el.addEventListener('input', onInput);
+    el.__mkInputHandler = onInput;
+
+    const isLi = el.tagName && el.tagName.toLowerCase() === 'li';
+    if (isLi) {
+        el.querySelectorAll('ul, ol').forEach(list => {
+            if (list.getAttribute('contenteditable') !== 'false') {
+                list.setAttribute('data-md-tmp-cedisabled', '1');
+                list.setAttribute('contenteditable', 'false');
+            }
+        });
+    }
+
+    el.querySelectorAll('[contenteditable="false"]').forEach(sub => {
+        if (sub.getAttribute && sub.getAttribute('data-no-edit') === '1') {
+            return;
+        }
+        if (sub.classList &&
+            (sub.classList.contains('task-list-bullet') ||
+             sub.classList.contains('task-list-checkbox'))) {
+            return;
+        }
+        if (sub.tagName &&
+            (sub.tagName.toLowerCase() === 'ul' ||
+             sub.tagName.toLowerCase() === 'ol')) {
+            return;
+        }
+        sub.setAttribute('data-md-ce-was-false', '1');
+        sub.setAttribute('contenteditable', 'true');
+    });
+
+    el.focus();
+
+    if (e && document.caretRangeFromPoint) {
+        try {
+            const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+            if (range) {
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        } catch (err) { /* ignore */ }
+    }
+}
+
+function findFootnoteLiByY(section, clientY) {
+    if (!section) return null;
+    const lis = section.querySelectorAll('li[data-footnote-item]');
+    if (lis.length === 0) return null;
+    for (let i = 0; i < lis.length; i++) {
+        const r = lis[i].getBoundingClientRect();
+        if (clientY >= r.top && clientY <= r.bottom) return lis[i];
+    }
+    const first = lis[0];
+    const last = lis[lis.length - 1];
+    const fr = first.getBoundingClientRect();
+    const lr = last.getBoundingClientRect();
+    if (clientY < fr.top) return first;
+    if (clientY > lr.bottom) return last;
+    return null;
+}
 
 function setupPreviewEditing() {
     previewEl.addEventListener('click', (e) => {
@@ -1796,44 +2646,62 @@ function setupPreviewEditing() {
             startTableCellEdit(cell, e);
             return;
         }
-        const el = e.target.closest && e.target.closest('[data-md-editable="1"]');
+
+        if (e.target.closest && e.target.closest('a[data-footnote-backref="1"]')) {
+            return;
+        }
+
+        let fnLi = e.target.closest && e.target.closest('li[data-footnote-item]');
+        if (!fnLi) {
+            const sec = e.target.closest && e.target.closest('section.footnotes');
+            if (sec) {
+                fnLi = findFootnoteLiByY(sec, e.clientY);
+            }
+        }
+        if (fnLi) {
+            const fnP = fnLi.querySelector('p[data-md-editable="footnote"]');
+            if (fnP) {
+                enterEditable(fnP, e);
+                return;
+            }
+        }
+
+        const el = e.target.closest && e.target.closest(
+            '[data-md-editable="1"], [data-md-editable="footnote"]');
         if (!el) return;
         if (el.getAttribute('contenteditable') === 'true') return;
 
-        if (activeEditableEl && activeEditableEl !== el) {
-            exitEditable(activeEditableEl);
-        }
-
-        el.setAttribute('contenteditable', 'true');
-        el.classList.add('preview-editing');
-        activeEditableEl = el;
-        el.focus();
-
-        if (document.caretRangeFromPoint) {
-            const range = document.caretRangeFromPoint(e.clientX, e.clientY);
-            if (range) {
-                const sel = window.getSelection();
-                sel.removeAllRanges();
-                sel.addRange(range);
-            }
-        }
+        enterEditable(el, e);
     });
 
     previewEl.addEventListener('keydown', (e) => {
         const cell = e.target.closest && e.target.closest(
             'td[contenteditable="true"], th[contenteditable="true"]');
-        if (!cell) return;
-        if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            exitEditable(cell);
+        if (cell) {
+            if (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                exitEditable(cell);
+            }
+            return;
+        }
+
+        if (e.key === 'Escape') {
+            const el = e.target.closest && e.target.closest(
+                '[data-md-editable="1"][contenteditable="true"], ' +
+                '[data-md-editable="footnote"][contenteditable="true"]');
+            if (el) {
+                e.preventDefault();
+                e.stopPropagation();
+                exitEditable(el);
+            }
         }
     }, true);
 
     previewEl.addEventListener('blur', (e) => {
         const el = e.target;
         if (!el || !el.matches) return;
-        if (!el.matches('[data-md-editable="1"]')) return;
+        if (!el.matches('[data-md-editable="1"], [data-md-editable="footnote"]')) return;
         if (el.getAttribute('contenteditable') !== 'true') return;
         exitEditable(el);
     }, true);
@@ -2089,6 +2957,9 @@ function fragmentToMarkdown(node) {
             out += '\n';
         } else if (tag === 'hr') {
             out += '---\n\n';
+        } else if (tag === 'ins' || tag === 'u') {
+            const inner = fragmentToMarkdown(child);
+            out += '<ins>' + inner + '</ins>';
         } else if (tag === 'ul' || tag === 'ol') {
             const ordered = (tag === 'ol');
             let idx = 1;
@@ -2168,15 +3039,20 @@ function fragmentToMarkdown(node) {
             const mb = child.classList.contains('math-block')
                 ? child : child.querySelector('.math-block');
             if (mb) {
-                const tex = mb.getAttribute('data-tex');
-                if (tex) {
-                    try {
-                        const decoded = decodeURIComponent(tex);
-                        out += '$$\n' + decoded + '\n$$\n\n';
-                    } catch (e2) { /* ignore */ }
+                const annotation = mb.querySelector('annotation[encoding="application/x-tex"]');
+                if (annotation) {
+                    out += '\n\n$$' + annotation.textContent + '$$\n\n';
+                } else {
+                    const tex = mb.getAttribute('data-tex');
+                    if (tex) {
+                        try {
+                            const decoded = decodeURIComponent(tex);
+                            out += '\n\n$$\n' + decoded + '\n$$\n\n';
+                        } catch (e2) { /* ignore */ }
+                    }
                 }
             }
-        } else if (child.querySelector && child.querySelector('.katex-inline, .math-block')) {
+        } else if (child.querySelector && child.querySelector('.katex-inline, .katex, .math-block')) {
             out += fragmentToMarkdown(child);
         } else {
             out += window.domToMarkdown
@@ -2313,7 +3189,7 @@ function setupGlobalKeyboard() {
     }, true);
 }
 
-// ---------------- 退出预览编辑（分派） ----------------
+// ---------------- 退出预览编辑 ----------------
 function exitEditable(el) {
     if (!el) return;
 
@@ -2324,7 +3200,22 @@ function exitEditable(el) {
     if (isTableCell) {
         applyTableCellEdit(el);
     } else {
+        el.querySelectorAll('[data-md-tmp-cedisabled="1"]').forEach(list => {
+            list.removeAttribute('data-md-tmp-cedisabled');
+            list.removeAttribute('contenteditable');
+        });
+
+        el.querySelectorAll('[data-md-ce-was-false="1"]').forEach(sub => {
+            sub.removeAttribute('data-md-ce-was-false');
+            sub.setAttribute('contenteditable', 'false');
+        });
         applyPreviewEdit(el);
+    }
+
+    // ★ 清理 input 监听
+    if (el.__mkInputHandler) {
+        try { el.removeEventListener('input', el.__mkInputHandler); } catch (e) {}
+        el.__mkInputHandler = null;
     }
 
     el.setAttribute('contenteditable', 'false');
@@ -2355,9 +3246,97 @@ function computeMinimalChange(oldStr, newStr) {
     };
 }
 
+// ★ 阶段 16-13：专门从 li 提取 inline 文本，跳过块级子元素
+function extractLiInlineText(li) {
+    let out = '';
+    const nodes = li.childNodes;
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        if (node.nodeType === 3) {
+            out += node.nodeValue;
+            continue;
+        }
+        if (node.nodeType !== 1) continue;
+
+        const tag = node.tagName.toLowerCase();
+
+        // 跳过所有块级元素（列表、段落、引用、代码块、表格、标题、折叠块、章节）
+        if (tag === 'ul' || tag === 'ol' || tag === 'p' || tag === 'div' ||
+            tag === 'blockquote' || tag === 'pre' || tag === 'table' ||
+            tag === 'section' || tag === 'article' || tag === 'figure' ||
+            tag === 'details' || tag === 'summary' ||
+            /^h[1-6]$/.test(tag)) {
+            continue;
+        }
+
+        // inline 元素
+        if (tag === 'br') {
+            out += '\n';
+        } else if (tag === 'img') {
+            const src = node.getAttribute('src') || '';
+            const alt = node.getAttribute('alt') || '';
+            let realSrc = src;
+            if (/^http:\/\/127\.0\.0\.1:\d+\/proxy\?url=/i.test(src)) {
+                try {
+                    realSrc = decodeURIComponent(src.replace(
+                        /^http:\/\/127\.0\.0\.1:\d+\/proxy\?url=/i, ''));
+                } catch (e) { /* 保留 */ }
+            } else if (/^http:\/\/127\.0\.0\.1:\d+\/fs\//i.test(src)) {
+                try {
+                    realSrc = decodeURIComponent(src.replace(
+                        /^http:\/\/127\.0\.0\.1:\d+\/fs\//i, ''));
+                } catch (e) { /* 保留 */ }
+            } else if (/^file:\/\//i.test(src)) {
+                try {
+                    realSrc = decodeURIComponent(src.replace(
+                        /^file:\/\/\/?/i, ''));
+                } catch (e) { /* 保留 */ }
+            }
+            if (/[\s()<>]/.test(realSrc) && !realSrc.startsWith('<')) {
+                realSrc = '<' + realSrc + '>';
+            }
+            out += '![' + alt + '](' + realSrc + ')';
+        } else if (tag === 'code') {
+            out += '`' + node.textContent + '`';
+        } else if (tag === 'strong' || tag === 'b') {
+            out += '**' + extractLiInlineText(node) + '**';
+        } else if (tag === 'em' || tag === 'i') {
+            out += '*' + extractLiInlineText(node) + '*';
+        } else if (tag === 'del' || tag === 's') {
+            out += '~~' + extractLiInlineText(node) + '~~';
+        } else if (tag === 'ins' || tag === 'u') {
+            out += '<ins>' + extractLiInlineText(node) + '</ins>';
+        } else if (tag === 'a') {
+            const href = node.getAttribute('href') || '';
+            const txt = extractLiInlineText(node);
+            if (node.querySelector('img')) {
+                out += '<a href="' + href + '">' + txt + '</a>';
+            } else if (href) {
+                out += '[' + txt + '](' + href + ')';
+            } else {
+                out += txt;
+            }
+        } else if (tag === 'sup' && node.getAttribute('data-footnote-ref') === '1') {
+            const idx = node.getAttribute('data-footnote-index') || '';
+            out += '[^' + idx + ']';
+        } else if (tag === 'span') {
+            if (node.classList && (
+                node.classList.contains('task-list-bullet') ||
+                node.classList.contains('task-list-checkbox'))) {
+                continue;
+            }
+            out += extractLiInlineText(node);
+        } else {
+            out += extractLiInlineText(node);
+        }
+    }
+    return out;
+}
+
 function applyPreviewEdit(el) {
     if (!el || !el.getAttribute) return;
-    if (el.getAttribute('data-md-editable') !== '1') return;
+    const editable = el.getAttribute('data-md-editable');
+    if (editable !== '1' && editable !== 'footnote') return;
 
     const startStr = el.getAttribute('data-md-start');
     const endStr = el.getAttribute('data-md-end');
@@ -2368,21 +3347,58 @@ function applyPreviewEdit(el) {
     const end = parseInt(endStr, 10);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
 
-    const newText = window.domToMarkdown
-        ? window.domToMarkdown(el)
-        : (window.getEditableText ? window.getEditableText(el) : el.textContent);
+    const tag = (el.tagName || '').toLowerCase();
+    const isLi = (tag === 'li');
+
+    // ★ li 专用提取：只保留 inline 内容，跳过嵌套列表
+    let newText;
+    if (isLi) {
+        newText = extractLiInlineText(el).replace(/[ \t]+$/g, '');
+    } else {
+        newText = window.domToMarkdown
+            ? window.domToMarkdown(el)
+            : (window.getEditableText ? window.getEditableText(el) : el.textContent);
+    }
+
+    // ★ 三重异常防护（仅 li）
+    if (isLi) {
+        // 防护 1：内容膨胀
+        if (oldText && newText.length > oldText.length * 1.5 + 20) {
+            setStatus('预览编辑异常（内容膨胀），已放弃本次同步');
+            return;
+        }
+        // 防护 2：跨行污染（原本单行，现在跨行）
+        if (oldText.indexOf('\n') < 0 && newText.indexOf('\n') >= 0) {
+            setStatus('预览编辑异常（跨行），已放弃本次同步');
+            return;
+        }
+        // 防护 3：未输入任何内容时，直接放弃（避免浏览器重排导致的误同步）
+        if (!_editableHadInput) {
+            return;
+        }
+    }
+
+    if (start === end && !newText && !oldText) return;
 
     function stripWs(s) { return String(s).replace(/\s+/g, ''); }
-    if (stripWs(newText) === stripWs(oldText)) return;
+    if (start !== end && stripWs(newText) === stripWs(oldText)) return;
 
     const md = getContent();
 
-    if (md.slice(start, end) !== oldText) {
-        setStatus('预览编辑与源文本已不一致，已放弃本次同步');
-        return;
+    if (start !== end) {
+        if (md.slice(start, end) !== oldText) {
+            setStatus('预览编辑与源文本已不一致，已放弃本次同步');
+            return;
+        }
+    } else {
+        if (start < 0 || start > md.length) {
+            setStatus('预览编辑位置越界，已放弃本次同步');
+            return;
+        }
     }
 
     const newMd = md.slice(0, start) + newText + md.slice(end);
+    if (newMd === md) return;
     const change = computeMinimalChange(md, newMd);
 
     syncingFromPreview = true;
@@ -2424,6 +3440,10 @@ async function onNew() {
     setFilePathDisplay('');
     setStatus('新建文档');
     try { await window.pywebview.api.set_current_file(''); } catch (e) {}
+
+    _openedOriginalContent = '';
+    _openedFilePath = '';
+    _forceSaveAsNextTime = false;
 }
 
 async function onOpen() {
@@ -2433,10 +3453,15 @@ async function onOpen() {
         return;
     }
 
+    if (result.need_frontend_convert && result.html) {
+        await _applyImportedHtmlResult(result, /* dirtyChecked */ false);
+        return;
+    }
+
     currentFile = result.path || '';
-    currentDocDir = result.path
-        ? result.path.replace(/[\\/][^\\/]+$/, '')
-        : '';
+    currentDocDir = result.doc_dir
+        ? String(result.doc_dir)
+        : (result.path ? result.path.replace(/[\\/][^\\/]+$/, '') : '');
     syncGlobalFileState();
 
     setContent(result.content);
@@ -2454,9 +3479,18 @@ async function onOpen() {
         setStatus('已打开');
     }
     try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
+
+    _openedOriginalContent = getContent();
+    _openedFilePath = currentFile || '';
+    _forceSaveAsNextTime = false;
 }
 
 async function onSave() {
+    if (_forceSaveAsNextTime) {
+        _forceSaveAsNextTime = false;
+        return await onSaveAs();
+    }
+
     const result = await window.pywebview.api.save_file(getContent());
     if (!result.ok) {
         if (!result.cancelled) setStatus('保存失败: ' + (result.error || ''));
@@ -2470,12 +3504,34 @@ async function onSave() {
         setStatus('已导出 PDF：' + result.path);
         return;
     }
+
+    if (result.content != null && result.content !== getContent()) {
+        currentFile = result.path;
+        currentDocDir = result.path.replace(/[\\/][^\\/]+$/, '');
+        syncGlobalFileState();
+        setContent(result.content);
+        setFilePathDisplay(result.path);
+        isDirty = false;
+        const mig = result.migrated_images || 0;
+        if (mig > 0) {
+            setStatus('已保存（迁移 ' + mig + ' 张图片到 assets/）');
+        } else {
+            setStatus('已保存');
+        }
+        _openedOriginalContent = getContent();
+        _openedFilePath = currentFile || '';
+        try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
+        return;
+    }
+
     currentFile = result.path;
     currentDocDir = result.path.replace(/[\\/][^\\/]+$/, '');
     syncGlobalFileState();
     setFilePathDisplay(result.path);
     setStatus('已保存');
     isDirty = false;
+    _openedOriginalContent = getContent();
+    _openedFilePath = currentFile || '';
     try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
 }
 
@@ -2493,12 +3549,36 @@ async function onSaveAs() {
         setStatus('已导出 PDF：' + result.path);
         return;
     }
+
+    if (result.content != null && result.content !== getContent()) {
+        currentFile = result.path;
+        currentDocDir = result.path.replace(/[\\/][^\\/]+$/, '');
+        syncGlobalFileState();
+        setContent(result.content);
+        setFilePathDisplay(result.path);
+        isDirty = false;
+        const mig = result.migrated_images || 0;
+        if (mig > 0) {
+            setStatus('已另存为（迁移 ' + mig + ' 张图片到 assets/）');
+        } else {
+            setStatus('已另存为');
+        }
+        _openedOriginalContent = getContent();
+        _openedFilePath = currentFile || '';
+        _forceSaveAsNextTime = false;
+        try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
+        return;
+    }
+
     currentFile = result.path;
     currentDocDir = result.path.replace(/[\\/][^\\/]+$/, '');
     syncGlobalFileState();
     setFilePathDisplay(result.path);
     setStatus('已另存为');
     isDirty = false;
+    _openedOriginalContent = getContent();
+    _openedFilePath = currentFile || '';
+    _forceSaveAsNextTime = false;
     try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
 }
 
@@ -2560,15 +3640,19 @@ async function onImportPdf() {
     }
 
     currentFile = '';
-    currentDocDir = result.source_pdf
-        ? result.source_pdf.replace(/[\\/][^\\/]+$/, '')
-        : '';
+    currentDocDir = result.doc_dir
+        ? String(result.doc_dir)
+        : (result.source_pdf ? result.source_pdf.replace(/[\\/][^\\/]+$/, '') : '');
     syncGlobalFileState();
 
     setContent(result.content);
     setFilePathDisplay('', '（来自 PDF）');
     setStatus('PDF 导入完成');
     try { await window.pywebview.api.set_current_file(''); } catch (e) {}
+
+    _openedOriginalContent = getContent();
+    _openedFilePath = '';
+    _forceSaveAsNextTime = false;
 }
 
 async function onExportPdf() {
@@ -2581,6 +3665,390 @@ async function onExportPdf() {
     let msg = `PDF 导出成功: ${result.path}（${result.size} 字节）`;
     if (result.embedded) msg += '，已嵌入 Markdown 源';
     setStatus(msg);
+}
+
+// ============================================================
+//  HTML 导入 / 导出
+// ============================================================
+
+async function onExportHtml() {
+    if (!editorView) return;
+
+    setStatus(T('exporting_html', '正在导出 HTML...'));
+
+    try {
+        updatePreview();
+
+        await new Promise(r => requestAnimationFrame(r));
+        await new Promise(r => requestAnimationFrame(r));
+
+        const htmlFragment = previewEl ? previewEl.innerHTML : '';
+        const markdown = getContent();
+
+        const r = await window.pywebview.api.export_html({
+            html: htmlFragment,
+            markdown: markdown,
+            title: currentFile
+                ? currentFile.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '')
+                : 'MarkEase 导出',
+            doc_dir: currentDocDir || '',
+        });
+
+        if (!r || !r.ok) {
+            if (r && r.cancelled) {
+                setStatus(T('ready', '就绪'));
+                return;
+            }
+            setStatus(T('export_html_failed', '导出失败') + ': ' +
+                      ((r && r.error) || '未知错误'));
+            return;
+        }
+
+        const stats = r.stats || {};
+        let msg = T('export_html_success', 'HTML 导出成功') + ': ' + r.path;
+        const details = [];
+        if (stats.embedded) details.push('内嵌图片 ' + stats.embedded);
+        if (stats.transcoded) details.push('转码 ' + stats.transcoded);
+        if (stats.compressed) details.push('压缩 ' + stats.compressed);
+        if (stats.remote) details.push('保留网络图 ' + stats.remote);
+        if (details.length > 0) msg += '（' + details.join('，') + '）';
+        setStatus(msg);
+    } catch (e) {
+        setStatus(T('export_html_failed', '导出失败') + ': ' +
+                  (e && e.message ? e.message : e));
+        console.error('[export html]', e);
+    }
+}
+
+async function onImportHtml() {
+    setStatus(T('importing_html', '正在导入 HTML...'));
+    try {
+        const r = await window.pywebview.api.import_html_dialog();
+        if (!r) {
+            setStatus(T('ready', '就绪'));
+            return;
+        }
+        if (!r.ok) {
+            if (r.cancelled) {
+                setStatus(T('ready', '就绪'));
+                return;
+            }
+            setStatus(T('import_html_failed', '导入失败') + ': ' +
+                      (r.error || '未知错误'));
+            return;
+        }
+
+        await _applyImportedHtmlResult(r, /* dirtyChecked */ false);
+    } catch (e) {
+        setStatus(T('import_html_failed', '导入失败') + ': ' +
+                  (e && e.message ? e.message : e));
+        console.error('[import html]', e);
+    }
+}
+
+async function _applyImportedHtmlResult(r, dirtyChecked) {
+    if (!dirtyChecked && isDirty) {
+        const ok = await showConfirm(
+            T('unsaved_content_title', '未保存的内容'),
+            T('unsaved_content_warning', '未保存的内容将丢失，继续？')
+        );
+        if (!ok) {
+            setStatus(T('ready', '就绪'));
+            return;
+        }
+    }
+
+    let content = '';
+    let sourceLabel = '';
+    let docDir = '';
+
+    if (r.source === 'markease' && r.content != null) {
+        content = r.content;
+        docDir = (r && r.doc_dir) ? String(r.doc_dir) : '';
+        sourceLabel = T('import_html_success_roundtrip', 'HTML 导入完成（无损还原）');
+    } else if (r.need_frontend_convert && r.html) {
+        content = convertHtmlToMarkdown(r.html);
+        docDir = (r && r.doc_dir) ? String(r.doc_dir) : '';
+
+        if (docDir) {
+            try {
+                const fr = await window.pywebview.api.finalize_imported_html(
+                    docDir, content);
+                if (fr && fr.ok && fr.content != null) {
+                    content = fr.content;
+                    if (fr.migrated_images > 0) {
+                        console.log('[html] data URL 图片落盘:', fr.migrated_images);
+                    }
+                }
+            } catch (e) {
+                console.warn('[html] finalize_imported_html failed', e);
+            }
+        }
+        sourceLabel = T('import_html_success', 'HTML 导入完成');
+    } else if (r.content != null) {
+        content = r.content;
+        docDir = (r && r.doc_dir) ? String(r.doc_dir) : '';
+        sourceLabel = T('import_html_success', 'HTML 导入完成');
+    }
+
+    if (!content && content !== '') {
+        setStatus(T('import_html_failed', '导入失败') + '：无法提取内容');
+        return;
+    }
+
+    currentFile = '';
+    currentDocDir = docDir;
+    syncGlobalFileState();
+
+    setContent(content);
+    setFilePathDisplay('', T('imported_from_html', '（来自 HTML）'));
+    setStatus(sourceLabel);
+    try { await window.pywebview.api.set_current_file(''); } catch (e) {}
+
+    _openedOriginalContent = getContent();
+    _openedFilePath = '';
+    _forceSaveAsNextTime = false;
+}
+
+// ---------------- HTML → Markdown 转换（第三方 HTML） ----------------
+function convertHtmlToMarkdown(html) {
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const body = doc.body;
+        if (!body) return '';
+
+        return htmlNodeToMarkdown(body).replace(/\n{3,}/g, '\n\n').trim();
+    } catch (e) {
+        console.error('[convertHtmlToMarkdown]', e);
+        return '';
+    }
+}
+
+function htmlNodeToMarkdown(node) {
+    let out = '';
+    const children = node.childNodes;
+    for (let i = 0; i < children.length; i++) {
+        out += htmlNodeOneToMarkdown(children[i]);
+    }
+    return out;
+}
+
+function extractKatexTex(node) {
+    if (!node || !node.querySelector) return null;
+    const ann = node.querySelector('annotation[encoding="application/x-tex"]');
+    if (!ann) return null;
+    return ann.textContent || '';
+}
+
+function htmlNodeOneToMarkdown(node) {
+    if (node.nodeType === 3) {
+        return node.nodeValue || '';
+    }
+    if (node.nodeType !== 1) return '';
+
+    const tag = node.tagName.toLowerCase();
+
+    if (node.classList &&
+        (node.classList.contains('task-list-bullet') ||
+         node.classList.contains('md-summary'))) {
+        return '';
+    }
+
+    if (tag === 'script' || tag === 'style' || tag === 'noscript') {
+        return '';
+    }
+
+    if (node.classList && node.classList.contains('math-block')) {
+        const tex = extractKatexTex(node);
+        if (tex != null && tex !== '') {
+            return '\n\n$$' + tex + '$$\n\n';
+        }
+        const dataTex = node.getAttribute && node.getAttribute('data-tex');
+        if (dataTex) {
+            try {
+                return '\n\n$$' + decodeURIComponent(dataTex) + '$$\n\n';
+            } catch (e) { /* ignore */ }
+        }
+        return '';
+    }
+    if (node.classList && node.classList.contains('katex-display')) {
+        const tex = extractKatexTex(node);
+        if (tex != null && tex !== '') {
+            return '\n\n$$' + tex + '$$\n\n';
+        }
+        return '';
+    }
+    if (node.classList && node.classList.contains('katex')) {
+        const tex = extractKatexTex(node);
+        if (tex != null && tex !== '') {
+            return '$' + tex + '$';
+        }
+        return '';
+    }
+    if (node.classList &&
+        (node.classList.contains('katex-mathml') ||
+         node.classList.contains('katex-html'))) {
+        return '';
+    }
+
+    if (/^h[1-6]$/.test(tag)) {
+        const level = parseInt(tag[1], 10);
+        const text = inlineChildrenToMarkdown(node).trim();
+        return '#'.repeat(level) + ' ' + text + '\n\n';
+    }
+
+    if (tag === 'p') {
+        const text = inlineChildrenToMarkdown(node).trim();
+        if (!text) return '';
+        return text + '\n\n';
+    }
+
+    if (tag === 'br') return '\n';
+
+    if (tag === 'hr') return '\n---\n\n';
+
+    if (tag === 'ul' || tag === 'ol') {
+        return listToMarkdown(node, tag === 'ol', 0);
+    }
+
+    if (tag === 'blockquote') {
+        const inner = htmlNodeToMarkdown(node);
+        const lines = inner.split('\n');
+        const quoted = lines.map(l => l ? '> ' + l : '>').join('\n');
+        return quoted + '\n\n';
+    }
+
+    if (tag === 'pre') {
+        const codeEl = node.querySelector('code');
+        const text = codeEl ? (codeEl.textContent || '') : (node.textContent || '');
+        let lang = '';
+        if (codeEl) {
+            const cls = codeEl.className || '';
+            const m = /language-([\w-]+)/.exec(cls);
+            if (m) lang = m[1];
+        }
+        return '```' + lang + '\n' + text.replace(/\n$/, '') + '\n```\n\n';
+    }
+
+    if (tag === 'code') {
+        const text = node.textContent || '';
+        if (!text) return '';
+        return '`' + text + '`';
+    }
+
+    if (tag === 'table') {
+        return tableToMarkdown(node) + '\n\n';
+    }
+
+    if (tag === 'img') {
+        const src = node.getAttribute('src') || '';
+        const alt = node.getAttribute('alt') || '';
+        if (!src) return '';
+        if (/[\s()<>]/.test(src) && !src.startsWith('<')) {
+            return '![' + alt + '](<' + src + '>)';
+        }
+        return '![' + alt + '](' + src + ')';
+    }
+
+    if (tag === 'a') {
+        const href = node.getAttribute('href') || '';
+        const text = inlineChildrenToMarkdown(node);
+        if (!href) return text;
+        return '[' + text + '](' + href + ')';
+    }
+
+    if (tag === 'strong' || tag === 'b') {
+        return '**' + inlineChildrenToMarkdown(node) + '**';
+    }
+    if (tag === 'em' || tag === 'i') {
+        return '*' + inlineChildrenToMarkdown(node) + '*';
+    }
+    if (tag === 'del' || tag === 's' || tag === 'strike') {
+        return '~~' + inlineChildrenToMarkdown(node) + '~~';
+    }
+    if (tag === 'ins' || tag === 'u') {
+        return '<ins>' + inlineChildrenToMarkdown(node) + '</ins>';
+    }
+
+    if (tag === 'details') {
+        const summary = node.querySelector(':scope > summary');
+        const title = summary ? (summary.textContent || '').trim() : '展开';
+        let body = '';
+        for (const sub of node.childNodes) {
+            if (sub === summary) continue;
+            body += htmlNodeOneToMarkdown(sub);
+        }
+        return '<details>\n<summary>' + title + '</summary>\n\n' +
+               body.trim() + '\n\n</details>\n\n';
+    }
+
+    if (tag === 'tr' || tag === 'td' || tag === 'th' ||
+        tag === 'thead' || tag === 'tbody' || tag === 'tfoot') {
+        return htmlNodeToMarkdown(node);
+    }
+
+    if (tag === 'div' || tag === 'section' || tag === 'article' ||
+        tag === 'main' || tag === 'header' || tag === 'footer' ||
+        tag === 'nav' || tag === 'aside' || tag === 'figure') {
+        return htmlNodeToMarkdown(node);
+    }
+
+    return htmlNodeToMarkdown(node);
+}
+
+function inlineChildrenToMarkdown(node) {
+    let out = '';
+    for (const child of node.childNodes) {
+        out += htmlNodeOneToMarkdown(child);
+    }
+    return out;
+}
+
+function listToMarkdown(listEl, ordered, depth) {
+    let out = '';
+    let idx = 1;
+    const indent = '    '.repeat(depth);
+
+    for (const li of listEl.children) {
+        if (li.tagName.toLowerCase() !== 'li') continue;
+
+        const checkbox = li.querySelector(':scope > .task-list-checkbox, :scope > input[type="checkbox"]');
+        const isTask = !!checkbox ||
+            (li.classList && li.classList.contains('task-list-item'));
+
+        const clone = li.cloneNode(true);
+        clone.querySelectorAll('.task-list-bullet, .task-list-checkbox').forEach(e => e.remove());
+        const nestedLists = [];
+        clone.querySelectorAll(':scope > ul, :scope > ol').forEach(n => {
+            nestedLists.push(n);
+            n.remove();
+        });
+
+        const text = inlineChildrenToMarkdown(clone).trim();
+        let prefix;
+        if (isTask) {
+            const checked = checkbox &&
+                (checkbox.getAttribute('data-md-task-checked') === '1' ||
+                 checkbox.checked);
+            prefix = '- [' + (checked ? 'x' : ' ') + '] ';
+        } else if (ordered) {
+            prefix = idx + '. ';
+            idx++;
+        } else {
+            prefix = '- ';
+        }
+
+        out += indent + prefix + text + '\n';
+
+        for (const nested of nestedLists) {
+            const nTag = nested.tagName.toLowerCase();
+            out += listToMarkdown(nested, nTag === 'ol', depth + 1);
+        }
+    }
+
+    if (depth === 0) out += '\n';
+    return out;
 }
 
 // ============================================================

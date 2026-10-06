@@ -4,7 +4,7 @@
     "open": "開く",
     "save": "保存",
     "save_as": "名前を付けて保存",
-    "export_pdf": "PDF として書き出し",
+    "export_pdf": "PDF を書き出し",
     "exit": "終了",
     "edit": "編集",
     "undo": "元に戻す",
@@ -100,6 +100,8 @@
     "heading_6_placeholder": "見出し",
     "bold": "太字",
     "italic": "斜体",
+    "underline": "下線",
+    "underline_hint": "下線",
     "strikethrough": "取り消し線",
     "quote": "引用",
     "quote_placeholder": "引用内容",
@@ -119,7 +121,6 @@
     "table": "表を挿入",
     "table_header": "列1 | 列2 | 列3",
     "table_cell": "内容",
-    "set_default_program": "既定のプログラムに設定",
     "set_default_success_title": "設定成功",
     "set_default_success_message": "MarkEase が .md および .markdown ファイルの既定のプログラムに設定されました。",
     "set_default_failed_title": "設定失敗",
@@ -179,5 +180,25 @@
     "register_shell_new_success_msg": "デスクトップ右クリック → 新規作成に「{name}」を追加しました。",
     "register_shell_new_failed_title": "登録失敗",
     "register_shell_new_failed_msg": "レジストリに書き込めませんでした：{error}",
-    "settings": "設定"
+    "settings": "設定",
+
+    "import": "インポート",
+    "export": "エクスポート",
+    "import_html": "HTML をインポート",
+    "export_html": "HTML をエクスポート",
+    "importing_html": "HTML をインポート中...",
+    "exporting_html": "HTML をエクスポート中...",
+    "import_html_success": "HTML のインポートが完了しました",
+    "import_html_success_roundtrip": "HTML のインポートが完了しました（ロスレス）",
+    "import_html_failed": "HTML のインポートに失敗",
+    "export_html_success": "HTML のエクスポートに成功",
+    "export_html_failed": "HTML のエクスポートに失敗",
+    "imported_from_html": "（HTML から）",
+    "imported_from_pdf": "（PDF から）",
+
+    "footnote": "脚注",
+    "footnote_hint": "脚注を挿入",
+    "footnote_back": "参照元に戻る",
+
+    "ok": "OK"
 }

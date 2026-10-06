@@ -1,5 +1,7 @@
-// MarkEase 工具栏逻辑（阶段 15 修订：tooltip 固定显示在按钮上方，防鼠标遮挡）
-// 阶段 15 修订 11：插入链接时自动填充选区文本到「名称」框
+// MarkEase 工具栏逻辑（阶段 16-14 修复 1）
+//   ★ 本轮修改：
+//     1) 新增 toggleUnderlineMultiline：多行选区按行独立包裹 <ins>
+//     2) toggleUnderlineFormat 检测跨行选区，走多行分支
 (function () {
     'use strict';
 
@@ -48,9 +50,660 @@
     // ---- JS tooltip ----
     let _tooltipEl = null;
     let _tooltipTimer = null;
-    const TOOLTIP_DELAY = 350;     // 悬停后多少毫秒显示
-    const TOOLTIP_GAP = 12;        // ★ tooltip 与按钮的间距（增大以防大鼠标遮挡）
-    const TOOLTIP_EDGE = 6;        // 距窗口边缘的最小间距
+    const TOOLTIP_DELAY = 350;
+    const TOOLTIP_GAP = 12;
+    const TOOLTIP_EDGE = 6;
+
+    // ============================================================
+    //  扫描光标/选区两侧的 * 或 _ 包裹层数
+    // ============================================================
+    function scanStarWrapAt(state, from, to) {
+        try {
+            const line = state.doc.lineAt(from);
+            if (state.doc.lineAt(to).from !== line.from) return null;
+
+            const lineText = line.text;
+            const relFrom = from - line.from;
+            const relTo = to - line.from;
+
+            function scan(marker) {
+                let leftCount = 0;
+                let p = relFrom - 1;
+                while (p >= 0 && lineText[p] === marker) { leftCount++; p--; }
+
+                let rightCount = 0;
+                let q = relTo;
+                while (q < lineText.length && lineText[q] === marker) { rightCount++; q++; }
+
+                return { leftCount, rightCount };
+            }
+
+            const s1 = scan('*');
+            const s2 = scan('_');
+
+            let result = null;
+            if (s1.leftCount > 0 && s1.rightCount > 0) {
+                result = { leftCount: s1.leftCount, rightCount: s1.rightCount, marker: '*' };
+            } else if (s2.leftCount > 0 && s2.rightCount > 0) {
+                result = { leftCount: s2.leftCount, rightCount: s2.rightCount, marker: '_' };
+            }
+            if (!result) return null;
+
+            const layers = Math.min(3, Math.min(result.leftCount, result.rightCount));
+            if (layers < 1) return null;
+
+            return {
+                start: from - layers,
+                end: to + layers,
+                contentStart: from,
+                contentEnd: to,
+                layers: layers,
+                marker: result.marker,
+            };
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // ============================================================
+    //  加粗/斜体专用切换（状态机）
+    // ============================================================
+    function toggleBoldOrItalicFormat(editorView, type) {
+        if (!editorView || !_ES || !_IH) return;
+        const state = editorView.state;
+
+        // ★ 新增：场景 3 —— 选区在 marker...marker 内 → 仅剥离选中部分
+        const _sel = state.selection.main;
+        if (!_sel.empty) {
+            const startLine = state.doc.lineAt(_sel.from).number;
+            const endLine = state.doc.lineAt(_sel.to).number;
+            if (startLine === endLine) {
+                const marker = (type === 'bold') ? '**' : '*';
+                if (removeMarkerInRange(editorView, _sel.from, _sel.to, marker)) {
+                    editorView.focus();
+                    return;
+                }
+            }
+        }
+
+        const spec = state.changeByRange(range => {
+            const wrap = scanStarWrapAt(state, range.from, range.to);
+
+            if (!wrap) {
+                const sel = state.sliceDoc(range.from, range.to);
+                if (type === 'bold') {
+                    const insert = '**' + sel + '**';
+                    return {
+                        changes: { from: range.from, to: range.to, insert },
+                        range: _ES.range(range.from + 2, range.from + 2 + sel.length)
+                    };
+                } else {
+                    const insert = '*' + sel + '*';
+                    return {
+                        changes: { from: range.from, to: range.to, insert },
+                        range: _ES.range(range.from + 1, range.from + 1 + sel.length)
+                    };
+                }
+            }
+
+            let newLayers = wrap.layers;
+            if (type === 'bold') {
+                if (wrap.layers === 1) newLayers = 3;
+                else if (wrap.layers === 2) newLayers = 0;
+                else if (wrap.layers === 3) newLayers = 1;
+            } else {
+                if (wrap.layers === 1) newLayers = 0;
+                else if (wrap.layers === 2) newLayers = 3;
+                else if (wrap.layers === 3) newLayers = 2;
+            }
+
+            const inner = state.sliceDoc(wrap.contentStart, wrap.contentEnd);
+            const m = wrap.marker;
+            let prefix = '';
+            let suffix = '';
+            for (let i = 0; i < newLayers; i++) { prefix += m; suffix += m; }
+            const newText = prefix + inner + suffix;
+
+            const relFrom = range.from - wrap.contentStart;
+            const relTo = range.to - wrap.contentStart;
+            const newContentStart = wrap.start + newLayers * m.length;
+            const newSelFrom = newContentStart + relFrom;
+            const newSelTo = newContentStart + relTo;
+
+            return {
+                changes: { from: wrap.start, to: wrap.end, insert: newText },
+                range: _ES.range(newSelFrom, newSelTo)
+            };
+        });
+
+        editorView.dispatch({
+            changes: spec.changes,
+            selection: spec.selection,
+            annotations: [_IH.of('full')]
+        });
+        editorView.focus();
+    }
+
+    // ============================================================
+    //  检测光标是否落在 ***X*** / ___X___ 粗斜体结构中
+    // ============================================================
+    function detectTripleWrapAt(state, pos) {
+        try {
+            const line = state.doc.lineAt(pos);
+            const lineText = line.text;
+            const col = pos - line.from;
+
+            const patterns = [
+                /\*\*\*[^*\n]+\*\*\*/g,
+                /___[^_\n]+___/g,
+            ];
+            for (let k = 0; k < patterns.length; k++) {
+                const re = patterns[k];
+                re.lastIndex = 0;
+                let m;
+                while ((m = re.exec(lineText)) !== null) {
+                    if (col >= m.index && col <= m.index + m[0].length) {
+                        return true;
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+        return false;
+    }
+
+    // ============================================================
+    //  检测光标是否在 <ins>...</ins> 或 <u>...</u> 内
+    // ============================================================
+    function detectUnderlineAt(state, pos) {
+        try {
+            if (_ST) {
+                const tree = _ST(state);
+                let node = tree.resolveInner(pos, 1);
+                while (node) {
+                    const name = node.name;
+                    if (name === 'InlineCode' || name === 'FencedCode' || name === 'CodeText') {
+                        return false;
+                    }
+                    node = node.parent;
+                }
+            }
+
+            const line = state.doc.lineAt(pos);
+            const lineText = line.text;
+            const col = pos - line.from;
+
+            const re = /<ins>[\s\S]*?<\/ins>|<u>[\s\S]*?<\/u>/g;
+            let m;
+            while ((m = re.exec(lineText)) !== null) {
+                const startIdx = m.index;
+                const endIdx = m.index + m[0].length;
+                if (col >= startIdx && col <= endIdx) {
+                    return true;
+                }
+            }
+        } catch (e) { /* ignore */ }
+        return false;
+    }
+    
+    // ============================================================
+    //  阶段 16-16 新增：检测光标/选区是否在 ~~...~~ 内
+    //  参数：
+    //    pos  —— 光标位置（用于光标场景）
+    //    from, to —— 选区范围（用于选中场景，可选）
+    //  返回 true 表示应显示删除线高亮
+    // ============================================================
+    function detectStrikethroughAt(state, pos, from, to) {
+        try {
+            if (_ST) {
+                const tree = _ST(state);
+                let node = tree.resolveInner(pos, 1);
+                while (node) {
+                    if (node.name === 'Strikethrough') return true;
+                    if (node.name === 'InlineCode' || node.name === 'FencedCode' || node.name === 'CodeText') {
+                        return false;
+                    }
+                    node = node.parent;
+                }
+            }
+
+            const line = state.doc.lineAt(pos);
+            const lineText = line.text;
+
+            const re = /~~[^~\n]+?~~/g;
+            let m;
+
+            // 光标场景：pos 落在 ~~...~~ 区间内
+            const col = pos - line.from;
+            while ((m = re.exec(lineText)) !== null) {
+                const start = m.index;
+                const end = start + m[0].length;
+                if (col >= start && col <= end) {
+                    return true;
+                }
+            }
+
+            // 选中场景：选区完全覆盖 ~~...~~，或选区在 ~~...~~ 内
+            if (from != null && to != null && from !== to) {
+                if (state.doc.lineAt(from).from !== line.from) return false;
+                const relFrom = from - line.from;
+                const relTo = to - line.from;
+
+                re.lastIndex = 0;
+                while ((m = re.exec(lineText)) !== null) {
+                    const start = m.index;
+                    const end = start + m[0].length;
+                    // 选区与 ~~...~~ 有交叠
+                    if (relFrom < end && relTo > start) {
+                        return true;
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+        return false;
+    }
+
+    // ============================================================
+    //  扫描选区是否被 <ins>...</ins> 或 <u>...</u> 包裹
+    // ============================================================
+    function scanUnderlineWrapAt(state, from, to) {
+        try {
+            if (_ST) {
+                const tree = _ST(state);
+                let node = tree.resolveInner(from, 1);
+                while (node) {
+                    const name = node.name;
+                    if (name === 'InlineCode' || name === 'FencedCode' || name === 'CodeText') {
+                        return null;
+                    }
+                    node = node.parent;
+                }
+            }
+
+            const line = state.doc.lineAt(from);
+            if (state.doc.lineAt(to).from !== line.from) return null;
+
+            const lineText = line.text;
+            const relFrom = from - line.from;
+            const relTo = to - line.from;
+
+            const leftText = lineText.slice(0, relFrom);
+            const rightText = lineText.slice(relTo);
+
+            function tryTag(tag) {
+                const openTag = '<' + tag + '>';
+                const closeTag = '</' + tag + '>';
+
+                const uOpenIdx = leftText.lastIndexOf(openTag);
+                const uCloseIdx = leftText.lastIndexOf(closeTag);
+                if (uOpenIdx < 0) return null;
+                if (uCloseIdx > uOpenIdx) return null;
+
+                const betweenLeft = leftText.slice(uOpenIdx + openTag.length);
+                if (!/^[*_~]*$/.test(betweenLeft)) return null;
+
+                const rightCloseIdx = rightText.indexOf(closeTag);
+                if (rightCloseIdx < 0) return null;
+
+                const betweenRight = rightText.slice(0, rightCloseIdx);
+                if (!/^[*_~]*$/.test(betweenRight)) return null;
+
+                const uStartRel = uOpenIdx;
+                const uEndRel = relTo + rightCloseIdx + closeTag.length;
+                const contentStartRel = uOpenIdx + openTag.length;
+                const contentEndRel = relTo + rightCloseIdx;
+
+                return {
+                    start: line.from + uStartRel,
+                    end: line.from + uEndRel,
+                    contentStart: line.from + contentStartRel,
+                    contentEnd: line.from + contentEndRel,
+                    tag: tag,
+                };
+            }
+
+            const insWrap = tryTag('ins');
+            if (insWrap) return insWrap;
+            const uWrap = tryTag('u');
+            if (uWrap) return uWrap;
+            return null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // ============================================================
+    //  多行下划线：按行独立包裹/剥离 <ins>
+    // ============================================================
+    function toggleUnderlineMultiline(editorView, from, to) {
+        const state = editorView.state;
+        const startLine = state.doc.lineAt(from).number;
+        const endLine = state.doc.lineAt(to).number;
+
+        const lineInfos = [];
+        let anyLine = false;
+        let allWrapped = true;
+
+        for (let ln = startLine; ln <= endLine; ln++) {
+            const line = state.doc.line(ln);
+            const text = line.text;
+            if (!text.trim()) {
+                lineInfos.push(null);
+                continue;
+            }
+            anyLine = true;
+            const m = /^(\s*)<ins>([\s\S]*)<\/ins>[ \t]*$/.exec(text);
+            lineInfos.push({ line, m });
+            if (!m) allWrapped = false;
+        }
+
+        if (!anyLine) return;
+
+        const changes = [];
+        for (let i = 0; i < lineInfos.length; i++) {
+            const info = lineInfos[i];
+            if (!info) continue;
+            const { line, m } = info;
+            const text = line.text;
+
+            if (allWrapped && m) {
+                const newText = m[1] + m[2];
+                if (newText !== text) {
+                    changes.push({ from: line.from, to: line.to, insert: newText });
+                }
+            } else {
+                if (m) continue;
+                const indentMatch = /^(\s*)/.exec(text);
+                const indent = indentMatch ? indentMatch[1] : '';
+                const content = text.slice(indent.length);
+                if (!content) continue;
+                const newText = indent + '<ins>' + content + '</ins>';
+                changes.push({ from: line.from, to: line.to, insert: newText });
+            }
+        }
+
+        if (changes.length === 0) return;
+
+        editorView.dispatch({
+            changes,
+            annotations: [_IH.of('full')]
+        });
+        editorView.focus();
+    }
+
+    // ============================================================
+    //  下划线切换（统一输出 <ins>...</ins>）
+    //  - 光标空 → 插入 <ins></ins>，光标落在中间
+    //  - 选区内容本身就是 <ins>...</ins> → 剥离
+    //  - 单行选区两侧有 <ins>...</ins> → 剥离
+    //  - 单行选区无包裹 → <ins>...</ins>
+    //  - 多行选区 → 每行独立包裹/剥离
+    // ============================================================
+    function toggleUnderlineFormat(editorView) {
+        if (!editorView || !_ES || !_IH) return;
+        const state = editorView.state;
+        const range = state.selection.main;
+
+        // 场景 1：光标在 <ins>...</ins> 内 → 移除整个包裹
+        if (range.empty) {
+            if (removeEnclosingUnderline(editorView, range.head)) {
+                editorView.focus();
+                return;
+            }
+        }
+
+        // 场景 2：选区在 <ins>...</ins> 内 → 仅剥离选中部分的下划线
+        if (!range.empty) {
+            const startLine = state.doc.lineAt(range.from).number;
+            const endLine = state.doc.lineAt(range.to).number;
+            if (startLine === endLine) {
+                if (removeUnderlineInRange(editorView, range.from, range.to)) {
+                    editorView.focus();
+                    return;
+                }
+            }
+        }
+
+        // 选区自身就是 <ins>...</ins> 或 <u>...</u> → 整体剥离
+        if (!range.empty) {
+            const sel = state.sliceDoc(range.from, range.to);
+            const m = /^<ins>([\s\S]*)<\/ins>$/.exec(sel) ||
+                      /^<u>([\s\S]*)<\/u>$/.exec(sel);
+            if (m) {
+                const inner = m[1];
+                editorView.dispatch({
+                    changes: { from: range.from, to: range.to, insert: inner },
+                    selection: _ES.range(range.from, range.from + inner.length),
+                    annotations: [_IH.of('full')]
+                });
+                editorView.focus();
+                return;
+            }
+        }
+
+        // 多行选区 → 逐行独立处理
+        if (!range.empty) {
+            const startLine = state.doc.lineAt(range.from).number;
+            const endLine = state.doc.lineAt(range.to).number;
+            if (startLine !== endLine) {
+                toggleUnderlineMultiline(editorView, range.from, range.to);
+                return;
+            }
+        }
+
+        const spec = state.changeByRange(range => {
+            const wrap = scanUnderlineWrapAt(state, range.from, range.to);
+
+            if (wrap) {
+                const inner = state.sliceDoc(wrap.contentStart, wrap.contentEnd);
+                const newSelFrom = wrap.start + (range.from - wrap.contentStart);
+                const newSelTo = wrap.start + (range.to - wrap.contentStart);
+
+                return {
+                    changes: { from: wrap.start, to: wrap.end, insert: inner },
+                    range: _ES.range(newSelFrom, newSelTo)
+                };
+            }
+
+            if (range.empty) {
+                const insert = '<ins></ins>';
+                return {
+                    changes: { from: range.from, insert },
+                    range: _ES.cursor(range.from + 5)
+                };
+            }
+
+            const sel = state.sliceDoc(range.from, range.to);
+            const insert = '<ins>' + sel + '</ins>';
+            return {
+                changes: { from: range.from, to: range.to, insert },
+                range: _ES.range(range.from + 5, range.from + 5 + sel.length)
+            };
+        });
+
+        editorView.dispatch({
+            changes: spec.changes,
+            selection: spec.selection,
+            annotations: [_IH.of('full')]
+        });
+        editorView.focus();
+    }
+
+    // ============================================================
+    //  阶段 16-15 新增：下划线/加粗/斜体/删除线的"部分剥离"
+    // ============================================================
+
+    // 场景 1 辅助函数：光标在 <ins>...</ins> 内 → 移除整个包裹
+    function removeEnclosingUnderline(editorView, pos) {
+        const state = editorView.state;
+        const line = state.doc.lineAt(pos);
+        const lineText = line.text;
+        const col = pos - line.from;
+
+        const re = /<ins>([\s\S]*?)<\/ins>|<u>([\s\S]*?)<\/u>/g;
+        let m;
+        while ((m = re.exec(lineText)) !== null) {
+            const start = m.index;
+            const end = start + m[0].length;
+            if (col > start && col < end) {
+                const isIns = m[1] !== undefined;
+                const tagLen = isIns ? 5 : 3;
+                const inner = isIns ? m[1] : m[2];
+
+                const relPos = Math.max(0, Math.min(inner.length, col - start - tagLen));
+
+                editorView.dispatch({
+                    changes: {
+                        from: line.from + start,
+                        to: line.from + end,
+                        insert: inner
+                    },
+                    selection: _ES.cursor(line.from + start + relPos),
+                    annotations: [_IH.of('full')]
+                });
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // 场景 2 辅助函数：选区在 <ins>...</ins> 内 → 仅剥离选中部分的下划线
+    function removeUnderlineInRange(editorView, from, to) {
+        const state = editorView.state;
+        const line = state.doc.lineAt(from);
+        if (state.doc.lineAt(to).from !== line.from) return false;
+
+        const lineText = line.text;
+        const relFrom = from - line.from;
+        const relTo = to - line.from;
+
+        const re = /<ins>([\s\S]*?)<\/ins>|<u>([\s\S]*?)<\/u>/g;
+        let m;
+        while ((m = re.exec(lineText)) !== null) {
+            const start = m.index;
+            const end = start + m[0].length;
+            if (relFrom >= start && relTo <= end) {
+                const isIns = m[1] !== undefined;
+                const tagLen = isIns ? 5 : 3;
+                const inner = isIns ? m[1] : m[2];
+                const innerStart = start + tagLen;
+                const relInnerFrom = relFrom - innerStart;
+                const relInnerTo = relTo - innerStart;
+
+                if (relInnerFrom < 0 || relInnerTo > inner.length) return false;
+                if (relInnerFrom === 0 && relInnerTo === inner.length) return false;
+
+                const wrapMatch = /^(\*{1,3}|_{1,3}|~{2})([\s\S]*)\1$/.exec(inner);
+
+                let newText = '';
+
+                if (wrapMatch) {
+                    const marker = wrapMatch[1];
+                    const body = wrapMatch[2];
+                    const bodyStartInInner = marker.length;
+
+                    const relBodyFrom = Math.max(0, relInnerFrom - bodyStartInInner);
+                    const relBodyTo = Math.min(body.length, relInnerTo - bodyStartInInner);
+
+                    if (relBodyFrom >= relBodyTo) return false;
+
+                    const beforeBody = body.slice(0, relBodyFrom);
+                    const selectedBody = body.slice(relBodyFrom, relBodyTo);
+                    const afterBody = body.slice(relBodyTo);
+
+                    if (beforeBody) newText += '<ins>' + marker + beforeBody + marker + '</ins>';
+                    newText += marker + selectedBody + marker;
+                    if (afterBody) newText += '<ins>' + marker + afterBody + marker + '</ins>';
+                } else {
+                    const beforeText = inner.slice(0, relInnerFrom);
+                    const selectedText = inner.slice(relInnerFrom, relInnerTo);
+                    const afterText = inner.slice(relInnerTo);
+
+                    if (beforeText) newText += '<ins>' + beforeText + '</ins>';
+                    newText += selectedText;
+                    if (afterText) newText += '<ins>' + afterText + '</ins>';
+                }
+
+                editorView.dispatch({
+                    changes: {
+                        from: line.from + start,
+                        to: line.from + end,
+                        insert: newText
+                    },
+                    annotations: [_IH.of('full')]
+                });
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // 场景 3 辅助函数：选区在 marker...marker 内 → 仅剥离选中部分的标记
+    function removeMarkerInRange(editorView, from, to, marker) {
+        const state = editorView.state;
+        const line = state.doc.lineAt(from);
+        if (state.doc.lineAt(to).from !== line.from) return false;
+
+        const lineText = line.text;
+        const relFrom = from - line.from;
+        const relTo = to - line.from;
+        const mlen = marker.length;
+
+        let openIdx = -1;
+        for (let i = relFrom - mlen; i >= 0; i--) {
+            if (lineText.slice(i, i + mlen) === marker) {
+                if (mlen === 1) {
+                    if (i > 0 && lineText[i - 1] === marker[0]) continue;
+                    if (i + mlen < lineText.length && lineText[i + mlen] === marker[0]) continue;
+                }
+                openIdx = i;
+                break;
+            }
+        }
+        if (openIdx < 0) return false;
+
+        let closeIdx = -1;
+        for (let i = relTo; i <= lineText.length - mlen; i++) {
+            if (lineText.slice(i, i + mlen) === marker) {
+                if (mlen === 1) {
+                    if (i > 0 && lineText[i - 1] === marker[0]) continue;
+                    if (i + mlen < lineText.length && lineText[i + mlen] === marker[0]) continue;
+                }
+                closeIdx = i;
+                break;
+            }
+        }
+        if (closeIdx < 0) return false;
+
+        const innerStart = openIdx + mlen;
+        const innerEnd = closeIdx;
+        const inner = lineText.slice(innerStart, innerEnd);
+
+        const relInnerFrom = relFrom - innerStart;
+        const relInnerTo = relTo - innerStart;
+
+        if (relInnerFrom < 0 || relInnerTo > inner.length) return false;
+        if (relInnerFrom === 0 && relInnerTo === inner.length) return false;
+        if (relInnerFrom >= relInnerTo) return false;
+
+        const beforeText = inner.slice(0, relInnerFrom);
+        const selectedText = inner.slice(relInnerFrom, relInnerTo);
+        const afterText = inner.slice(relInnerTo);
+
+        let newText = '';
+        if (beforeText) newText += marker + beforeText + marker;
+        newText += selectedText;
+        if (afterText) newText += marker + afterText + marker;
+
+        editorView.dispatch({
+            changes: {
+                from: line.from + openIdx,
+                to: line.from + closeIdx + mlen,
+                insert: newText
+            },
+            annotations: [_IH.of('full')]
+        });
+        return true;
+    }
 
     // ============================================================
     //  i18n 工具
@@ -73,9 +726,7 @@
     }
 
     // ============================================================
-    //  ★ JS Tooltip 管理
-    //  —— 始终显示在按钮上方；若上方空间不足则贴紧窗口顶部
-    //  —— position:fixed 相对视口定位，自动避让左右边界
+    //  JS Tooltip 管理
     // ============================================================
     function ensureTooltipEl() {
         if (_tooltipEl && _tooltipEl.parentNode) return _tooltipEl;
@@ -97,41 +748,31 @@
         tip.style.left = '0px';
         tip.style.top = '0px';
 
-        // 测量尺寸（此时 display:block 但 visibility:hidden）
         const tipRect = tip.getBoundingClientRect();
         const btnRect = target.getBoundingClientRect();
 
-        // ★ 始终显示在按钮上方
         let top = btnRect.top - tipRect.height - TOOLTIP_GAP;
-
-        // 上方空间不足 → 贴紧窗口顶部（绝不切到下方）
         if (top < TOOLTIP_EDGE) {
             top = TOOLTIP_EDGE;
         }
 
-        // 水平居中于按钮
         let left = btnRect.left + btnRect.width / 2 - tipRect.width / 2;
-
-        // 左边界避让
         if (left < TOOLTIP_EDGE) {
             left = TOOLTIP_EDGE;
         }
-        // 右边界避让
         const maxLeft = window.innerWidth - tipRect.width - TOOLTIP_EDGE;
         if (left > maxLeft) {
             left = maxLeft;
         }
-        // 若 tooltip 宽度超过窗口（极端情况），左对齐
         if (maxLeft < TOOLTIP_EDGE) {
             left = TOOLTIP_EDGE;
         }
 
-        // 箭头水平位置（相对 tooltip 左边缘），指向按钮中心
         const arrowX = btnRect.left + btnRect.width / 2 - left;
 
         tip.style.left = left + 'px';
         tip.style.top = top + 'px';
-        tip.setAttribute('data-arrow', 'top');   // ★ 固定朝下（tooltip 在按钮上方）
+        tip.setAttribute('data-arrow', 'top');
         tip.style.setProperty('--arrow-x', arrowX + 'px');
         tip.style.visibility = 'visible';
     }
@@ -177,7 +818,6 @@
         });
     }
 
-    // 窗口尺寸变化 / 滚动时若 tooltip 显示中则隐藏（避免错位）
     window.addEventListener('resize', hideTooltip);
     window.addEventListener('scroll', hideTooltip, true);
 
@@ -215,12 +855,9 @@
         view.dom.addEventListener('keyup', saveHandler, true);
     }
 
-    // ★ 阶段 15 修订 11：读取当前选区文本
-    //   优先级：_savedSelection（toolbar mousedown 时保存）→ view.state.selection.main
     function getCurrentSelectionText() {
         if (!view) return '';
 
-        // 1) 尝试从 _savedSelection 读取
         try {
             if (_savedSelection && _savedSelection.ranges && _savedSelection.ranges.length > 0) {
                 const r = _savedSelection.main;
@@ -231,7 +868,6 @@
             }
         } catch (e) { /* ignore */ }
 
-        // 2) 兜底：从实时选区读取
         try {
             const sel = view.state.selection;
             if (sel && sel.ranges && sel.ranges.length > 0) {
@@ -259,6 +895,7 @@
         { type: 'sep' },
         { type: 'fmt', fmt: 'bold',       icon: 'bold',       titleKey: 'bold' },
         { type: 'fmt', fmt: 'italic',     icon: 'italic',     titleKey: 'italic' },
+        { type: 'fmt', fmt: 'underline',  icon: 'underline',  titleKey: 'underline' },
         { type: 'fmt', fmt: 'strike',     icon: 'strike',     titleKey: 'strikethrough' },
         { type: 'heading',                                    titleKey: 'heading' },
         { type: 'fmt', fmt: 'ul',         icon: 'ul',         titleKey: 'unordered_list' },
@@ -267,6 +904,7 @@
         { type: 'fmt', fmt: 'quote',      icon: 'quote',      titleKey: 'quote' },
         { type: 'fmt', fmt: 'inlineCode', icon: 'inlineCode', titleKey: 'inline_code' },
         { type: 'fmt', fmt: 'codeBlock',  icon: 'codeBlock',  titleKey: 'code_block' },
+        { type: 'action', action: 'insert_footnote', icon: 'footnote', titleKey: 'footnote' },
         { type: 'action', action: 'insert_link',  icon: 'link',  titleKey: 'insert_link' },
         { type: 'action', action: 'insert_image', icon: 'image', titleKey: 'insert_image' },
         { type: 'sep' },
@@ -362,6 +1000,8 @@
                     e.preventDefault();
                     if (item.action === 'insert_link') {
                         openLinkDialog();
+                    } else if (item.action === 'insert_footnote') {
+                        insertFootnote();
                     } else {
                         dispatchAction(item.action);
                     }
@@ -439,7 +1079,6 @@
         });
         el.appendChild(_overflowBtn);
 
-        // 绑定 JS tooltip（覆盖所有 [data-tooltip] 的按钮）
         bindTooltips(el);
     }
 
@@ -635,6 +1274,166 @@
     }
 
     // ============================================================
+    //  插入脚注
+    //  - 引用插入点：有选区时，回退掉选区末尾的空白字符
+    //  - 定义内容：trim 掉首尾空白/换行
+    //  - 定义追加位置：文档内容末尾（去掉尾部空白后）
+    //  - 若引用插入点 >= 内容末尾，合并成单个 change（避免位置重合）
+    // ============================================================
+    function insertFootnote() {
+        if (!view || !_IH) return;
+        restoreSavedSelection();
+
+        const state = view.state;
+        const range = state.selection.main;
+        const docText = state.doc.toString();
+        const docLen = state.doc.length;
+
+        // 1) 扫描最大编号（引用 + 定义各一次）
+        let maxIdx = 0;
+        let m;
+        const refScanRe = /\[\^(\d+)\](?!:)/g;
+        while ((m = refScanRe.exec(docText)) !== null) {
+            const n = parseInt(m[1], 10);
+            if (Number.isFinite(n) && n > maxIdx) maxIdx = n;
+        }
+        const defScanRe = /^\[\^(\d+)\]:/gm;
+        while ((m = defScanRe.exec(docText)) !== null) {
+            const n = parseInt(m[1], 10);
+            if (Number.isFinite(n) && n > maxIdx) maxIdx = n;
+        }
+
+        const nextIdx = maxIdx + 1;
+        const refText = '[^' + nextIdx + ']';
+
+        // 2) 定义内容：trim 掉首尾空白/换行（★ 修复 1）
+        const rawSelText = range.empty ? '' : state.sliceDoc(range.from, range.to);
+        const selText = rawSelText.replace(/^\s+|\s+$/g, '');
+        const defContent = selText || '脚注内容';
+        const defText = '[^' + nextIdx + ']: ' + defContent;
+
+        // 3) 引用插入点：有选区时回退掉末尾空白（★ 修复 2）
+        let insertPos;
+        if (range.empty) {
+            insertPos = range.from;
+        } else {
+            insertPos = range.to;
+            while (insertPos > range.from && /\s/.test(docText.charAt(insertPos - 1))) {
+                insertPos--;
+            }
+        }
+
+        // 4) 文档内容末尾（去掉尾部空白）
+        let contentEnd = docLen;
+        while (contentEnd > 0 && /\s/.test(docText.charAt(contentEnd - 1))) {
+            contentEnd--;
+        }
+
+        // 5) 定义与引用之间的分隔始终用 \n\n
+        const sep = '\n\n';
+
+        // 6) 判断：引用插入点是否在内容末尾或之后
+        //    若是 → 合并成单个 change（★ 修复 3）
+        //    否则 → 两处独立插入
+        if (insertPos >= contentEnd) {
+            const combined = refText + sep + defText;
+            view.dispatch({
+                changes: { from: contentEnd, to: docLen, insert: combined },
+                selection: { anchor: contentEnd + refText.length },
+                annotations: [_IH.of('full')],
+            });
+        } else {
+            const changes = [
+                { from: contentEnd, to: docLen, insert: sep + defText },
+                { from: insertPos, to: insertPos, insert: refText }
+            ];
+            changes.sort((a, b) => a.from - b.from);
+            view.dispatch({
+                changes,
+                selection: { anchor: insertPos + refText.length },
+                annotations: [_IH.of('full')],
+            });
+        }
+
+        view.focus();
+        forceRefreshPreview();
+        refreshToolbarState();
+        setStatusHint('已插入脚注 ' + refText);
+    }
+
+    // ============================================================
+    //  删除选区内的 [^N] 及对应定义
+    // ============================================================
+    function removeFootnotesInSelection(editorView, from, to) {
+        if (!editorView || !_IH) return false;
+        const state = editorView.state;
+        const text = state.doc.toString();
+        const selected = text.slice(from, to);
+
+        const keys = new Set();
+        let m;
+        const scanRe = /\[\^([^\]\s]+)\](?!:)/g;
+        while ((m = scanRe.exec(selected)) !== null) {
+            keys.add(m[1]);
+        }
+        if (keys.size === 0) return false;
+
+        const changes = [];
+
+        const refMatches = [];
+        const refRe = /\[\^([^\]\s]+)\](?!:)/g;
+        let rm;
+        while ((rm = refRe.exec(selected)) !== null) {
+            if (keys.has(rm[1])) {
+                refMatches.push({
+                    start: from + rm.index,
+                    end: from + rm.index + rm[0].length,
+                });
+            }
+        }
+        for (const mt of refMatches) {
+            changes.push({ from: mt.start, to: mt.end, insert: '' });
+        }
+
+        const lines = text.split('\n');
+        let offset = 0;
+        const defLineRe = /^[ \t]*\[\^([^\]\s]+)\]:/;
+        for (const line of lines) {
+            const dm = defLineRe.exec(line);
+            if (dm && keys.has(dm[1])) {
+                const lineStart = offset;
+                const lineEnd = offset + line.length;
+                const hasNewline = lineEnd < text.length &&
+                    text.charAt(lineEnd) === '\n';
+                changes.push({
+                    from: lineStart,
+                    to: hasNewline ? lineEnd + 1 : lineEnd,
+                    insert: ''
+                });
+            }
+            offset += line.length + 1;
+        }
+
+        if (changes.length === 0) return false;
+
+        changes.sort((a, b) => a.from - b.from);
+        const merged = [];
+        for (const c of changes) {
+            if (merged.length > 0 && c.from < merged[merged.length - 1].to) {
+                continue;
+            }
+            merged.push(c);
+        }
+        if (merged.length === 0) return false;
+
+        editorView.dispatch({
+            changes: merged,
+            annotations: [_IH.of('full')],
+        });
+        return true;
+    }
+
+    // ============================================================
     //  TAB 缩进
     // ============================================================
     function bindTabIndent() {
@@ -697,6 +1496,7 @@
         const orderedList = /^\s*\d+\.\s+/.test(text);
 
         let bold = false, italic = false, strike = false;
+        let underline = false;
         let inlineCode = false, link = false;
         let codeBlock = false;
 
@@ -722,10 +1522,31 @@
             } catch (e) { /* ignore */ }
         }
 
+        if (!codeBlock && !inlineCode) {
+            if (detectTripleWrapAt(state, pos)) {
+                bold = true;
+                italic = true;
+            }
+        }
+
+        if (!codeBlock && !inlineCode) {
+            if (detectUnderlineAt(state, pos)) {
+                underline = true;
+            }
+        }
+
+        // ★ 新增：删除线文本兜底
+        if (!codeBlock && !inlineCode && !strike) {
+            const sel = state.selection.main;
+            if (detectStrikethroughAt(state, pos, sel.from, sel.to)) {
+                strike = true;
+            }
+        }
+
         return {
             heading, quote,
             unorderedList, orderedList, taskList,
-            bold, italic, strike, inlineCode, link, codeBlock,
+            bold, italic, underline, strike, inlineCode, link, codeBlock,
         };
     }
 
@@ -736,6 +1557,7 @@
 
         setPressed('bold', st.bold);
         setPressed('italic', st.italic);
+        setPressed('underline', st.underline);
         setPressed('strike', st.strike);
         setPressed('inlineCode', st.inlineCode);
         setPressed('codeBlock', st.codeBlock);
@@ -768,8 +1590,9 @@
         restoreSavedSelection();
 
         switch (fmt) {
-            case 'bold':       toggleInlineFormat(view, '**'); break;
-            case 'italic':     toggleInlineFormat(view, '*');  break;
+            case 'bold':       toggleBoldOrItalicFormat(view, 'bold'); break;
+            case 'italic':     toggleBoldOrItalicFormat(view, 'italic'); break;
+            case 'underline':  toggleUnderlineFormat(view); break;
             case 'strike':     toggleInlineFormat(view, '~~'); break;
             case 'inlineCode': toggleInlineFormat(view, '`');  break;
             case 'ul':         toggleList(view, 'ul');         break;
@@ -781,17 +1604,44 @@
         refreshToolbarState();
     }
 
+    // ============================================================
+    //  单字符 marker 的歧义处理
+    // ============================================================
     function toggleInlineFormat(editorView, marker) {
         if (!editorView || !_ES || !_IH) return;
         const { state } = editorView;
         const mlen = marker.length;
+
+        // ★ 新增：场景 3 —— 对 ~~ 生效（内联代码不适用）
+        if (marker === '~~') {
+            const _sel = state.selection.main;
+            if (!_sel.empty) {
+                const startLine = state.doc.lineAt(_sel.from).number;
+                const endLine = state.doc.lineAt(_sel.to).number;
+                if (startLine === endLine) {
+                    if (removeMarkerInRange(editorView, _sel.from, _sel.to, marker)) {
+                        editorView.focus();
+                        return;
+                    }
+                }
+            }
+        }
 
         const spec = state.changeByRange(range => {
             if (!range.empty) {
                 const before = state.sliceDoc(Math.max(0, range.from - mlen), range.from);
                 const after = state.sliceDoc(range.to, Math.min(state.doc.length, range.to + mlen));
 
-                if (before === marker && after === marker) {
+                let isWrapped = (before === marker && after === marker);
+                if (isWrapped && mlen === 1) {
+                    const before2 = state.sliceDoc(Math.max(0, range.from - 2), range.from - 1);
+                    const after2 = state.sliceDoc(range.to + 1, Math.min(state.doc.length, range.to + 2));
+                    if (before2 === marker || after2 === marker) {
+                        isWrapped = false;
+                    }
+                }
+
+                if (isWrapped) {
                     return {
                         changes: [
                             { from: range.from - mlen, to: range.from, insert: '' },
@@ -802,12 +1652,21 @@
                 }
 
                 const sel = state.sliceDoc(range.from, range.to);
-                if (sel.length >= mlen * 2 && sel.startsWith(marker) && sel.endsWith(marker)) {
+                if (sel.length >= mlen * 2 &&
+                    sel.startsWith(marker) && sel.endsWith(marker)) {
                     const inner = sel.slice(mlen, sel.length - mlen);
-                    return {
-                        changes: { from: range.from, to: range.to, insert: inner },
-                        range: _ES.range(range.from, range.from + inner.length)
-                    };
+
+                    let canUnwrap = true;
+                    if (mlen === 1 && inner.indexOf(marker) !== -1) {
+                        canUnwrap = false;
+                    }
+
+                    if (canUnwrap) {
+                        return {
+                            changes: { from: range.from, to: range.to, insert: inner },
+                            range: _ES.range(range.from, range.from + inner.length)
+                        };
+                    }
                 }
 
                 const insert = marker + sel + marker;
@@ -820,7 +1679,16 @@
             const before = state.sliceDoc(Math.max(0, range.from - mlen), range.from);
             const after = state.sliceDoc(range.from, Math.min(state.doc.length, range.from + mlen));
 
-            if (before === marker && after === marker) {
+            let isWrapped2 = (before === marker && after === marker);
+            if (isWrapped2 && mlen === 1) {
+                const before2 = state.sliceDoc(Math.max(0, range.from - 2), range.from - 1);
+                const after2 = state.sliceDoc(range.from + 1, Math.min(state.doc.length, range.from + 2));
+                if (before2 === marker || after2 === marker) {
+                    isWrapped2 = false;
+                }
+            }
+
+            if (isWrapped2) {
                 return {
                     changes: [
                         { from: range.from - mlen, to: range.from, insert: '' },
@@ -844,9 +1712,6 @@
         editorView.focus();
     }
 
-    // ============================================================
-    //  任务列表格式（只添加/删除 "- [ ]" 前缀，不改勾选状态）
-    // ============================================================
     function toggleTaskListFormat(editorView) {
         if (!editorView || !_IH) return;
         const state = editorView.state;
@@ -1070,6 +1935,7 @@
     function isInlineFormat(fmt) {
         if (!fmt || !fmt.inline) return false;
         return fmt.inline.bold || fmt.inline.italic ||
+               fmt.inline.underline ||
                fmt.inline.strike || fmt.inline.code ||
                fmt.inline.codeBlock;
     }
@@ -1100,6 +1966,8 @@
             s = s.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
             s = s.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1$2');
             s = s.replace(/(^|[^_])_([^_\n]+?)_(?!_)/g, '$1$2');
+            s = s.replace(/<ins>([\s\S]*?)<\/ins>/g, '$1');
+            s = s.replace(/<u>([\s\S]*?)<\/u>/g, '$1');
             if (s === before) break;
         }
         return s;
@@ -1119,6 +1987,24 @@
     //  格式刷
     // ============================================================
     function handlePainterClick() {
+        restoreSavedSelection();
+
+        if (view && !_painter.active) {
+            const sel = view.state.selection.main;
+            if (!sel.empty) {
+                const selText = view.state.sliceDoc(sel.from, sel.to);
+                if (/\[\^[^\]\s]+\](?!:)/.test(selText)) {
+                    const removed = removeFootnotesInSelection(view, sel.from, sel.to);
+                    if (removed) {
+                        refreshToolbarState();
+                        forceRefreshPreview();
+                        setStatusHint('格式刷：已删除脚注');
+                        return;
+                    }
+                }
+            }
+        }
+
         if (_painterClickTimer) {
             clearTimeout(_painterClickTimer);
             _painterClickTimer = null;
@@ -1180,7 +2066,10 @@
         const unorderedList = /^\s*[-*+]\s+/.test(text) && !taskList;
         const orderedList = /^\s*\d+\.\s+/.test(text);
 
-        const inline = { bold: false, italic: false, strike: false, code: false, link: false, codeBlock: false };
+        const inline = {
+            bold: false, italic: false, underline: false,
+            strike: false, code: false, link: false, codeBlock: false
+        };
 
         try {
             const before = state.doc.sliceString(0, pos);
@@ -1202,6 +2091,27 @@
                     node = node.parent;
                 }
             } catch (e) { /* ignore */ }
+        }
+
+        if (!inline.codeBlock && !inline.code) {
+            if (detectTripleWrapAt(state, pos)) {
+                inline.bold = true;
+                inline.italic = true;
+            }
+        }
+
+        if (!inline.codeBlock && !inline.code) {
+            if (detectUnderlineAt(state, pos)) {
+                inline.underline = true;
+            }
+        }
+
+        // ★ 新增：删除线文本兜底
+        if (!inline.codeBlock && !inline.code && !inline.strike) {
+            const sel = state.selection.main;
+            if (detectStrikethroughAt(state, pos, sel.from, sel.to)) {
+                inline.strike = true;
+            }
         }
 
         return {
@@ -1299,6 +2209,7 @@
             if (inl.italic) result = '*' + result + '*';
             if (inl.bold) result = '**' + result + '**';
             if (inl.strike) result = '~~' + result + '~~';
+            if (inl.underline) result = '<ins>' + result + '</ins>';
         }
         if (result === state.sliceDoc(expandFrom, expandTo)) return false;
 
@@ -1337,6 +2248,23 @@
                     const fmt = _painter.format;
                     const blockFmt = isBlockFormat(fmt);
                     const inlineFmt = isInlineFormat(fmt);
+
+                    if (!range.empty) {
+                        const selText = state.sliceDoc(range.from, range.to);
+                        if (/\[\^[^\]\s]+\](?!:)/.test(selText)) {
+                            const removed = removeFootnotesInSelection(
+                                view, range.from, range.to);
+                            if (removed) {
+                                if (!_painter.continuous) {
+                                    exitFormatPainter();
+                                }
+                                refreshToolbarState();
+                                forceRefreshPreview();
+                                setStatusHint('格式刷：已删除脚注引用');
+                                return;
+                            }
+                        }
+                    }
 
                     let applied = false;
 
@@ -1380,14 +2308,31 @@
         if (!view || !_IH) return;
         restoreSavedSelection();
 
-        const state = view.state;
-        const ranges = state.selection.ranges;
+        let state = view.state;
+        let ranges = state.selection.ranges;
 
         let selFrom = ranges[0].from;
         let selTo = ranges[0].to;
         for (let i = 1; i < ranges.length; i++) {
             if (ranges[i].from < selFrom) selFrom = ranges[i].from;
             if (ranges[i].to > selTo) selTo = ranges[i].to;
+        }
+
+        let footnoteRemoved = false;
+
+        if (selFrom !== selTo) {
+            const removed = removeFootnotesInSelection(view, selFrom, selTo);
+            if (removed) {
+                footnoteRemoved = true;
+                state = view.state;
+                ranges = state.selection.ranges;
+                selFrom = ranges[0].from;
+                selTo = ranges[0].to;
+                for (let i = 1; i < ranges.length; i++) {
+                    if (ranges[i].from < selFrom) selFrom = ranges[i].from;
+                    if (ranges[i].to > selTo) selTo = ranges[i].to;
+                }
+            }
         }
 
         const changes = [];
@@ -1418,7 +2363,13 @@
         }
 
         if (changes.length === 0) {
-            setStatusHint('橡皮擦：当前选区无格式可清除');
+            if (footnoteRemoved) {
+                refreshToolbarState();
+                forceRefreshPreview();
+                setStatusHint('橡皮擦：已删除脚注');
+            } else {
+                setStatusHint('橡皮擦：当前选区无格式可清除');
+            }
             return;
         }
 
@@ -1437,7 +2388,7 @@
             annotations: [_IH.of('full')],
         });
         view.focus();
-        setStatusHint('橡皮擦：已清除格式');
+        setStatusHint(footnoteRemoved ? '橡皮擦：已删除脚注并清除格式' : '橡皮擦：已清除格式');
         refreshToolbarState();
         forceRefreshPreview();
     }
@@ -1689,7 +2640,6 @@
 
     // ============================================================
     //  插入链接弹窗
-    //  ★ 阶段 15 修订 11：打开时自动填充当前选区文本到「名称」框
     // ============================================================
     function openLinkDialog() {
         ensureLinkModalBuilt();
@@ -1699,7 +2649,6 @@
         const nameInput = _linkModal.querySelector('.tb-link-name');
         const iconCheck = _linkModal.querySelector('.tb-link-icon');
 
-        // ★ 读取当前选区文本（优先 _savedSelection，兜底实时选区）
         const selText = getCurrentSelectionText();
 
         urlInput.value = '';
@@ -1711,7 +2660,6 @@
 
         setTimeout(() => {
             urlInput.focus();
-            // 若名称已自动填充，则选中网址框；否则选中名称框
             if (selText) {
                 urlInput.select();
             } else {
@@ -2098,7 +3046,6 @@ body.dark .tb-link-modal-actions .tb-link-confirm { background: #1f6feb; color: 
         if (hMain) hMain.setAttribute('data-tooltip', hLabel + '（H1~H6）');
         if (hCaret) hCaret.setAttribute('data-tooltip', hLabel + ' H1~H6');
 
-        // 语言切换时隐藏可能残留的 tooltip
         hideTooltip();
 
         if (_tableMenu) {
@@ -2136,5 +3083,6 @@ body.dark .tb-link-modal-actions .tb-link-confirm { background: #1f6feb; color: 
         relayout: layoutToolbar,
         isPainterActive: () => _painter.active,
         refreshI18n: refreshI18n,
+        insertFootnote: insertFootnote,
     };
 })();

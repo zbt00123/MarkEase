@@ -1,4 +1,4 @@
-// MarkEase SVG 图标库（阶段 13 修订 3）
+// MarkEase SVG 图标库（阶段 16-12：新增 underline 图标）
 (function () {
     'use strict';
     const _O = '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
@@ -22,6 +22,8 @@
         // 格式
         bold: w('<path d="M5 3h4.5a2.5 2.5 0 0 1 0 5H5z"/><path d="M5 8h5a2.5 2.5 0 0 1 0 5H5z"/>'),
         italic: w('<path d="M10 3H6M10 13H6M9 3L7 13"/>'),
+        // ★ 阶段 16-12：下划线图标（U 字形 + 底部横线）
+        underline: w('<path d="M4 3v4.5a4 4 0 0 0 8 0V3"/><path d="M3 13.5h10"/>'),
         strike: w('<path d="M3 8h10"/><path d="M11 5c0-1.1-1.3-2-3-2S5 3.9 5 5c0 .7.4 1.3 1.2 1.7"/><path d="M5 11c0 1.1 1.3 2 3 2s3-.9 3-2c0-.7-.4-1.3-1.2-1.7"/>'),
         h1: w('<path d="M3 4v8M9 4v8M3 8h6"/><path d="M11 6.5L13 5v7"/>'),
         h2: w('<path d="M2 4v8M7 4v8M2 8h5"/><path d="M9 7.5c0-1 .8-1.7 2-1.7s1.8.8 1.8 1.7c0 1.6-3.8 3-3.8 4.5H13"/>'),
@@ -33,11 +35,15 @@
         ol: w('<path d="M2 3h2v2M2 7h2v2M2 11h2v2M6 4h7M6 8h7M6 12h7"/>'),
         taskList: w('<rect x="1.5" y="2.5" width="3" height="3" rx="0.5"/><path d="M2 4l.7.7L4 3.3"/><rect x="1.5" y="10.5" width="3" height="3" rx="0.5"/><path d="M6 4h7M6 12h7"/>'),
 
-        // ★ 引用图标：改为"左侧竖线 + 三条横线"（不再像眼睛）
+        // 引用图标：左侧竖线 + 三条横线
         quote: w('<path d="M3.5 3v10" stroke-width="2" stroke-linecap="round"/><path d="M7 5h6M7 8h6M7 11h4"/>'),
 
         inlineCode: w('<path d="M5.5 4L2 8l3.5 4M10.5 4L14 8l-3.5 4"/>'),
         codeBlock: w('<rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M5.5 6L3.8 8l1.7 2M10.5 6L12.2 8l-1.7 2"/>'),
+
+        // 脚注图标（文档 + 右上角上标 "1"）
+        footnote: w('<path d="M9.5 2H4a1.5 1.5 0 0 0-1.5 1.5v9A1.5 1.5 0 0 0 4 14h7a1.5 1.5 0 0 0 1.5-1.5V7"/><path d="M9.5 2v5H13"/><path d="M5.5 9h4M5.5 11.5h2.5"/><path d="M12 1v4M11.4 1.4l.9-.6"/>'),
+
         link: w('<path d="M6.5 9.5l3-3"/><path d="M7 4.5l1.5-1.5a2.5 2.5 0 1 1 3.5 3.5L10.5 8"/><path d="M9 11.5L7.5 13a2.5 2.5 0 1 1-3.5-3.5L5.5 8"/>'),
         image: w('<rect x="1.5" y="3" width="13" height="10" rx="1"/><circle cx="5.5" cy="6.5" r="1"/><path d="M1.5 11l4-3.5 3 2.5L11.5 8l3 3"/>'),
 
@@ -62,7 +68,6 @@
         collapse: w('<path d="M2 4h5M2 8h8M2 12h12"/><path d="M13 3l-3 3 3 3" transform="rotate(180 11.5 4.5)"/>'),
         chevronRight: w('<path d="M6 3l5 5-5 5"/>'),
         chevronDownSmall: w('<path d="M3 6l5 5 5-5"/>'),
-        // 链接弹窗用
         fetch: w('<path d="M13.5 2.5A4 4 0 0 0 8 2.5L6 4.5a4 4 0 0 0 5.7 5.7l.3-.3"/><path d="M2.5 13.5A4 4 0 0 0 8 13.5l2-2a4 4 0 0 0-5.7-5.7l-.3.3"/><path d="M11 5l3 3-3 3"/><path d="M5 11l-3-3 3-3"/>'),
 
         github: '<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>',

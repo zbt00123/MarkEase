@@ -4,7 +4,7 @@
     "open": "열기",
     "save": "저장",
     "save_as": "다른 이름으로 저장",
-    "export_pdf": "PDF로 내보내기",
+    "export_pdf": "PDF 내보내기",
     "exit": "종료",
     "edit": "편집",
     "undo": "실행 취소",
@@ -100,6 +100,8 @@
     "heading_6_placeholder": "제목",
     "bold": "굵게",
     "italic": "기울임꼴",
+    "underline": "밑줄",
+    "underline_hint": "밑줄",
     "strikethrough": "취소선",
     "quote": "인용",
     "quote_placeholder": "인용 내용",
@@ -119,7 +121,6 @@
     "table": "표 삽입",
     "table_header": "열1 | 열2 | 열3",
     "table_cell": "내용",
-    "set_default_program": "기본 프로그램으로 설정",
     "set_default_success_title": "설정 성공",
     "set_default_success_message": "MarkEase가 .md 및 .markdown 파일의 기본 프로그램으로 설정되었습니다.",
     "set_default_failed_title": "설정 실패",
@@ -179,5 +180,25 @@
     "register_shell_new_success_msg": "바탕 화면 우클릭 → 새로 만들기에 「{name}」을(를) 추가했습니다.",
     "register_shell_new_failed_title": "등록 실패",
     "register_shell_new_failed_msg": "레지스트리에 쓸 수 없습니다: {error}",
-    "settings": "설정"
+    "settings": "설정",
+
+    "import": "가져오기",
+    "export": "내보내기",
+    "import_html": "HTML 가져오기",
+    "export_html": "HTML 내보내기",
+    "importing_html": "HTML 가져오는 중...",
+    "exporting_html": "HTML 내보내는 중...",
+    "import_html_success": "HTML 가져오기 완료",
+    "import_html_success_roundtrip": "HTML 가져오기 완료 (무손실)",
+    "import_html_failed": "HTML 가져오기 실패",
+    "export_html_success": "HTML 내보내기 성공",
+    "export_html_failed": "HTML 내보내기 실패",
+    "imported_from_html": "(HTML에서)",
+    "imported_from_pdf": "(PDF에서)",
+
+    "footnote": "각주",
+    "footnote_hint": "각주 삽입",
+    "footnote_back": "참조 위치로 돌아가기",
+
+    "ok": "확인"
 }

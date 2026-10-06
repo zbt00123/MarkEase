@@ -7,7 +7,6 @@ D:.
 │   README.md
 │   requirements.txt
 │   THIRD_PARTY_NOTICES.md
-│   tree.txt
 │   version_info.txt
 │
 ├───app
@@ -18,13 +17,21 @@ D:.
 │   │   __init__.py
 │   │
 │   └───__pycache__
+│           api.cpython-314.pyc
+│           asset_server.cpython-314.pyc
+│           file_assoc.cpython-314.pyc
+│           image_picker.cpython-314.pyc
 │           __init__.cpython-314.pyc
 │
 ├───converters
+│   │   html_exporter.py
+│   │   html_importer.py
 │   │   pdf_importer.py
 │   │   __init__.py
 │   │
 │   └───__pycache__
+│           html_exporter.cpython-314.pyc
+│           html_importer.cpython-314.pyc
 │           pdf_importer.cpython-314.pyc
 │           __init__.cpython-314.pyc
 │
@@ -38,12 +45,13 @@ D:.
 │       P_07.png
 │
 ├───release
-│       MarkEase_v2.0.0_Windows_x64_portable.7z
+│       MarkEase_v2.0.1_Windows_x64_portable.7z
 │
 ├───resources
 │   ├───icons
 │   │       .gitkeep
 │   │       图标.ico
+│   │       图标.ico.bak
 │   │
 │   ├───themes
 │   │       .gitkeep
@@ -249,6 +257,7 @@ D:.
         Demo.md
         MarkEase v2.0 开发大纲.md
         MarkEase v2.0 开发记忆文档.md
+        MarkEase v2.1 交接记忆文档（截至阶段 16-10）.md
         MarkEase 编辑器完整开发大纲.md
         发布.md
         图标.ico

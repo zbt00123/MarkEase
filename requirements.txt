@@ -1,3 +1,4 @@
 pywebview>=4.0
 PyMuPDF>=1.23
 pythonnet>=3.0
+Pillow>=10.0

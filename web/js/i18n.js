@@ -81,6 +81,7 @@
         ready: '就绪',
         words: '字数',
         lines: '行数',
+        ok: '确定',
     };
 
     function normalizeLang(lang) {

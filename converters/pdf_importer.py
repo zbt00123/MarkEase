@@ -4,10 +4,31 @@ PDF 转 Markdown 转换器
 
 优先读取 PDF 里内嵌的 MarkEase 原始 Markdown 附件；
 若无，则走解析逻辑。
+
+★ 阶段 16 第 7 批：
+   1. convert() 新增 image_data_url_mode 参数。
+      True 时把 PDF 内的图片直接编码为 data URL 嵌入 Markdown，
+      用于「拖动 PDF 到窗口（无 path）」的场景，图片才能显示。
+   2. 保留 extract_images 参数，走「菜单导入 PDF」时仍然落盘到
+      <pdf_dir>/<basename>_images/。
+
+★ 阶段 16 第 8 批：
+   1. convert() 新增 image_dir_override 参数：
+      - 提供时：图片落盘到该目录；MD 里用相对路径 assets/xxx.png
+      - 不提供时：沿用原行为（<pdf_dir>/<basename>_images/；MD 里用绝对路径）
+
+★ 本轮修订（导入 PDF 图片缺失恢复）：
+   1. convert() 读到内嵌 markease_source.md 后，检查 Markdown 里所有
+      本地图片路径是否存在。
+   2. 缺失的图片从 PDF 页面按顺序提取，写入系统临时文件夹，替换
+      Markdown 里的对应路径。
+   3. 网络图片（http/https）不参与恢复，原样保留。
 """
 
 import os
 import re
+import base64
+import tempfile  # ★ 本轮新增
 
 try:
     import pymupdf as fitz
@@ -16,6 +37,17 @@ except ImportError:
         import fitz
     except ImportError:
         fitz = None
+
+
+# ★ 本轮新增：Markdown / HTML 图片正则（用于恢复缺失图片）
+_MD_IMG_RE = re.compile(
+    r'(!\[[^\]]*\]\()(\s*)(<[^>]*>|[^)\s]+)([^)]*)(\))'
+)
+
+_HTML_IMG_RE = re.compile(
+    r'(<img\b[^>]*?\bsrc\s*=\s*)(["\'])([^"\']*)(\2[^>]*>)',
+    re.IGNORECASE
+)
 
 
 class PdfImporter:
@@ -33,40 +65,325 @@ class PdfImporter:
     CN_HEADING_RE = re.compile(r'^\s*[一二三四五六七八九十]+\s*[、.．]\s*\S')
     CN_HEADING_INLINE_RE = re.compile(r'\s+[一二三四五六七八九十]+\s*[、.．]\s*\S')
 
+    MIME_MAP = {
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'bmp': 'image/bmp',
+        'webp': 'image/webp',
+    }
+
     @staticmethod
     def is_available() -> bool:
         return fitz is not None
 
     # ==================== 入口 ====================
     @staticmethod
-    def convert(path: str, image_placeholder: str = "[图片]") -> str:
+    def convert(path: str,
+                image_placeholder: str = "[图片]",
+                extract_images: bool = True,
+                image_data_url_mode: bool = False,
+                max_image_bytes: int = 500 * 1024,
+                max_total_bytes: int = 20 * 1024 * 1024,
+                image_dir_override: str = None) -> str:
+        """
+        把 PDF 转成 Markdown。
+
+        参数：
+            path                  PDF 文件路径
+            image_placeholder     图片占位符（如 "[图片]"）
+            extract_images        True → 图片落盘
+                                  False → 不落盘（除非 image_data_url_mode=True）
+            image_data_url_mode   True → 图片直接编码成 data URL 嵌入 Markdown
+            max_image_bytes       单张图最大字节数（超出则用 placeholder）
+            max_total_bytes       所有 data URL 图片总字节上限
+            image_dir_override    提供时：图片落盘到该目录；
+                                  MD 里用相对路径 assets/xxx.png
+        """
         if fitz is None:
             raise RuntimeError("未安装 PyMuPDF，请先运行: pip install PyMuPDF")
         doc = fitz.open(path)
         try:
-            # 优先读取内嵌 Markdown
+            # 1) 优先读取内嵌 Markdown（导出自 MarkEase 的 PDF）
             try:
                 names = doc.embfile_names()
                 if PdfImporter.EMBED_NAME in names:
                     data = doc.embfile_get(PdfImporter.EMBED_NAME)
                     if data:
-                        return data.decode("utf-8")
+                        md = data.decode("utf-8")
+                        # ★ 本轮新增：检查缺失图片，从 PDF 恢复
+                        if path:
+                            try:
+                                md = PdfImporter._recover_missing_images(
+                                    md, path, doc)
+                            except Exception as e:
+                                print(f'[pdf_importer] '
+                                      f'recover_missing_images failed: {e}')
+                        return md
             except Exception:
                 pass
-            return PdfImporter._convert_doc(doc, path, image_placeholder)
+
+            # 2) 决定图片处理策略
+            image_opts = {
+                'data_url_mode': bool(image_data_url_mode),
+                'max_image_bytes': int(max_image_bytes),
+                'max_total_bytes': int(max_total_bytes),
+                'total_bytes': [0],   # mutable accumulator
+                'image_dir_override': image_dir_override,
+            }
+
+            # 无 path 时不能落盘
+            if image_data_url_mode:
+                source_path = ''
+            else:
+                source_path = path if extract_images else ''
+
+            return PdfImporter._convert_doc(
+                doc, source_path, image_placeholder, image_opts
+            )
         finally:
             doc.close()
 
+    # ==================== ★ 本轮新增：恢复缺失图片 ====================
     @staticmethod
-    def _convert_doc(doc, source_path, image_placeholder):
+    def _recover_missing_images(md, pdf_path, doc):
+        """
+        检查 Markdown 里所有本地图片路径是否存在；缺失的从 PDF 恢复。
+
+        规则：
+          - http(s):// / data: / blob: / file: → 跳过（原样保留）
+          - 本地路径（绝对或相对）→ 检查文件是否存在
+          - 不存在 → 从 PDF 页面按顺序提取图片，写入系统临时文件夹，
+                     替换 Markdown 里对应的 URL
+        """
+        if not md:
+            return md
+
+        pdf_dir = os.path.dirname(os.path.abspath(pdf_path))
+        print(f'[pdf_importer] recover: pdf_path={pdf_path}')
+        print(f'[pdf_importer] recover: pdf_dir={pdf_dir}')
+
+        def is_local_and_missing(url):
+            if not url:
+                return False
+            raw = url
+            if raw.startswith('<') and raw.endswith('>'):
+                raw = raw[1:-1]
+            # 跳过非本地
+            if re.match(r'^(https?:|data:|blob:|file:)', raw, re.IGNORECASE):
+                return False
+            # Windows 盘符绝对路径
+            if re.match(r'^[A-Za-z]:[\\/]', raw):
+                exists = os.path.isfile(raw)
+                print(f'[pdf_importer]   check abs: {raw} exists={exists}')
+                return not exists
+            # Unix 绝对路径
+            if raw.startswith('/'):
+                exists = os.path.isfile(raw)
+                print(f'[pdf_importer]   check unix: {raw} exists={exists}')
+                return not exists
+            # 相对路径
+            full = os.path.join(pdf_dir, raw)
+            exists = os.path.isfile(full)
+            print(f'[pdf_importer]   check rel: {raw} -> {full} exists={exists}')
+            return not exists
+
+        # 收集 Markdown 里所有图片引用（按位置排序）
+        matches = []
+        for m in _MD_IMG_RE.finditer(md):
+            matches.append((m, 3))
+        for m in _HTML_IMG_RE.finditer(md):
+            matches.append((m, 3))
+        matches.sort(key=lambda x: x[0].start())
+
+        print(f'[pdf_importer] total image refs in MD: {len(matches)}')
+
+        # 过滤出「本地且缺失」的图片
+        missing = [
+            (m, g) for m, g in matches
+            if is_local_and_missing(m.group(g))
+        ]
+        print(f'[pdf_importer] missing local images: {len(missing)}')
+
+        if not missing:
+            return md
+
+        # 从 PDF 中按文档顺序提取所有图片
+        extracted = PdfImporter._extract_all_images_in_order(doc)
+        print(f'[pdf_importer] images extracted from PDF: {len(extracted)}')
+
+        if not extracted:
+            print('[pdf_importer] WARNING: PDF 中未提取到任何图片，'
+                  '请检查 PDF 是否以图片形式包含图片对象')
+            return md
+
+        # 写入临时文件夹 + 替换路径
+        temp_dir = tempfile.mkdtemp(prefix='markease_pdf_recovered_')
+        print(f'[pdf_importer] temp dir: {temp_dir}')
+        result = md
+        recovered = 0
+
+        # 从后往前替换，避免位置偏移
+        for i in range(len(missing) - 1, -1, -1):
+            if i >= len(extracted):
+                continue
+            m, g = missing[i]
+            img_data, img_ext = extracted[i]
+            ext = (img_ext or 'png').lower()
+            if ext not in ('png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'):
+                ext = 'png'
+            fname = f'recovered_{i:03d}.{ext}'
+            fpath = os.path.join(temp_dir, fname)
+            try:
+                with open(fpath, 'wb') as f:
+                    f.write(img_data)
+            except Exception as e:
+                print(f'[pdf_importer] write {fpath} failed: {e}')
+                continue
+
+            new_path = fpath.replace('\\', '/')
+            orig_url = m.group(g)
+            was_angle = orig_url.startswith('<') and orig_url.endswith('>')
+            if was_angle or re.search(r'[\s()]', new_path):
+                new_url = '<' + new_path + '>'
+            else:
+                new_url = new_path
+
+            start = m.start(g)
+            end = m.end(g)
+            result = result[:start] + new_url + result[end:]
+            recovered += 1
+            print(f'[pdf_importer]   recovered #{i}: {orig_url} -> {new_path}')
+
+        print(f'[pdf_importer] recover done: {recovered} images')
+        return result
+
+    @staticmethod
+    def _extract_all_images_in_order(doc):
+        """
+        按文档顺序提取 PDF 里所有图片（页面顺序 + 页面内 y 坐标顺序）。
+
+        优先用 page.get_image_info()；如果返回空（例如图片在 Form XObject
+        或内联图片流里），则用 page.get_images(full=True) 作为后备。
+
+        返回：[(img_bytes, ext), ...]
+        """
+        images = []
+        try:
+            page_count = len(doc)
+        except Exception as e:
+            print(f'[pdf_importer] len(doc) failed: {e}')
+            return images
+
+        print(f'[pdf_importer] extract pages: {page_count}')
+
+        for page_num in range(page_count):
+            try:
+                page = doc[page_num]
+            except Exception as e:
+                print(f'[pdf_importer] page {page_num} open failed: {e}')
+                continue
+
+            page_items = []
+            seen_xrefs = set()
+
+            # ---------- 方法 1：get_image_info()，含显示位置 ----------
+            try:
+                infos = page.get_image_info()
+                for img_info in infos:
+                    xref = img_info.get('xref', 0)
+                    if not xref:
+                        continue
+                    if xref in seen_xrefs:
+                        continue
+                    seen_xrefs.add(xref)
+                    bbox = img_info.get('bbox') or (0, 0, 0, 0)
+                    try:
+                        y = float(bbox[1])
+                        x = float(bbox[0])
+                    except Exception:
+                        y = 0.0
+                        x = 0.0
+                    page_items.append({
+                        'y': y, 'x': x, 'xref': xref,
+                    })
+                print(f'[pdf_importer] page {page_num}: '
+                      f'get_image_info -> {len(page_items)} entries')
+            except Exception as e:
+                print(f'[pdf_importer] get_image_info failed on page '
+                      f'{page_num}: {e}')
+
+            # ---------- 方法 2：后备——get_images(full=True) ----------
+            if not page_items:
+                try:
+                    imgs = page.get_images(full=True)
+                    for item in imgs:
+                        xref = item[0]
+                        if not xref or xref in seen_xrefs:
+                            continue
+                        seen_xrefs.add(xref)
+                        y, x = 0.0, 0.0
+                        try:
+                            rects = page.get_image_rects(xref)
+                            if rects:
+                                r = rects[0]
+                                try:
+                                    y = float(r.y0)
+                                    x = float(r.x0)
+                                except Exception:
+                                    try:
+                                        y = float(r[1])
+                                        x = float(r[0])
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            pass
+                        page_items.append({'y': y, 'x': x, 'xref': xref})
+                    print(f'[pdf_importer] page {page_num}: '
+                          f'get_images(full=True) -> {len(page_items)} entries')
+                except Exception as e:
+                    print(f'[pdf_importer] get_images failed on page '
+                          f'{page_num}: {e}')
+
+            # 按阅读顺序排序：先 y（从上到下），再 x（从左到右）
+            page_items.sort(key=lambda z: (z['y'], z['x']))
+
+            for pi in page_items:
+                xref = pi['xref']
+                try:
+                    base = doc.extract_image(xref)
+                    if not base or not base.get('image'):
+                        print(f'[pdf_importer] extract_image({xref}) empty')
+                        continue
+                    images.append((base['image'], base.get('ext', 'png')))
+                except Exception as e:
+                    print(f'[pdf_importer] extract_image({xref}) failed: {e}')
+                    continue
+
+        print(f'[pdf_importer] total images: {len(images)}')
+        return images
+
+    # ==================== 原有实现保持 ====================
+    @staticmethod
+    def _convert_doc(doc, source_path, image_placeholder, image_opts):
         img_dir = None
-        if source_path:
+        image_dir_override = image_opts.get('image_dir_override')
+
+        if image_dir_override:
+            # 优先用 override 目录；MD 里用相对路径 assets/xxx.png
+            img_dir = image_dir_override
+            image_opts['md_path_prefix'] = 'assets'
+        elif source_path:
             try:
                 base_name = os.path.splitext(os.path.basename(source_path))[0]
                 parent = os.path.dirname(os.path.abspath(source_path))
                 img_dir = os.path.join(parent, f"{base_name}_images")
+                # 默认场景：MD 里用绝对路径
+                image_opts['md_path_prefix'] = ''
             except Exception:
                 img_dir = None
+                image_opts['md_path_prefix'] = ''
 
         pages_data = [PdfImporter._extract_page(p, doc) for p in doc]
 
@@ -91,7 +408,7 @@ class PdfImporter:
             PdfImporter._process_page(
                 pd, size_to_level, body_size, threshold,
                 output_lines, img_dir, img_counter, img_dir_created,
-                image_placeholder, ordered_counters
+                image_placeholder, ordered_counters, image_opts
             )
             output_lines.append('')
 
@@ -99,13 +416,11 @@ class PdfImporter:
         md_text = re.sub(r'\n{3,}', '\n\n', md_text)
         return md_text.strip() + '\n'
 
-    # ==================== 判断字符是否是普通 bullet ====================
     @staticmethod
     def _is_bullet_char(c):
         ch = c['c']
         if ch in PdfImporter.TEXT_BULLET_CHARS:
             return True
-        # Symbol / Wingdings 字体的私有区域
         font = (c.get('font') or '').lower()
         if 'symbol' in font or 'wingding' in font:
             code = ord(ch)
@@ -113,7 +428,6 @@ class PdfImporter:
                 return True
         return False
 
-    # ==================== 正文字号 ====================
     @staticmethod
     def _detect_body_size(pages_data):
         counter = {}
@@ -127,7 +441,6 @@ class PdfImporter:
             return 11.0
         return max(counter.items(), key=lambda kv: kv[1])[0]
 
-    # ==================== 页面提取 ====================
     @staticmethod
     def _extract_page(page, doc):
         result = {'lines': [], 'images': [], 'links': [],
@@ -290,11 +603,10 @@ class PdfImporter:
 
         return result
 
-    # ==================== 页面处理 ====================
     @staticmethod
     def _process_page(pd, size_to_level, body_size, threshold,
                       output_lines, img_dir, img_counter, img_dir_created,
-                      image_placeholder, ordered_counters):
+                      image_placeholder, ordered_counters, image_opts):
         text_lines = []
         for l in pd['lines']:
             if PdfImporter._inside_table(l['bbox'], pd['tables']):
@@ -362,7 +674,7 @@ class PdfImporter:
                 img_counter[0] += 1
                 ref = PdfImporter._handle_image(
                     item, img_dir, img_counter[0],
-                    img_dir_created, image_placeholder
+                    img_dir_created, image_placeholder, image_opts
                 )
                 output_lines.append(ref)
 
@@ -439,7 +751,6 @@ class PdfImporter:
                 return True
         return False
 
-    # ==================== 单行处理 ====================
     @staticmethod
     def _process_line(line, line_bullets, size_to_level, body_size, threshold,
                       base_bullet_x, page_links):
@@ -503,19 +814,16 @@ class PdfImporter:
             return []
         return [{'type': 'paragraph', 'segments': segs}]
 
-    # ==================== 统一 bullet 处理 ====================
     @staticmethod
     def _split_by_all_bullets(line, line_bullets, size_to_level, body_size,
                               threshold, base_bullet_x, page_links):
         chars = line['chars']
 
-        # 收集 bullet 事件（按 x 排序）
         bullet_events = []
         for b in line_bullets:
             bullet_events.append((b['cx'], 'vector', b))
         for i, c in enumerate(chars):
             if PdfImporter._is_bullet_char(c):
-                # 排除前面紧邻英文字母的情况
                 prev = None
                 for j in range(i - 1, -1, -1):
                     if chars[j]['c'].strip():
@@ -529,7 +837,6 @@ class PdfImporter:
         if not bullet_events:
             return []
 
-        # 分配字符：每个字符归属"它左侧最近的 bullet"
         groups = [{'event': ev, 'chars': []} for ev in bullet_events]
         prefix_chars = []
 
@@ -544,7 +851,6 @@ class PdfImporter:
             cx = (c['x0'] + c['x1']) / 2
             best_gi = None
             for gi, ev in enumerate(bullet_events):
-                # 字符在 bullet 右侧（+3容差）
                 if ev[0] <= cx + 3:
                     best_gi = gi
                 else:
@@ -556,7 +862,6 @@ class PdfImporter:
 
         results = []
 
-        # 前缀
         prefix_text = ''.join(c['c'] for c in prefix_chars).strip()
         if prefix_text:
             if len(prefix_text) <= 30 and PdfImporter.CN_HEADING_RE.match(prefix_text):
@@ -574,14 +879,12 @@ class PdfImporter:
                 if merged:
                     results.append({'type': 'paragraph', 'segments': merged})
 
-        # 各 bullet 组
         for g in groups:
             ev = g['event']
             gc = g['chars']
             if not gc:
                 continue
 
-            # 去前后空白
             raw = ''.join(c['c'] for c in gc)
             if not raw.strip():
                 continue
@@ -596,12 +899,10 @@ class PdfImporter:
             if level < 0:
                 level = 0
 
-            # 复选框：先看矢量 bullet 本身
             checkbox = None
             if kind == 'vector':
                 checkbox = PdfImporter._bullet_checkbox_state(obj, ''.join(c['c'] for c in gc))
 
-            # 从内容开头剥离 checkbox 字符
             if checkbox is None and gc:
                 first_ch = gc[0]['c']
                 if first_ch in PdfImporter.CHECKBOX_CHARS:
@@ -641,7 +942,6 @@ class PdfImporter:
                 return 'checked'
         return 'unchecked'
 
-    # ==================== 标题判定 ====================
     @staticmethod
     def _dominant_size(chars):
         counter = {}
@@ -694,7 +994,6 @@ class PdfImporter:
                 last_end = me
         return filtered
 
-    # ==================== 字符 → Segment ====================
     @staticmethod
     def _chars_to_segments(chars, body_size, page_links):
         if not chars:
@@ -808,9 +1107,40 @@ class PdfImporter:
                 return link['uri']
         return None
 
-    # ==================== 图片 ====================
     @staticmethod
-    def _handle_image(item, img_dir, counter, img_dir_created, placeholder):
+    def _handle_image(item, img_dir, counter, img_dir_created, placeholder,
+                      image_opts=None):
+        """
+        图片处理三模式（优先级从高到低）：
+          1) data_url_mode=True   → 直接编码成 data URL 嵌入 Markdown
+          2) img_dir 有效         → 落盘
+          3) 其他                 → 返回 placeholder（[图片]）
+        """
+        image_opts = image_opts or {}
+        data_url_mode = image_opts.get('data_url_mode', False)
+        max_image_bytes = image_opts.get('max_image_bytes', 500 * 1024)
+        max_total_bytes = image_opts.get('max_total_bytes', 20 * 1024 * 1024)
+        total_acc = image_opts.get('total_bytes')
+        md_path_prefix = image_opts.get('md_path_prefix', '')
+
+        if data_url_mode:
+            try:
+                raw = item.get('image') or b''
+                if not raw:
+                    return placeholder
+                if len(raw) > max_image_bytes:
+                    return placeholder
+                if total_acc is not None:
+                    if total_acc[0] + len(raw) > max_total_bytes:
+                        return placeholder
+                    total_acc[0] += len(raw)
+                ext = (item.get('ext') or 'png').lower()
+                mime = PdfImporter.MIME_MAP.get(ext, 'image/png')
+                b64 = base64.b64encode(raw).decode('ascii')
+                return f'![图片](data:{mime};base64,{b64})'
+            except Exception:
+                return placeholder
+
         if img_dir:
             try:
                 if not img_dir_created[0]:
@@ -820,15 +1150,18 @@ class PdfImporter:
                 if ext not in ('png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'):
                     ext = 'png'
                 filename = f"image_{counter:03d}.{ext}"
-                path = os.path.join(img_dir, filename)
-                with open(path, 'wb') as f:
+                abs_path = os.path.join(img_dir, filename)
+                with open(abs_path, 'wb') as f:
                     f.write(item['image'])
-                return f"![]({path})"
+
+                if md_path_prefix:
+                    return f"![]({md_path_prefix}/{filename})"
+                return f"![]({abs_path})"
             except Exception:
                 pass
+
         return placeholder
 
-    # ==================== 表格 ====================
     @staticmethod
     def _table_to_md(data):
         if not data:

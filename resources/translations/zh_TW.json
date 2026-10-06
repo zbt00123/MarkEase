@@ -4,7 +4,7 @@
     "open": "開啟",
     "save": "儲存",
     "save_as": "另存為",
-    "export_pdf": "匯出為 PDF",
+    "export_pdf": "匯出 PDF",
     "exit": "退出",
     "edit": "編輯",
     "undo": "復原",
@@ -100,6 +100,8 @@
     "heading_6_placeholder": "標題",
     "bold": "粗體",
     "italic": "斜體",
+    "underline": "下劃線",
+    "underline_hint": "下劃線",
     "strikethrough": "刪除線",
     "quote": "引用",
     "quote_placeholder": "引用內容",
@@ -119,7 +121,6 @@
     "table": "插入表格",
     "table_header": "列1 | 列2 | 列3",
     "table_cell": "內容",
-    "set_default_program": "設定為預設程式",
     "set_default_success_title": "設定成功",
     "set_default_success_message": "MarkEase 已設定為 .md 和 .markdown 檔案的預設開啟程式。",
     "set_default_failed_title": "設定失敗",
@@ -179,5 +180,25 @@
     "register_shell_new_success_msg": "已在桌面右鍵 → 新建中新增「{name}」。",
     "register_shell_new_failed_title": "註冊失敗",
     "register_shell_new_failed_msg": "無法寫入登錄檔：{error}",
-    "settings": "設定"
+    "settings": "設定",
+
+    "import": "匯入",
+    "export": "匯出",
+    "import_html": "匯入 HTML",
+    "export_html": "匯出 HTML",
+    "importing_html": "正在匯入 HTML...",
+    "exporting_html": "正在匯出 HTML...",
+    "import_html_success": "HTML 匯入完成",
+    "import_html_success_roundtrip": "HTML 匯入完成（無損還原）",
+    "import_html_failed": "HTML 匯入失敗",
+    "export_html_success": "HTML 匯出成功",
+    "export_html_failed": "HTML 匯出失敗",
+    "imported_from_html": "（來自 HTML）",
+    "imported_from_pdf": "（來自 PDF）",
+
+    "footnote": "註腳",
+    "footnote_hint": "插入註腳",
+    "footnote_back": "返回引用",
+
+    "ok": "確定"
 }

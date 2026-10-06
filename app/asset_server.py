@@ -1,23 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-MarkEase 本地资源 HTTP 服务（阶段 12 收尾 修订 5）
+MarkEase 本地资源 HTTP 服务（阶段 16 修订）
 
 路由：
-    GET /web/<relpath>           → <web_dir>/<relpath>（index.html、CSS、JS、字体等全部前端资源）
+    GET /web/<relpath>           → <web_dir>/<relpath>（前端资源）
     GET /fs/<urlencoded_abspath> → 任意绝对路径（白名单扩展名，用于本地图片/字体）
+    GET /proxy?url=<encoded>     → ★ 新增：后端代理下载网络图片
     GET / 或 /index.html         → 302 到 /web/index.html
 
 特性：
 - 监听 127.0.0.1 随机端口
 - 所有响应带 CORS 头（允许从 file:// 跨 origin 访问）
-- 只读，无写入接口
+- ★ /proxy 路由通过后端下载网络图片：
+    - 带浏览器 User-Agent + Referer 绕过防盗链
+    - Accept 头包含 image/avif，避免服务器降级
+    - 绕过系统代理
+    - 限制单张 30MB、超时 20 秒
+    - 响应带 Cache-Control: public, max-age=3600
 """
 
 import os
 import threading
 import mimetypes
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, parse_qs
 
 
 ALLOWED_FS_EXTS = {
@@ -48,6 +54,7 @@ MIME_OVERRIDES = {
     '.gif': 'image/gif',
     '.webp': 'image/webp',
     '.bmp': 'image/bmp',
+    '.avif': 'image/avif',
 }
 
 
@@ -57,6 +64,67 @@ def _mime_for(path):
         return MIME_OVERRIDES[ext]
     guess, _ = mimetypes.guess_type(path)
     return guess or 'application/octet-stream'
+
+
+# ============================================================
+#  /proxy 后端代理下载网络图片
+# ============================================================
+_PROXY_MAX_BYTES = 30 * 1024 * 1024   # 单张上限 30MB
+_PROXY_TIMEOUT = 20                    # 下载超时 20 秒
+_PROXY_UA = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    'AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/120.0.0.0 Safari/537.36'
+)
+_PROXY_ACCEPT = (
+    'image/avif,image/webp,image/apng,image/svg+xml,image/*,'
+    '*/*;q=0.8'
+)
+
+
+def _proxy_download(url):
+    """
+    后端下载 URL 内容。返回 (data: bytes, content_type: str)。
+    失败时抛异常。
+    """
+    import urllib.request
+
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        raise ValueError('unsupported scheme: ' + parsed.scheme)
+
+    # 用 URL 的域名作为 Referer（很多图床 / CDN 用 Referer 防盗链）
+    referer = f'{parsed.scheme}://{parsed.netloc}/'
+
+    req = urllib.request.Request(url, headers={
+        'User-Agent': _PROXY_UA,
+        'Referer': referer,
+        'Accept': _PROXY_ACCEPT,
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'identity',
+    })
+
+    # 显式禁用系统代理，避免 VPN 干扰
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({})
+    )
+    with opener.open(req, timeout=_PROXY_TIMEOUT) as resp:
+        # 分块读取，限制最大字节数
+        chunks = []
+        total = 0
+        while True:
+            chunk = resp.read(65536)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > _PROXY_MAX_BYTES:
+                raise ValueError(
+                    'image too large (>{:.0f}MB)'.format(
+                        _PROXY_MAX_BYTES / 1024 / 1024))
+            chunks.append(chunk)
+        data = b''.join(chunks)
+        ct = resp.headers.get('Content-Type', 'image/png')
+        return data, ct
 
 
 class AssetServer:
@@ -98,6 +166,11 @@ class AssetServer:
                 parsed = urlparse(self.path)
                 path = parsed.path or '/'
 
+                # ---------- /proxy?url=xxx ----------
+                if path == '/proxy' or path.startswith('/proxy'):
+                    self._handle_proxy(parsed)
+                    return
+
                 # ---------- /web/* ----------
                 if path.startswith('/web/') or path == '/web':
                     rel = unquote(path[4:]) if path != '/web' else '/index.html'
@@ -130,6 +203,38 @@ class AssetServer:
                     return
 
                 self.send_error(404)
+
+            def _handle_proxy(self, parsed):
+                qs = parse_qs(parsed.query or '')
+                url_list = qs.get('url', [])
+                if not url_list:
+                    self.send_error(400, 'Missing url parameter')
+                    return
+                url = url_list[0].strip()
+                if not url:
+                    self.send_error(400, 'Empty url parameter')
+                    return
+
+                try:
+                    data, ct = _proxy_download(url)
+                except Exception as e:
+                    try:
+                        self.send_error(502, 'Proxy failed: ' + str(e)[:200])
+                    except Exception:
+                        pass
+                    return
+
+                try:
+                    self.send_response(200)
+                    self.send_header('Content-Type', ct or 'image/png')
+                    self.send_header('Content-Length', str(len(data)))
+                    # 浏览器缓存 1 小时
+                    self.send_header('Cache-Control', 'public, max-age=3600')
+                    self._cors_headers()
+                    self.end_headers()
+                    self.wfile.write(data)
+                except Exception:
+                    pass
 
             def _serve_file(self, abs_path):
                 if not os.path.isfile(abs_path):
