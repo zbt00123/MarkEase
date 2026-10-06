@@ -25,3 +25,5 @@ scripts/
 *.pyc
 *.pyo
 .venv/
+
+tree.txt
