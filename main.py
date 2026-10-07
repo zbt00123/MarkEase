@@ -13,6 +13,8 @@ MarkEase 主入口（阶段 15 修订：修复启动缓存导致的偶发空白�
 
 import os
 import sys
+import time
+import threading
 
 # ★★★ 必须在 import webview 之前设置 ★★★
 
@@ -164,6 +166,30 @@ def main():
 
     api.set_window(window)
 
+    def on_closing():
+        # ★ 修复死锁：不能在 closing 回调里同步调用 evaluate_js。
+        #   改用独立线程 + 小延迟异步通知前端弹窗。
+        try:
+            if api._force_close:
+                return True
+            if api._is_dirty:
+                def _notify_frontend():
+                    # 等主线程从 closing 回调返回后再通知前端
+                    time.sleep(0.1)
+                    try:
+                        window.evaluate_js(
+                            'window.onCloseRequested && window.onCloseRequested()'
+                        )
+                    except Exception as e:
+                        print(f'[MarkEase] onCloseRequested failed: {e}')
+
+                t = threading.Thread(target=_notify_frontend, daemon=True)
+                t.start()
+                return False  # 取消本次关闭
+        except Exception as e:
+            print(f'[MarkEase] on_closing error: {e}')
+        return True
+
     def on_closed():
         try:
             api.close_all_pickers()
@@ -174,6 +200,7 @@ def main():
         except Exception:
             pass
 
+    window.events.closing += on_closing
     window.events.closed += on_closed
 
     icon_path = get_icon_path()

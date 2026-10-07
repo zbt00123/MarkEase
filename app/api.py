@@ -432,8 +432,31 @@ class Api:
         except Exception as e:
             print(f'[MarkEase] shell-new setup failed: {e}')
 
+        # ★ 新增：关闭前的未保存检查状态
+        self._is_dirty = False
+        self._force_close = False
+
     def set_window(self, window):
         self._window = window
+
+    # ★ 新增：前端同步脏状态
+    def set_dirty(self, dirty):
+        self._is_dirty = bool(dirty)
+        return {'ok': True}
+
+    # ★ 新增：用户确认后强制关闭（绕过 closing 事件检查）
+    def force_close(self):
+        self._force_close = True
+        try:
+            self.close_all_pickers()
+        except Exception:
+            pass
+        if self._window is not None:
+            try:
+                self._window.destroy()
+            except Exception as e:
+                print(f'[MarkEase] force_close failed: {e}')
+        return {'ok': True}
 
     # ============================================================
     #  图片迁移工具

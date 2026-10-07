@@ -80,6 +80,19 @@ let mode = 'split';
 let zoomLevel = 100;
 
 let isDirty = false;
+let _lastSyncedDirty = null;
+
+function setDirty(v) {
+    isDirty = !!v;
+    if (_lastSyncedDirty === isDirty) return;
+    _lastSyncedDirty = isDirty;
+    try {
+        if (window.pywebview && window.pywebview.api &&
+            window.pywebview.api.set_dirty) {
+            window.pywebview.api.set_dirty(isDirty).catch(() => {});
+        }
+    } catch (e) { /* ignore */ }
+}
 
 let previewComposing = false;
 let activeEditableEl = null;
@@ -375,7 +388,7 @@ function initEditor() {
 
     const updateListener = EditorView.updateListener.of(update => {
         if (update.docChanged) {
-            isDirty = true;
+            setDirty(true);
             if (!isSyncing) {
                 if (!syncingFromPreview) {
                     updatePreview();
@@ -832,7 +845,7 @@ function setContent(text) {
         changes: { from: 0, to: editorView.state.doc.length, insert: text }
     });
     isSyncing = false;
-    isDirty = false;
+    setDirty(false);
     _footnoteRefsSnapshot = null;
     updatePreview();
     updateStats();
@@ -2608,6 +2621,45 @@ function findFootnoteLiByY(section, clientY) {
 }
 
 function setupPreviewEditing() {
+
+    // ★ 新增：点击预览区非编辑区域时，主动退出编辑（修复现象 1）
+    const previewContainerEl = previewEl.parentElement;
+    if (previewContainerEl) {
+        previewContainerEl.addEventListener('mousedown', (e) => {
+            if (!activeEditableEl) return;
+            if (e.button !== 0) return;
+            if (activeEditableEl.contains(e.target)) return;
+            const el = activeEditableEl;
+            setTimeout(() => {
+                if (activeEditableEl === el) exitEditable(el);
+            }, 0);
+        });
+    }
+
+    // ★ 新增：拦截粘贴，列表内只粘贴行内内容（修复现象 2）
+    previewEl.addEventListener('paste', (e) => {
+        const target = e.target;
+        if (!target || !target.closest) return;
+        const editable = target.closest('[contenteditable="true"]');
+        if (!editable) return;
+
+        const html = e.clipboardData && e.clipboardData.getData('text/html');
+        if (!html) return;
+
+        // 只有粘贴内容中带列表结构时才处理
+        if (!/<(ul|ol|li)[\s>]/i.test(html)) return;
+
+        const inline = extractInlineFromListHtml(html);
+        if (!inline) return;
+
+        e.preventDefault();
+        insertHtmlAtCursor(inline);
+        try {
+            editable.dispatchEvent(new Event('input', { bubbles: true }));
+        } catch (err) { /* ignore */ }
+        _editableHadInput = true;
+    }, true);
+
     previewEl.addEventListener('click', (e) => {
         const a = e.target.closest && e.target.closest('a[href]');
         if (!a) return;
@@ -2722,6 +2774,126 @@ function setupPreviewEditing() {
             isComposing: function () { return previewComposing; }
         });
     }
+}
+
+// ★ 新增：从剪贴板 HTML 中提取列表里的行内内容（丢掉序号、缩进、外层列表）
+function extractInlineFromListHtml(html) {
+    let doc;
+    try {
+        const parser = new DOMParser();
+        doc = parser.parseFromString(html, 'text/html');
+    } catch (err) {
+        return '';
+    }
+    if (!doc || !doc.body) return '';
+
+    const body = doc.body;
+
+    // 优先找顶层 ul / ol
+    const topLists = [];
+    for (let i = 0; i < body.childNodes.length; i++) {
+        const c = body.childNodes[i];
+        if (c.nodeType === 1) {
+            const tag = c.tagName.toLowerCase();
+            if (tag === 'ul' || tag === 'ol') topLists.push(c);
+        }
+    }
+
+    const out = [];
+
+    if (topLists.length > 0) {
+        for (let i = 0; i < topLists.length; i++) {
+            const lis = topLists[i].children;
+            for (let j = 0; j < lis.length; j++) {
+                const li = lis[j];
+                if (li.tagName.toLowerCase() !== 'li') continue;
+                const s = getLiInlineHtml(li);
+                if (s) out.push(s);
+            }
+        }
+    } else {
+        // 兜底：直接找所有 li
+        const lis = body.querySelectorAll('li');
+        for (let i = 0; i < lis.length; i++) {
+            const s = getLiInlineHtml(lis[i]);
+            if (s) out.push(s);
+        }
+    }
+
+    return out.join('<br>');
+}
+
+// ★ 新增：递归提取 li 的行内 HTML，跳过嵌套列表
+function getLiInlineHtml(li) {
+    let out = '';
+    const nodes = li.childNodes;
+    const INLINE = {
+        'strong': 1, 'b': 1, 'em': 1, 'i': 1, 'ins': 1, 'u': 1,
+        'del': 1, 's': 1, 'code': 1, 'span': 1, 'sub': 1, 'sup': 1,
+        'mark': 1, 'small': 1, 'big': 1, 'tt': 1, 'kbd': 1, 'var': 1,
+        'samp': 1, 'abbr': 1, 'cite': 1, 'q': 1, 'dfn': 1, 'time': 1
+    };
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        if (node.nodeType === 3) {
+            out += escapeHtmlText(node.nodeValue);
+            continue;
+        }
+        if (node.nodeType !== 1) continue;
+        const tag = node.tagName.toLowerCase();
+
+        // 跳过嵌套列表（不粘贴子列表）
+        if (tag === 'ul' || tag === 'ol') continue;
+
+        if (tag === 'a') {
+            const href = node.getAttribute('href') || '';
+            const inner = getLiInlineHtml(node);
+            out += '<a href="' + escapeHtmlAttr(href) + '">' + inner + '</a>';
+            continue;
+        }
+        if (INLINE[tag]) {
+            const inner = getLiInlineHtml(node);
+            out += '<' + tag + '>' + inner + '</' + tag + '>';
+            continue;
+        }
+        // p / div 等：递归进去，但内容仍按行内处理
+        out += getLiInlineHtml(node);
+    }
+    return out;
+}
+
+function escapeHtmlText(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function escapeHtmlAttr(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// ★ 新增：在当前选区插入 HTML
+function insertHtmlAtCursor(html) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    let fragment;
+    try {
+        fragment = range.createContextualFragment(html);
+    } catch (e) {
+        return;
+    }
+    range.insertNode(fragment);
+    // 光标移到插入内容之后
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
 }
 
 function startTableCellEdit(cell, e) {
@@ -3192,6 +3364,8 @@ function setupGlobalKeyboard() {
 // ---------------- 退出预览编辑 ----------------
 function exitEditable(el) {
     if (!el) return;
+    // ★ 防止重复退出（blur + mousedown 双重触发）
+    if (el.getAttribute('contenteditable') !== 'true') return;
 
     const tag = (el.tagName || '').toLowerCase();
     const isTableCell = (tag === 'td' || tag === 'th') &&
@@ -3246,6 +3420,28 @@ function computeMinimalChange(oldStr, newStr) {
     };
 }
 
+// ★ 新增：从 <pre> 中提取纯代码文本（保留换行，去掉尾部空行）
+function extractPreText(pre) {
+    let out = '';
+    function walk(node) {
+        if (node.nodeType === 3) {
+            out += node.nodeValue;
+        } else if (node.nodeType === 1) {
+            const tag = node.tagName.toLowerCase();
+            if (tag === 'br') {
+                out += '\n';
+            } else {
+                const kids = node.childNodes;
+                for (let i = 0; i < kids.length; i++) {
+                    walk(kids[i]);
+                }
+            }
+        }
+    }
+    walk(pre);
+    return out.replace(/\n+$/, '');
+}
+
 // ★ 阶段 16-13：专门从 li 提取 inline 文本，跳过块级子元素
 function extractLiInlineText(li) {
     let out = '';
@@ -3260,12 +3456,19 @@ function extractLiInlineText(li) {
 
         const tag = node.tagName.toLowerCase();
 
-        // 跳过所有块级元素（列表、段落、引用、代码块、表格、标题、折叠块、章节）
-        if (tag === 'ul' || tag === 'ol' || tag === 'p' || tag === 'div' ||
+        // 跳过所有块级元素（列表、引用、代码块、表格、标题、折叠块、章节）
+        if (tag === 'ul' || tag === 'ol' ||
             tag === 'blockquote' || tag === 'pre' || tag === 'table' ||
             tag === 'section' || tag === 'article' || tag === 'figure' ||
             tag === 'details' || tag === 'summary' ||
             /^h[1-6]$/.test(tag)) {
+            continue;
+        }
+
+        // ★ 修复现象 1：浏览器有时会把外层 li 的内容包进 <p> / <div>，
+        //   此时需要递归进去，而不是直接跳过。
+        if (tag === 'p' || tag === 'div') {
+            out += extractLiInlineText(node);
             continue;
         }
 
@@ -3349,32 +3552,39 @@ function applyPreviewEdit(el) {
 
     const tag = (el.tagName || '').toLowerCase();
     const isLi = (tag === 'li');
+    const isPre = (tag === 'pre');
 
-    // ★ li 专用提取：只保留 inline 内容，跳过嵌套列表
+    // ★ 提取 newText
     let newText;
     if (isLi) {
-        newText = extractLiInlineText(el).replace(/[ \t]+$/g, '');
+        newText = extractLiInlineText(el).replace(/[\s\u200B\uFEFF]+$/g, '');
+    } else if (isPre) {
+        newText = extractPreText(el);
     } else {
         newText = window.domToMarkdown
             ? window.domToMarkdown(el)
             : (window.getEditableText ? window.getEditableText(el) : el.textContent);
     }
 
-    // ★ 三重异常防护（仅 li）
+    // ★ 三重异常防护（仅 li，且放宽阈值）
     if (isLi) {
         // 防护 1：内容膨胀
-        if (oldText && newText.length > oldText.length * 1.5 + 20) {
+        if (oldText && newText.length > oldText.length * 3 + 100) {
             setStatus('预览编辑异常（内容膨胀），已放弃本次同步');
             return;
         }
-        // 防护 2：跨行污染（原本单行，现在跨行）
+        // 防护 2：跨行污染（原本单行，现在跨行且行数过多）
         if (oldText.indexOf('\n') < 0 && newText.indexOf('\n') >= 0) {
-            setStatus('预览编辑异常（跨行），已放弃本次同步');
-            return;
+            if (newText.split('\n').length > 3) {
+                setStatus('预览编辑异常（跨行），已放弃本次同步');
+                return;
+            }
         }
-        // 防护 3：未输入任何内容时，直接放弃（避免浏览器重排导致的误同步）
+        // 防护 3：未输入任何内容时，若内容确实没变才跳过
         if (!_editableHadInput) {
-            return;
+            const oldNorm = String(oldText).replace(/\s+/g, '');
+            const newNorm = String(newText).replace(/\s+/g, '');
+            if (oldNorm === newNorm) return;
         }
     }
 
@@ -3511,7 +3721,7 @@ async function onSave() {
         syncGlobalFileState();
         setContent(result.content);
         setFilePathDisplay(result.path);
-        isDirty = false;
+        setDirty(false);
         const mig = result.migrated_images || 0;
         if (mig > 0) {
             setStatus('已保存（迁移 ' + mig + ' 张图片到 assets/）');
@@ -3529,7 +3739,7 @@ async function onSave() {
     syncGlobalFileState();
     setFilePathDisplay(result.path);
     setStatus('已保存');
-    isDirty = false;
+    setDirty(false);
     _openedOriginalContent = getContent();
     _openedFilePath = currentFile || '';
     try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
@@ -3556,7 +3766,7 @@ async function onSaveAs() {
         syncGlobalFileState();
         setContent(result.content);
         setFilePathDisplay(result.path);
-        isDirty = false;
+        setDirty(false);
         const mig = result.migrated_images || 0;
         if (mig > 0) {
             setStatus('已另存为（迁移 ' + mig + ' 张图片到 assets/）');
@@ -3575,7 +3785,7 @@ async function onSaveAs() {
     syncGlobalFileState();
     setFilePathDisplay(result.path);
     setStatus('已另存为');
-    isDirty = false;
+    setDirty(false);
     _openedOriginalContent = getContent();
     _openedFilePath = currentFile || '';
     _forceSaveAsNextTime = false;
@@ -4359,5 +4569,25 @@ function toggleTheme() {
         window.pywebview.api.set_theme(newTheme);
     }
 }
+
+// ★ 新增：关闭前的未保存确认（由后端 closing 事件触发）
+let _closeDialogOpen = false;
+window.onCloseRequested = async function () {
+    if (_closeDialogOpen) return;
+    _closeDialogOpen = true;
+    try {
+        const ok = await showConfirm(
+            T('unsaved_content_title', '未保存的内容'),
+            T('unsaved_content_warning', '未保存的内容将丢失，继续？')
+        );
+        if (ok) {
+            try {
+                await window.pywebview.api.force_close();
+            } catch (e) { /* ignore */ }
+        }
+    } finally {
+        _closeDialogOpen = false;
+    }
+};
 
 function setStatus(text) { statusEl.textContent = text; }

@@ -271,6 +271,38 @@
     }
 
     // ============================================================
+    //  ★ 新增：查找 Markdown 中的围栏代码块（用于 pre 双击编辑）
+    //  返回每段代码块的：
+    //    fullStart/fullEnd  —— 整段（含 ``` 围栏）
+    //    contentStart/End   —— 内部纯代码内容（不含围栏行）
+    //    lang                —— 语言
+    //    content             —— 内部代码内容（已去掉尾部换行）
+    // ============================================================
+    function findCodeBlocks(md) {
+        var source = String(md == null ? '' : md);
+        var blocks = [];
+        var re = /(^|\n)([ \t]*)(```|~~~)([^\n]*)\n([\s\S]*?)\n\2\3[ \t]*(?=\n|$)/g;
+        var m;
+        while ((m = re.exec(source)) !== null) {
+            var fullStart = m.index + m[1].length;
+            var fullEnd = m.index + m[0].length;
+            var contentStart = fullStart + 3 + m[4].length + 1;
+            var rawContent = m[5];
+            var content = rawContent.replace(/\n+$/, '');
+            var contentEnd = contentStart + content.length;
+            blocks.push({
+                fullStart: fullStart,
+                fullEnd: fullEnd,
+                contentStart: contentStart,
+                contentEnd: contentEnd,
+                lang: m[4],
+                content: content
+            });
+        }
+        return blocks;
+    }
+
+    // ============================================================
     //  代码块范围
     // ============================================================
     function collectCodeRanges(md) {
@@ -1052,6 +1084,35 @@
             if (pos & 2) return 1;
             return 0;
         });
+
+        // ★ 新增：把围栏代码块（pre）标记为可双击编辑
+        try {
+            var codeBlocks = findCodeBlocks(markdownText);
+            var pres = root.querySelectorAll('pre');
+            for (var pri = 0; pri < pres.length; pri++) {
+                if (pri >= codeBlocks.length) break;
+                var preEl = pres[pri];
+                // 跳过在 details / footnotes / table 内的代码块
+                if (preEl.closest && (
+                    preEl.closest('details') ||
+                    preEl.closest('section.footnotes') ||
+                    preEl.closest('td, th')
+                )) {
+                    preEl.setAttribute('data-md-editable', '0');
+                    continue;
+                }
+                var blk = codeBlocks[pri];
+                preEl.setAttribute('data-md-editable', '1');
+                preEl.setAttribute('data-md-start', String(blk.contentStart));
+                preEl.setAttribute('data-md-end', String(blk.contentEnd));
+                preEl.setAttribute('data-md-old-text', blk.content);
+                preEl.setAttribute('data-md-kind', 'codeblock');
+                preEl.setAttribute('contenteditable', 'false');
+                preEl.setAttribute('spellcheck', 'false');
+            }
+        } catch (e) {
+            console.warn('[markEditableBlocks] code block mark failed', e);
+        }
 
         var searchFromNorm = 0;
 
