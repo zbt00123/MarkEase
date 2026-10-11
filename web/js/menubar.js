@@ -1,4 +1,6 @@
 // MarkEase 菜单栏逻辑（阶段 14 修订 2：支持二级子菜单 + i18n）
+//   ★ v2.1.2：日志菜单（data-action="logs"）由 app.js 注册处理函数，
+//             本模块只负责通用分发，无需特判。
 (function () {
     'use strict';
 
@@ -45,7 +47,8 @@
                     try {
                         handlers[action]();
                     } catch (err) {
-                        console.error('[menubar] action failed:', action, err);
+                        // ★ v2.1.2：改为 warn，避免污染 console.error 面板
+                        console.warn('[menubar] action failed:', action, err);
                     }
                 }
             });

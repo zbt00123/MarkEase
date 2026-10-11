@@ -5,7 +5,7 @@ __pycache__/
 # 忽略虚拟环境
 venv/
 env/
-
+logs/
 # 忽略打包输出
 dist/
 build/

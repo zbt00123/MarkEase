@@ -200,5 +200,11 @@
     "footnote_hint": "Insert Footnote",
     "footnote_back": "Back to reference",
 
+    "logs": "Logs",
+    "logs_opened": "Logs folder opened",
+    "logs_open_failed": "Failed to open logs folder",
+    "logs_open_failed_title": "Failed to Open Logs Folder",
+    "logs_unavailable": "Logs API not available",
+
     "ok": "OK"
 }

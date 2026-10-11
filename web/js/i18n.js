@@ -1,4 +1,5 @@
 // MarkEase 多语言模块（阶段 14）
+//   ★ v2.1.2：FALLBACK 增加 logs 相关键
 // 普通 script 加载，挂 window.I18N
 (function (global) {
     'use strict';
@@ -82,6 +83,13 @@
         words: '字数',
         lines: '行数',
         ok: '确定',
+
+        // ★ v2.1.2：帮助菜单 - 日志
+        logs: '日志',
+        logs_opened: '已打开日志目录',
+        logs_open_failed: '打开日志目录失败',
+        logs_open_failed_title: '打开日志目录失败',
+        logs_unavailable: '日志接口未就绪',
     };
 
     function normalizeLang(lang) {

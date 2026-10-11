@@ -200,5 +200,11 @@
     "footnote_hint": "插入註腳",
     "footnote_back": "返回引用",
 
+    "logs": "日誌",
+    "logs_opened": "已開啟日誌目錄",
+    "logs_open_failed": "開啟日誌目錄失敗",
+    "logs_open_failed_title": "開啟日誌目錄失敗",
+    "logs_unavailable": "日誌介面未就緒",
+
     "ok": "確定"
 }

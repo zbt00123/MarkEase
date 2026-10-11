@@ -200,5 +200,11 @@
     "footnote_hint": "脚注を挿入",
     "footnote_back": "参照元に戻る",
 
+    "logs": "ログ",
+    "logs_opened": "ログフォルダを開きました",
+    "logs_open_failed": "ログフォルダを開けませんでした",
+    "logs_open_failed_title": "ログフォルダを開けません",
+    "logs_unavailable": "ログ API が利用できません",
+
     "ok": "OK"
 }

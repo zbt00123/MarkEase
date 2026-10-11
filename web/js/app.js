@@ -4,6 +4,10 @@
 //     2) applyPreviewEdit 用 extractLiInlineText 处理 li
 //     3) applyPreviewEdit 加三重异常防护（跨行 / 膨胀 / 无输入）
 //     4) enterEditable 增加 _editableHadInput 标记
+//   ★ v2.1.2 新增：
+//     5) 帮助菜单「日志」动作 onOpenLogs -> api.open_logs_dir()
+//     6) 前端错误上报 setupFrontendErrorReporting()
+//     7) 极早期错误队列消费 flushEarlyErrors()
 import { EditorState, Compartment, EditorSelection, StateField, StateEffect } from './vendor/state.mjs';
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, Decoration } from './vendor/view.mjs';
 import { defaultKeymap, history, historyKeymap, undo, redo, isolateHistory } from './vendor/commands.mjs';
@@ -140,6 +144,11 @@ let _footnoteCleanupTimer = null;
 
 let _ctxMenuEl = null;
 
+// ★ v2.1.2：前端错误上报去重表
+let _feErrorDedupe = new Map();
+const FE_ERROR_DEDUPE_MS = 5000;
+let _frontendErrorReportingReady = false;
+
 // ---------------- i18n 辅助 ----------------
 function T(key, fallback) {
     try {
@@ -153,6 +162,174 @@ function T(key, fallback) {
 function syncGlobalFileState() {
     window.__currentDocDir = currentDocDir || '';
     window.__currentFile = currentFile || '';
+}
+
+// ============================================================
+//  ★ v2.1.2：前端错误上报
+// ============================================================
+function _feDedupeKey(rec) {
+    return String(rec.kind || 'error') + '|' +
+           String(rec.message || '') + '|' +
+           String(rec.source || '') + '|' +
+           String(rec.lineno || 0) + ':' +
+           String(rec.colno || 0);
+}
+
+function _feShouldSkip(rec) {
+    try {
+        const key = _feDedupeKey(rec);
+        const now = Date.now();
+        const last = _feErrorDedupe.get(key) || 0;
+        if (now - last < FE_ERROR_DEDUPE_MS) {
+            return true;
+        }
+        _feErrorDedupe.set(key, now);
+        // 清理过期项，避免内存增长
+        if (_feErrorDedupe.size > 200) {
+            for (const [k, t] of _feErrorDedupe) {
+                if (now - t > FE_ERROR_DEDUPE_MS * 4) {
+                    _feErrorDedupe.delete(k);
+                }
+            }
+        }
+        return false;
+    } catch (e) {
+        return false;
+    }
+}
+
+function _feReport(rec) {
+    try {
+        if (!rec || typeof rec !== 'object') return;
+        if (_feShouldSkip(rec)) return;
+
+        const payload = {
+            kind: rec.kind || 'error',
+            message: String(rec.message || ''),
+            source: String(rec.source || ''),
+            lineno: Number(rec.lineno || 0),
+            colno: Number(rec.colno || 0),
+            stack: String(rec.stack || ''),
+            url: String(rec.url || (typeof location !== 'undefined' ? location.href : '')),
+            context: rec.context || null,
+        };
+
+        if (window.pywebview && window.pywebview.api &&
+            window.pywebview.api.log_frontend_error) {
+            try {
+                const ret = window.pywebview.api.log_frontend_error(payload);
+                if (ret && typeof ret.catch === 'function') {
+                    ret.catch(() => {});
+                }
+            } catch (e) { /* ignore */ }
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function _feNowIso() {
+    try {
+        return new Date().toISOString();
+    } catch (e) {
+        return String(Date.now());
+    }
+}
+
+function setupFrontendErrorReporting() {
+    if (_frontendErrorReportingReady) return;
+    _frontendErrorReportingReady = true;
+
+    window.addEventListener('error', function (e) {
+        try {
+            // 资源加载错误（<img> / <script>）
+            if (e && e.target && e.target !== window) {
+                _feReport({
+                    kind: 'resource_error',
+                    message: 'Failed to load resource',
+                    source: (e.target && (e.target.src || e.target.href)) || '',
+                    lineno: 0,
+                    colno: 0,
+                    stack: '',
+                    url: location.href,
+                    context: {
+                        tag: e.target && e.target.tagName ? e.target.tagName : '',
+                    },
+                });
+                return;
+            }
+            _feReport({
+                kind: 'error',
+                message: (e && e.message) || 'Unknown error',
+                source: (e && e.filename) || '',
+                lineno: (e && e.lineno) || 0,
+                colno: (e && e.colno) || 0,
+                stack: (e && e.error && e.error.stack) || '',
+                url: location.href,
+            });
+        } catch (err) { /* ignore */ }
+    }, true);
+
+    window.addEventListener('unhandledrejection', function (e) {
+        try {
+            const reason = e && e.reason;
+            _feReport({
+                kind: 'unhandledrejection',
+                message: (reason && (reason.message || String(reason))) ||
+                         'Unhandled rejection',
+                source: '',
+                lineno: 0,
+                colno: 0,
+                stack: (reason && reason.stack) || '',
+                url: location.href,
+            });
+        } catch (err) { /* ignore */ }
+    });
+}
+
+async function flushEarlyErrors() {
+    try {
+        const queue = window.__mkEarlyErrors;
+        if (!Array.isArray(queue) || queue.length === 0) return;
+
+        // 清空队列，防止重复上报
+        const items = queue.splice(0, queue.length);
+
+        for (const rec of items) {
+            try {
+                _feReport(rec);
+            } catch (e) { /* ignore */ }
+        }
+    } catch (e) { /* ignore */ }
+}
+
+// ============================================================
+//  ★ v2.1.2：帮助菜单 - 打开日志目录
+// ============================================================
+async function onOpenLogs() {
+    if (!(window.pywebview && window.pywebview.api &&
+          window.pywebview.api.open_logs_dir)) {
+        setStatus(T('logs_unavailable', '日志接口未就绪'));
+        return;
+    }
+    try {
+        const r = await window.pywebview.api.open_logs_dir();
+        if (r && r.ok) {
+            setStatus(T('logs_opened', '已打开日志目录'));
+        } else {
+            const err = (r && r.error) || 'unknown';
+            setStatus(T('logs_open_failed', '打开日志目录失败') + ': ' + err);
+            showMessage(
+                T('logs_open_failed_title', '打开日志目录失败'),
+                String(err)
+            );
+        }
+    } catch (e) {
+        const err = (e && e.message) ? e.message : String(e);
+        setStatus(T('logs_open_failed', '打开日志目录失败') + ': ' + err);
+        showMessage(
+            T('logs_open_failed_title', '打开日志目录失败'),
+            err
+        );
+    }
 }
 
 // ---------------- 搜索高亮 ----------------
@@ -265,6 +442,11 @@ window.addEventListener('pywebviewready', async () => {
         setupEditorCtrlClick();
         setupEditorContextMenu();
         setupPreviewContextMenu();
+
+        // ★ v2.1.2：前端错误上报 + 早期错误队列消费
+        setupFrontendErrorReporting();
+        await flushEarlyErrors();
+
         await loadSettings(settings);
         initZoomBar();
 
@@ -308,6 +490,20 @@ window.addEventListener('pywebviewready', async () => {
     } catch (err) {
         console.error('[MarkEase] 初始化失败', err);
         setStatus('Init failed: ' + (err && err.message ? err.message : err));
+
+        // ★ v2.1.2：初始化失败也走一次错误上报
+        try {
+            _feReport({
+                kind: 'init_failed',
+                message: (err && err.message) ? err.message : String(err),
+                source: 'app.js:pywebviewready',
+                lineno: 0,
+                colno: 0,
+                stack: (err && err.stack) || '',
+                url: location.href,
+            });
+        } catch (e) { /* ignore */ }
+
         if (window.__markEaseSplashFallback) {
             clearTimeout(window.__markEaseSplashFallback.soft);
             clearTimeout(window.__markEaseSplashFallback.hard);
@@ -547,6 +743,9 @@ function initMenubarByHandlers() {
 
         about: onAbout,
         check_update: () => onCheckUpdate(false),
+
+        // ★ v2.1.2：帮助菜单 - 日志
+        logs: onOpenLogs,
 
         set_default_program: onSetDefaultProgram,
         register_shell_new:  onRegisterShellNew,

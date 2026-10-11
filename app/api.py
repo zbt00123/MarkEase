@@ -23,6 +23,11 @@
     3. 新增 finalize_imported_html(doc_dir, markdown_content)：
        第三方 HTML 转换后调用，把 data URL 图片落盘到
        <doc_dir>/assets/，返回改写后的 Markdown。
+
+★ v2.1.2 新增（日志系统）：
+    - get_log_dir()        返回日志目录路径
+    - open_logs_dir()      在文件管理器中打开日志目录
+    - log_frontend_error() 接收前端上报的 JS 错误
 """
 
 import os
@@ -41,6 +46,42 @@ from converters.html_exporter import (
     absolutize_image_paths_in_markdown as _absolutize_md,
 )
 from converters.html_importer import import_html_file as _import_html_impl
+
+# ★ v2.1.2：日志系统（软导入，不阻塞）
+try:
+    from app import logging_setup as _logging
+except Exception:
+    _logging = None
+
+
+def _log_event(event, message=None, **context):
+    if _logging is None:
+        return
+    try:
+        _logging.record_event(event, message=message, **context)
+    except Exception:
+        pass
+
+
+def _log_error(event, message=None, exception=None, **context):
+    if _logging is None:
+        return
+    try:
+        _logging.log_error(event, message=message,
+                           exception=exception, **context)
+    except Exception:
+        pass
+
+
+def _log_critical(event, message=None, exception=None, **context):
+    if _logging is None:
+        return
+    try:
+        _logging.log_critical(event, message=message,
+                              exception=exception, **context)
+    except Exception:
+        pass
+
 
 try:
     _OPEN_DIALOG = webview.FileDialog.OPEN
@@ -412,6 +453,8 @@ class Api:
         self._asset_server = AssetServer(web_dir=self._web_dir)
         self._asset_port = self._asset_server.start()
         print(f'[MarkEase] asset server: http://127.0.0.1:{self._asset_port}')
+        _log_event('asset_server_started', 'Asset server started',
+                   port=self._asset_port)
 
         try:
             from app import file_assoc
@@ -427,10 +470,16 @@ class Api:
                                        CURRENT_SHELL_NEW_VERSION)
                     print(f'[MarkEase] shell-new registered '
                           f'(v{CURRENT_SHELL_NEW_VERSION}): {r.get("name")}')
+                    _log_event('shell_new_registered',
+                               'ShellNew registered on first run',
+                               name=r.get('name'))
                 elif r and r.get('skipped'):
                     print(f'[MarkEase] shell-new skipped: {r.get("reason")}')
         except Exception as e:
             print(f'[MarkEase] shell-new setup failed: {e}')
+            _log_error('shell_new_setup_failed',
+                       'file_assoc shell-new setup raised',
+                       exception=e)
 
         # ★ 新增：关闭前的未保存检查状态
         self._is_dirty = False
@@ -439,12 +488,152 @@ class Api:
     def set_window(self, window):
         self._window = window
 
-    # ★ 新增：前端同步脏状态
+    # ============================================================
+    #  ★ v2.1.2：日志相关接口
+    # ============================================================
+    def get_log_dir(self):
+        """
+        返回日志目录绝对路径。日志系统未初始化时返回空字符串。
+        """
+        try:
+            if _logging is None:
+                return {'ok': False, 'path': '',
+                        'error': 'logging module not available'}
+            log_dir = _logging.get_log_dir()
+            if not log_dir:
+                return {'ok': False, 'path': '',
+                        'error': 'log directory not initialized'}
+            return {'ok': True, 'path': str(log_dir)}
+        except Exception as e:
+            return {'ok': False, 'path': '', 'error': str(e)}
+
+    def open_logs_dir(self):
+        """
+        在系统文件管理器中打开日志目录。
+        Windows: explorer /select,<file>  或 explorer <dir>
+        macOS:   open <dir>
+        Linux:   xdg-open <dir>
+        """
+        try:
+            if _logging is None:
+                return {'ok': False, 'error': 'logging module not available'}
+            log_dir = _logging.get_log_dir()
+            if not log_dir:
+                return {'ok': False, 'error': 'log directory not initialized'}
+
+            log_dir_str = str(log_dir)
+
+            # 若目录不存在则尝试创建（例如首次启动尚未写入）
+            try:
+                os.makedirs(log_dir_str, exist_ok=True)
+            except Exception:
+                pass
+
+            if not os.path.isdir(log_dir_str):
+                return {'ok': False,
+                        'error': 'log directory does not exist: %s'
+                                 % log_dir_str}
+
+            _log_event('open_logs_dir_requested',
+                       'User opened logs directory',
+                       path=log_dir_str)
+
+            if sys.platform == 'win32':
+                # 优先在资源管理器中选中当前日志文件
+                log_file = None
+                try:
+                    lf = _logging.get_log_file()
+                    if lf and os.path.exists(str(lf)):
+                        log_file = str(lf)
+                except Exception:
+                    log_file = None
+
+                if log_file:
+                    subprocess.Popen(['explorer', '/select,', log_file])
+                else:
+                    subprocess.Popen(['explorer', log_dir_str])
+            elif sys.platform == 'darwin':
+                subprocess.Popen(['open', log_dir_str])
+            else:
+                subprocess.Popen(['xdg-open', log_dir_str])
+
+            return {'ok': True, 'path': log_dir_str}
+        except Exception as e:
+            _log_error('open_logs_dir_failed',
+                       'Failed to open logs directory',
+                       exception=e)
+            return {'ok': False, 'error': str(e)}
+
+    def log_frontend_error(self, payload):
+        """
+        接收前端上报的 JS 错误 / 未捕获 Promise 拒绝。
+        payload 建议字段：
+            {
+                'message':   str,   # 错误信息
+                'source':    str,   # 文件:行:列 或 'unhandledrejection'
+                'lineno':    int,
+                'colno':     int,
+                'stack':     str,   # 堆栈
+                'url':       str,   # 当前页面 URL
+                'kind':      str,   # 'error' | 'unhandledrejection' | 'manual'
+                'context':   dict,  # 额外上下文
+            }
+        返回 {'ok': True} 或 {'ok': False, 'error': ...}。
+        """
+        try:
+            if _logging is None:
+                return {'ok': False, 'error': 'logging module not available'}
+            if not isinstance(payload, dict):
+                payload = {'message': str(payload)}
+
+            kind = str(payload.get('kind') or 'frontend_error')
+            message = str(payload.get('message') or '')
+            source = str(payload.get('source') or '')
+            lineno = payload.get('lineno', 0)
+            colno = payload.get('colno', 0)
+            stack = str(payload.get('stack') or '')
+            url = str(payload.get('url') or '')
+            extra_ctx = payload.get('context') or {}
+
+            # 组装异常对象以便记录 traceback（可选）
+            exc_obj = None
+            if stack:
+                exc_obj = RuntimeError(message or 'frontend error')
+                try:
+                    exc_obj._mk_frontend_stack = stack  # noqa: SLF001
+                except Exception:
+                    pass
+
+            ctx = {
+                'kind': kind,
+                'source': source,
+                'lineno': lineno,
+                'colno': colno,
+                'page_url': url,
+                'frontend_stack': stack,
+            }
+            if isinstance(extra_ctx, dict):
+                ctx['extra'] = extra_ctx
+
+            _log_error(
+                'frontend_error',
+                message=message or 'frontend error',
+                exception=exc_obj,
+                **ctx
+            )
+            return {'ok': True}
+        except Exception as e:
+            # 记录失败时不要再调用日志，避免死循环
+            try:
+                print(f'[MarkEase] log_frontend_error failed: {e}')
+            except Exception:
+                pass
+            return {'ok': False, 'error': str(e)}
+
     def set_dirty(self, dirty):
         self._is_dirty = bool(dirty)
         return {'ok': True}
 
-    # ★ 新增：用户确认后强制关闭（绕过 closing 事件检查）
     def force_close(self):
         self._force_close = True
         try:
@@ -456,6 +645,9 @@ class Api:
                 self._window.destroy()
             except Exception as e:
                 print(f'[MarkEase] force_close failed: {e}')
+                _log_error('force_close_failed',
+                           'window.destroy raised',
+                           exception=e)
         return {'ok': True}
 
     # ============================================================
@@ -674,10 +866,16 @@ class Api:
                     'encoding': 'gbk',
                 }
             except Exception as e:
+                _log_error('startup_file_read_failed',
+                           'Failed to read startup file (gbk fallback)',
+                           exception=e, path=path)
                 return {'ok': False, 'error': str(e), 'path': path}
         except Exception as e:
             import traceback
             traceback.print_exc()
+            _log_error('startup_file_read_failed',
+                       'Failed to read startup file',
+                       exception=e, path=path)
             return {'ok': False, 'error': str(e), 'path': path}
 
     # ---------- 路径工具 ----------
@@ -709,6 +907,7 @@ class Api:
         return 'zh_CN'
 
     def frontend_ready(self):
+        _log_event('frontend_ready', 'Frontend reported ready')
         return {'ok': True}
 
     def get_asset_base_url(self):
@@ -737,6 +936,9 @@ class Api:
 
             return {'ok': True, 'lang': lang, 'dict': data}
         except Exception as e:
+            _log_error('get_translations_failed',
+                       'Failed to load translations',
+                       exception=e, lang=str(lang))
             return {'ok': False, 'error': str(e), 'lang': 'zh_CN', 'dict': {}}
 
     def get_language(self):
@@ -754,6 +956,9 @@ class Api:
         except Exception as e:
             import traceback
             traceback.print_exc()
+            _log_error('set_default_program_failed',
+                       'file_assoc.set_as_default_program raised',
+                       exception=e)
             return {'ok': False, 'error': str(e)}
 
     def register_shell_new(self):
@@ -767,6 +972,9 @@ class Api:
         except Exception as e:
             import traceback
             traceback.print_exc()
+            _log_error('register_shell_new_failed',
+                       'file_assoc.register_shell_new raised',
+                       exception=e)
             return {'ok': False, 'error': str(e)}
 
     def is_default_program(self):
@@ -1092,10 +1300,16 @@ class Api:
             except Exception as e:
                 import traceback
                 traceback.print_exc()
+                _log_error('open_about_window_failed',
+                           'about window create failed',
+                           exception=e)
                 return {'ok': False, 'error': str(e)}
         except Exception as e:
             import traceback
             traceback.print_exc()
+            _log_error('open_about_window_failed',
+                       'about window create failed',
+                       exception=e)
             return {'ok': False, 'error': str(e)}
 
         about_api.set_window(about_window)
@@ -1161,6 +1375,9 @@ class Api:
         except Exception as e:
             import traceback
             traceback.print_exc()
+            _log_error('open_image_picker_failed',
+                       'image picker window create failed',
+                       exception=e)
             return {'ok': False, 'error': str(e)}
 
     # ---------- 拖拽导入 ----------
@@ -1388,6 +1605,9 @@ class Api:
             self._current_content = content
             return {'ok': True, 'path': path, 'content': content}
         except Exception as e:
+            _log_error('open_file_dialog_failed',
+                       'Failed to read file',
+                       exception=e, path=path)
             return {'ok': False, 'error': str(e)}
 
     def save_file(self, content):
@@ -1407,6 +1627,8 @@ class Api:
                 'migrated_images': migrated,
             }
         except Exception as e:
+            _log_error('save_file_failed', 'save_file raised',
+                       exception=e, path=self._current_file)
             return {'ok': False, 'error': str(e)}
 
     def save_file_as(self, content):
@@ -1450,6 +1672,8 @@ class Api:
                 'migrated_images': migrated,
             }
         except Exception as e:
+            _log_error('save_file_as_failed', 'save_file_as raised',
+                       exception=e, path=path)
             return {'ok': False, 'error': str(e)}
 
     def get_current_file(self):
@@ -1497,6 +1721,8 @@ class Api:
         except Exception as e:
             import traceback
             traceback.print_exc()
+            _log_error('import_pdf_failed', 'PDF parse failed',
+                       exception=e, path=path)
             return {'ok': False, 'error': f'PDF 解析失败: {e}'}
 
         if not markdown_text.strip():
@@ -1543,6 +1769,9 @@ class Api:
                 raw = self._window.evaluate_js(poll_js)
             except Exception as e:
                 print(f'[MarkEase] _wait_images_loaded poll failed: {e}')
+                _log_error('wait_images_poll_failed',
+                           'evaluate_js poll raised',
+                           exception=e)
                 break
             if not raw:
                 break
@@ -1585,6 +1814,9 @@ class Api:
             self._wait_images_loaded(timeout_sec=15.0)
         except Exception as e:
             print(f'[MarkEase] _wait_images_loaded failed: {e}')
+            _log_error('wait_images_loaded_failed',
+                       '_wait_images_loaded raised',
+                       exception=e)
 
         task_holder = [None]
         error_holder = [None]
@@ -1606,9 +1838,15 @@ class Api:
         try:
             self._window.native.Invoke(System.Action(start_on_ui))
         except Exception as e:
+            _log_error('pdf_ui_dispatch_failed',
+                       'native.Invoke failed',
+                       exception=e)
             return {'ok': False, 'error': f'UI 线程调度失败: {e}'}
 
         if error_holder[0]:
+            _log_error('pdf_export_start_failed',
+                       'PrintToPdfAsync start failed',
+                       message=error_holder[0])
             return {'ok': False, 'error': f'导出启动失败: {error_holder[0]}'}
 
         task = task_holder[0]
@@ -1618,6 +1856,9 @@ class Api:
         try:
             task.Wait()
         except Exception as e:
+            _log_error('pdf_export_wait_failed',
+                       'PrintToPdfAsync task.Wait failed',
+                       exception=e)
             return {'ok': False, 'error': f'等待导出失败: {e}'}
 
         if not os.path.exists(pdf_path):
@@ -1717,6 +1958,8 @@ class Api:
             )
             return r
         except Exception as e:
+            _log_error('export_html_failed', 'export_html raised',
+                       exception=e)
             return {'ok': False, 'error': str(e)}
 
     def import_html_dialog(self):
@@ -1739,6 +1982,9 @@ class Api:
             r = _import_html_impl(path)
             return r
         except Exception as e:
+            _log_error('import_html_dialog_failed',
+                       'import_html_dialog raised',
+                       exception=e)
             return {'ok': False, 'error': str(e)}
 
     # ★ 新增：第三方 HTML 转换后落盘 data URL 图片
@@ -1760,6 +2006,9 @@ class Api:
                 'migrated_images': migrated,
             }
         except Exception as e:
+            _log_error('finalize_imported_html_failed',
+                       'finalize_imported_html raised',
+                       exception=e)
             return {'ok': False, 'error': str(e), 'content': markdown_content}
 
     def import_dropped_pdf(self, path):
@@ -1774,6 +2023,9 @@ class Api:
             r['imported'] = True
             return r
         except Exception as e:
+            _log_error('import_dropped_pdf_failed',
+                       'import_dropped_pdf raised',
+                       exception=e, path=str(path))
             return {'ok': False, 'error': str(e)}
 
     def import_dropped_pdf_bytes(self, filename, data_base64):
@@ -1823,6 +2075,9 @@ class Api:
             except Exception as e:
                 import traceback
                 traceback.print_exc()
+                _log_error('import_dropped_pdf_bytes_parse_failed',
+                           'PDF parse failed',
+                           exception=e, filename=str(filename))
                 return {'ok': False, 'error': f'PDF 解析失败: {e}'}
 
             if not markdown_text.strip():
@@ -1877,6 +2132,9 @@ class Api:
         except Exception as e:
             import traceback
             traceback.print_exc()
+            _log_error('recover_missing_images_failed',
+                       'recover_missing_images raised',
+                       exception=e)
             return {
                 'ok': False,
                 'error': str(e),
@@ -1895,6 +2153,9 @@ class Api:
             r['imported'] = True
             return r
         except Exception as e:
+            _log_error('import_dropped_html_failed',
+                       'import_dropped_html raised',
+                       exception=e, path=str(path))
             return {'ok': False, 'error': str(e)}
 
     # ---------- 设置 / 主题 / 语言 ----------

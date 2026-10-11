@@ -17,6 +17,86 @@
       })();
     </script>
 
+    <!--
+      ★ v2.1.2：极早期错误缓冲
+      - 在 pywebviewready 之前发生的 JS 错误会先压入 window.__mkEarlyErrors
+      - app.js 初始化完成后会读取该队列，并通过 api.log_frontend_error() 上报
+      - 每条记录字段：
+          { kind, message, source, lineno, colno, stack, url, timestamp }
+    -->
+    <script>
+      (function () {
+        'use strict';
+        try {
+          window.__mkEarlyErrors = window.__mkEarlyErrors || [];
+
+          function push(rec) {
+            try {
+              if (window.__mkEarlyErrors.length < 200) {
+                window.__mkEarlyErrors.push(rec);
+              }
+            } catch (e) { /* ignore */ }
+          }
+
+          function nowIso() {
+            try {
+              return new Date().toISOString();
+            } catch (e) {
+              return String(Date.now());
+            }
+          }
+
+          window.addEventListener('error', function (e) {
+            try {
+              if (e && e.target && e.target !== window) {
+                // 资源加载错误（<img> / <script> 等）
+                push({
+                  kind: 'resource_error',
+                  message: 'Failed to load resource',
+                  source: (e.target && (e.target.src || e.target.href)) || '',
+                  lineno: 0,
+                  colno: 0,
+                  stack: '',
+                  url: location.href,
+                  timestamp: nowIso()
+                });
+                return;
+              }
+              push({
+                kind: 'error',
+                message: (e && e.message) || 'Unknown error',
+                source: (e && e.filename) || '',
+                lineno: (e && e.lineno) || 0,
+                colno: (e && e.colno) || 0,
+                stack: (e && e.error && e.error.stack) || '',
+                url: location.href,
+                timestamp: nowIso()
+              });
+            } catch (err) { /* ignore */ }
+          }, true);
+
+          window.addEventListener('unhandledrejection', function (e) {
+            try {
+              var reason = e && e.reason;
+              push({
+                kind: 'unhandledrejection',
+                message: (reason && (reason.message || String(reason))) || 'Unhandled rejection',
+                source: '',
+                lineno: 0,
+                colno: 0,
+                stack: (reason && reason.stack) || '',
+                url: location.href,
+                timestamp: nowIso()
+              });
+            } catch (err) { /* ignore */ }
+          });
+
+          window.__mkPushEarlyError = push;
+          window.__mkNowIso = nowIso;
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
+
     <style>
       html, body { margin: 0; padding: 0; }
       html { background: #f7f7f7; }
@@ -193,6 +273,9 @@
                 <div class="menu-dropdown">
                     <div class="menu-entry" data-action="about"><span data-i18n="about">关于 MarkEase</span></div>
                     <div class="menu-entry" data-action="check_update"><span data-i18n="check_update">检查更新</span></div>
+                    <!-- ★ v2.1.2：日志 -->
+                    <div class="menu-separator"></div>
+                    <div class="menu-entry" data-action="logs"><span data-i18n="logs">日志</span></div>
                     <div class="menu-separator"></div>
                     <div class="menu-entry has-submenu" data-submenu="settings">
                         <span data-i18n="settings">设置</span>
