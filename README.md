@@ -193,6 +193,9 @@ This project is released under the [MIT License](LICENSE), Copyright (c) 2026 zb
 
 Third-party components are released under their respective licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.
 
+> **Note:** PDF features use **PyMuPDF**, licensed under **AGPL-3.0** (or a commercial Artifex license).
+> See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the full component list and compliance notes.
+
 ---
 
 ## 🙏 Acknowledgements

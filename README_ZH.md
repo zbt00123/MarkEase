@@ -193,6 +193,9 @@ python main.py
 
 第三方组件按各自许可证发布，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
+> **注意**：PDF 功能使用 **PyMuPDF**（**AGPL-3.0** 或 Artifex 商业许可），
+> 完整组件清单与合规说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
 ---
 
 ## 🙏 致谢
