@@ -1,146 +1,148 @@
 # 📝 MarkEase
 
-> 一款运行于 Windows 平台、**完全离线**、GitHub 风格的 Markdown 编辑器
+> A **fully offline**, GitHub-style Markdown editor for Windows
 
 [![Release](https://img.shields.io/github/v/release/zbt00123/MarkEase)](https://github.com/zbt00123/MarkEase/releases) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
 
-> ⚠️ **Windows SmartScreen / 杀毒软件提示**
-> 发布包目前**尚未代码签名**，首次运行可能看到「Windows 已保护你的电脑」：
-> 点击「更多信息 → 仍要运行」即可（签名申请说明见下方「Code signing policy」）。
-> 本程序使用 WebView2 渲染，启动时已禁用其后台网络与组件更新；如杀毒软件误报，请将 `MarkEase.exe` 添加信任。
+English | [中文](README_ZH.md)
+
+> ⚠️ **Windows SmartScreen / Antivirus Warning**
+> Release packages are currently **not code-signed**. On first run you may see "Windows protected your PC":
+> Click "More info → Run anyway" (see "Code signing policy" below for signing application details).
+> This program uses WebView2 for rendering and has disabled its background network and component updates at startup. If your antivirus flags it as a false positive, please add `MarkEase.exe` to your trust list.
 
 ---
 
-## ✨ 核心亮点
+## ✨ Highlights
 
-### ⚡ 强大的编辑体验
+### ⚡ Powerful Editing Experience
 
-- **三模式切换**：编辑 / 分屏 / 预览（`Ctrl+1/2/3`）
-- **CodeMirror 6 内核**：语法高亮、行号、多光标、事务级撤销
-- **多行批量操作**：选中多行 → 加引用 / 列表 / 任务 / 代码块前缀
-- **格式刷**：单击刷一次、双击连续刷
-- **橡皮擦**：一键清除行内格式
-- **折叠块**：选区包裹 `<details>`，折叠状态自动记忆
-- **插入链接**：输入 URL → **自动抓取网页标题**
-- **插入表格**：工具栏 8×8 网格可视化选择
-- **插入图片**：本地 / 拖拽 / URL 三种方式，自动归类 `assets/`
+- **Three-mode switching**: Edit / Split / Preview (`Ctrl+1/2/3`)
+- **CodeMirror 6 core**: Syntax highlighting, line numbers, multi-cursor, transactional undo
+- **Multi-line batch operations**: Select multiple lines → add quote / list / task / code block prefix
+- **Format painter**: Single-click to paint once, double-click for continuous painting
+- **Eraser**: One-click removal of inline formatting
+- **Collapsible blocks**: Wrap selection in `<details>`, collapse state automatically remembered
+- **Insert link**: Enter URL → **automatically fetch webpage title**
+- **Insert table**: Toolbar 8×8 grid for visual row/column selection
+- **Insert image**: Local / drag-and-drop / URL — three methods, automatically organized into `assets/`
 
-### 📖 脚注支持
+### 📖 Footnote Support
 
-- **一键插入**：工具栏脚注按钮或选中文字 → 自动生成 `[^N]` 引用 + 文末 `[^N]: 内容`
-- **优雅渲染**：正文中以上标显示，点击跳转到底部脚注区
-- **双向跳转**：底部 `↩` 反向链接回到引用位置；编辑器内 `Ctrl + 点击` 也可跳转
-- **自动清理**：删除正文中的 `[^N]` 后，对应的 `[^N]:` 定义行自动移除
-- **可在预览中编辑**：双击脚注内容 → 直接修改，实时同步回 Markdown 源码
-- **格式刷/橡皮擦**：选中脚注引用时，一键清除（连定义一起清理）
+- **One-click insert**: Toolbar footnote button or select text → automatically generates `[^N]` reference + `[^N]: content` at document end
+- **Elegant rendering**: Displayed as superscript in body text, click to jump to footnote area at bottom
+- **Bidirectional navigation**: Bottom `↩` reverse link returns to reference position; `Ctrl + click` in editor also jumps
+- **Automatic cleanup**: Deleting `[^N]` from body text automatically removes the corresponding `[^N]:` definition line
+- **Editable in preview**: Double-click footnote content → edit directly, synced back to Markdown source in real time
+- **Format painter / eraser**: When footnote reference is selected, one-click clear (including definition)
 
-### 📑 智能目录
+### 📑 Smart Table of Contents
 
-- 自动解析标题
-- 当前章节**滚动高亮**
-- 点击跳转 → 编辑器与预览**同时定位**
+- Automatically parses headings
+- Current section **scroll highlighting**
+- Click to jump → editor and preview **navigate simultaneously**
 
-### 🔄 精确同步滚动
+### 🔄 Precise Synchronized Scrolling
 
-基于**源位置映射算法**：每个块记录源码字符偏移，滚动时二分查找 + 线性插值。
+Based on **source position mapping algorithm**: each block records source character offsets; binary search + linear interpolation during scrolling.
 
-即使遇到代码块、引用、表格等**行距差异巨大**的内容也能精确对齐。
+Even with content having **drastically different line spacing** such as code blocks, quotes, and tables, precise alignment is maintained.
 
-### ✅ 任务列表交互
+### ✅ Task List Interaction
 
-- **图形 checkbox**（CSS 绘制，不依赖字体）
-- 预览区点击 → 立即同步源码
-- **跨行批量**：选中多行 + 点击任一 checkbox → 全部切换
-- **复制保真**：复制出来仍是 `- [x] / - [ ]` 原文
+- **Graphical checkbox** (CSS-drawn, no font dependency)
+- Click in preview area → immediately syncs to source
+- **Cross-line batch**: Select multiple lines + click any checkbox → toggle all
+- **Copy fidelity**: Copied content remains as `- [x] / - [ ]` original text
 
-### 📊 表格编辑
+### 📊 Table Editing
 
-- 工具栏网格选行列 → 快速插入标准 GFM 表格
-- 预览区**双击单元格**可直接编辑，实时同步回 Markdown
+- Toolbar grid for row/column selection → quick insertion of standard GFM tables
+- **Double-click cells** in preview area for direct editing, synced back to Markdown in real time
 
-### 🖱️ 右键菜单（多语言） ★ v2.1.0 新增
+### 🖱️ Context Menu (Multi-language) ★ New in v2.1.0
 
-- **编辑区**：撤销 / 重做 / 剪切 / 复制 / 粘贴 / 全选 / 查找
-- **预览区**：复制（选中时）/ 全选 / 查找
-- **完全跟随主题**（浅色 / 深色）与**界面语言**（中 / 繁 / 英 / 日 / 韩）
-- **智能避让**：贴近窗口边缘时自动向内翻转
+- **Editor area**: Undo / Redo / Cut / Copy / Paste / Select All / Find
+- **Preview area**: Copy (when selected) / Select All / Find
+- **Fully follows theme** (Light / Dark) and **interface language** (Chinese / Traditional Chinese / English / Japanese / Korean)
+- **Smart avoidance**: Automatically flips inward when near window edges
 
-### 🌍 多语言
+### 🌍 Multi-language
 
-- 简体中文 / 繁體中文 / English / 日本語 / 한국어
-- 覆盖菜单、工具栏、对话框、右键菜单、脚注按钮、状态栏提示
+- Simplified Chinese / Traditional Chinese / English / Japanese / Korean
+- Covers menus, toolbar, dialogs, context menus, footnote buttons, status bar hints
 
-### 🔔 检查更新
+### 🔔 Check for Updates
 
-- **手动**：帮助 → 检查更新
-- **静默**：每 30 天自动检测更新
-- 检测时**绕过系统代理**，避免 VPN 干扰
+- **Manual**: Help → Check for Updates
+- **Silent**: Automatic update check every 30 days
+- **Bypasses system proxy** during checks to avoid VPN interference
 
-### 🎯 缩放与布局
+### 🎯 Zoom & Layout
 
-- **10% – 500%** 缩放，编辑 / 预览同步
-- 状态栏滑块支持**单击吸附**（90%–110% → 100%）
-- 点击百分比 → **预设菜单**（50 / 75 / 100 / ... / 500）
+- **10% – 500%** zoom, editor / preview synchronized
+- Status bar slider supports **snap-to-click** (90%–110% → 100%)
+- Click percentage → **preset menu** (50 / 75 / 100 / ... / 500)
 
-### 📄 PDF 闭环
+### 📄 PDF Round-trip
 
-- **导入**：PyMuPDF 解析 → 自动转 Markdown
-- **导出**：高清矢量 PDF
-- **源嵌入**：PDF 内嵌原始 Markdown（`markease_source.md`）→ **可无损往返**
-- **图片恢复**：导入时若 Markdown 引用的本地图片缺失，自动从 PDF 中按顺序提取，写入系统临时目录，保存时自动迁移到 `assets/`
+- **Import**: PyMuPDF parsing → automatic Markdown conversion
+- **Export**: High-definition vector PDF
+- **Source embedding**: Original Markdown embedded in PDF (`markease_source.md`) → **lossless round-trip**
+- **Image recovery**: If locally referenced images in Markdown are missing during import, automatically extract from PDF in order, write to system temp directory, and migrate to `assets/` on save
 
-### 🌐 HTML 无损往返
+### 🌐 HTML Lossless Round-trip
 
-- **导出**：内联所有图片、清理深色模式 CSS、嵌入源 Markdown 与文档目录
-- **导入**：优先读取内嵌源 → 100% 还原；第三方 HTML 自动 DOM 转换
-- **图片恢复**：MarkEase 导出的 HTML，若 meta 里引用的本地图片已失效，自动从视觉层的 base64 数据恢复
+- **Export**: Inline all images, clean dark mode CSS, embed source Markdown and document TOC
+- **Import**: Prioritizes reading embedded source → 100% restoration; third-party HTML automatically converted via DOM
+- **Image recovery**: For MarkEase-exported HTML, if locally referenced images in meta are no longer valid, automatically recover from base64 data in the visual layer
 
-### 🖥️ 系统集成
+### 🖥️ System Integration
 
-- **设为默认程序**：帮助 → 设置 → 关联 `.md` / `.markdown`（写 HKCU，无需管理员）
-- **右键「新建」菜单**：桌面右键 → 新建 → 「Markdown 文件」
-- **文件定位**：点击状态栏路径 → 资源管理器打开并选中
-- **拖拽导入**：拖图片 / PDF / HTML / Markdown → 自动识别处理
-- **图片冲突**：同名文件弹窗对比（缩略图 + 大小），支持替换 / 保留两者
-- **双击打开**：双击 `.md` / `.markdown` / `.pdf` 直接以 MarkEase 打开
+- **Set as default program**: Help → Settings → Associate `.md` / `.markdown` (writes to HKCU, no admin required)
+- **Right-click "New" menu**: Desktop right-click → New → "Markdown File"
+- **File location**: Click status bar path → open in Explorer with file selected
+- **Drag-and-drop import**: Drag images / PDF / HTML / Markdown → automatically recognized and processed
+- **Image conflicts**: Same-name file comparison dialog (thumbnail + size), supports replace / keep both
+- **Double-click to open**: Double-click `.md` / `.markdown` / `.pdf` to open directly with MarkEase
 
-### 🛡️ 安全与隐私
+### 🛡️ Security & Privacy
 
-- **双层 XSS 防御**：HTML 转义 + DOM 白名单
-- **屏蔽危险标签**：`<script>` / `<iframe>` / `<svg>` 等一律剔除
-- **禁用内联事件**：`onerror` / `onclick` 等属性全部剥离
-- **URL 协议白名单**：`http / https / mailto / tel / file` 等
-- **KaTeX 安全放行**：仅公式子树内放行 `style` 属性，且值需通过安全清洗
-- **完全离线**：所有资源本地打包
+- **Dual-layer XSS defense**: HTML escaping + DOM whitelist
+- **Blocks dangerous tags**: `<script>` / `<iframe>` / `<svg>` etc. all removed
+- **Disables inline events**: `onerror` / `onclick` and other attributes all stripped
+- **URL protocol whitelist**: `http / https / mailto / tel / file` etc.
+- **KaTeX safe allowance**: `style` attribute allowed only within formula subtree, and values must pass security sanitization
+- **Fully offline**: All resources bundled locally
 
 ---
 
-## 🖼️ 界面预览
+## 🖼️ Interface Preview
 
-| 场景 | 截图 |
+| Scenario | Screenshot |
 |:---:|:---:|
-| 分屏模式 | <img src="Pic/P_01.png" width="400"/> |
-| 编辑模式 | <img src="Pic/P_02.png" width="400"/> |
-| 预览模式 | <img src="Pic/P_03.png" width="400"/> |
-| 代码高亮 + 数学公式 | <img src="Pic/P_04.png" width="400"/> |
-| 表格单元格编辑 | <img src="Pic/P_05.png" width="400"/> |
-| 任务列表 + 目录 | <img src="Pic/P_06.png" width="400"/> |
-| 多语言切换 | <img src="Pic/P_07.png" width="400"/> |
+| Split mode | <img src="Pic/P_01.png" width="400"/> |
+| Edit mode | <img src="Pic/P_02.png" width="400"/> |
+| Preview mode | <img src="Pic/P_03.png" width="400"/> |
+| Code highlighting + Math formulas | <img src="Pic/P_04.png" width="400"/> |
+| Table cell editing | <img src="Pic/P_05.png" width="400"/> |
+| Task list + Table of contents | <img src="Pic/P_06.png" width="400"/> |
+| Multi-language switching | <img src="Pic/P_07.png" width="400"/> |
 
 ---
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 📦 下载使用
+### 📦 Download & Use
 
-1. 前往 [Releases](https://github.com/zbt00123/MarkEase/releases) 下载
-2. 解压发布包（`.7z` / `.zip`，以 Releases 页实际文件为准）
-3. 双击 `MarkEase.exe`
+1. Go to [Releases](https://github.com/zbt00123/MarkEase/releases) to download
+2. Extract the release package (`.7z` / `.zip`, refer to actual files on the Releases page)
+3. Double-click `MarkEase.exe`
 
-> 首次启动会自动添加右键「新建 → Markdown 文件」项。
-> 如需设为 `.md` 默认程序：**帮助 → 设置 → 设为默认打开程序**。
+> On first launch, the right-click "New → Markdown File" item is automatically added.
+> To set as default `.md` program: **Help → Settings → Set as default program**.
 
-### 🧑‍💻 从源码运行
+### 🧑‍💻 Run from Source
 
 ```bash
 git clone https://github.com/zbt00123/MarkEase.git
@@ -151,18 +153,18 @@ python main.py
 
 ---
 
-## ⌨️ 快捷键一览
+## ⌨️ Keyboard Shortcuts
 
-| 功能 | 快捷键 |
+| Function | Shortcut |
 |---|---|
-| 新建 / 打开 / 保存 / 另存为 | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S` |
-| 撤销 / 重做 | `Ctrl+Z` / `Ctrl+Y` |
-| 编辑 / 分屏 / 预览模式 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` |
-| 显示/隐藏目录 | `Ctrl+B` |
-| 放大 / 缩小 / 重置缩放 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` |
-| 插入图片 | `Ctrl+Shift+I` |
-| 查找 / 替换 | `Ctrl+F` / `Ctrl+H` |
-| **跳转脚注定义 / 回到引用** | **`Ctrl + 点击 [^N]`** |
+| New / Open / Save / Save As | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` / `Ctrl+Shift+S` |
+| Undo / Redo | `Ctrl+Z` / `Ctrl+Y` |
+| Edit / Split / Preview mode | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` |
+| Show/Hide TOC | `Ctrl+B` |
+| Zoom in / Zoom out / Reset zoom | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` |
+| Insert image | `Ctrl+Shift+I` |
+| Find / Replace | `Ctrl+F` / `Ctrl+H` |
+| **Jump to footnote definition / Back to reference** | **`Ctrl + click [^N]`** |
 
 ---
 
@@ -172,32 +174,32 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 
 - Committers and reviewers: [@zbt00123](https://github.com/zbt00123)
 - Approvers: [@zbt00123](https://github.com/zbt00123)
-- Privacy: MarkEase 不收集、不上传任何用户数据。仅在你主动操作或程序自检时访问网络：
-  - 你主动插入 / 打开网络图片时，通过内置 `/proxy` 按该图片 URL 下载；
-  - 你主动「插入链接」时，抓取目标网页标题；
-  - 每 30 天向 GitHub Releases 检查一次更新（一次 HTTPS 请求，不含任何个人信息），
-    也可在「帮助 → 检查更新」手动触发。
+- Privacy: MarkEase does not collect or upload any user data. Network access occurs only when you actively perform an action or during program self-checks:
+  - When you actively insert / open a network image, it is downloaded via the built-in `/proxy` using that image URL;
+  - When you actively "Insert Link," the target webpage title is fetched;
+  - Every 30 days, a check for updates is made to GitHub Releases (a single HTTPS request, containing no personal information),
+    which can also be manually triggered via "Help → Check for Updates."
 
 ---
 
-## 📄 许可证
+## 📄 License
 
-本项目基于 [MIT License](LICENSE) 发布，Copyright (c) 2026 zbt00123。
+This project is released under the [MIT License](LICENSE), Copyright (c) 2026 zbt00123.
 
-- **你可以**：自由使用、复制、修改、合并、发布、分发、再许可和/或销售本软件的副本，
-  也可用于商业项目。
-- **唯一要求**：在软件的所有副本或重要部分中，保留上述版权声明与本许可声明。
-- **免责**：本软件按「原样」提供，不附带任何明示或暗示的担保。
+- **You may**: Freely use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of this software,
+  including for commercial projects.
+- **Only requirement**: Retain the above copyright notice and this license notice in all copies or substantial portions of the software.
+- **Disclaimer**: This software is provided "as is," without warranty of any kind, express or implied.
 
-第三方组件按各自许可证发布，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+Third-party components are released under their respective licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.
 
 ---
 
-## 🙏 致谢
+## 🙏 Acknowledgements
 
-- [pywebview](https://pywebview.flowrl.com/) — 轻量级 Python WebView 封装
-- [CodeMirror 6](https://codemirror.net/) — 现代化编辑器内核
-- [marked](https://marked.js.org/) — Markdown 解析
-- [KaTeX](https://katex.org/) — 数学公式渲染
-- [highlight.js](https://highlightjs.org/) — 代码高亮
-- [PyMuPDF](https://pymupdf.readthedocs.io/) — PDF 解析与生成
+- [pywebview](https://pywebview.flowrl.com/) — Lightweight Python WebView wrapper
+- [CodeMirror 6](https://codemirror.net/) — Modern editor core
+- [marked](https://marked.js.org/) — Markdown parser
+- [KaTeX](https://katex.org/) — Math formula rendering
+- [highlight.js](https://highlightjs.org/) — Code highlighting
+- [PyMuPDF](https://pymupdf.readthedocs.io/) — PDF parsing and generation
