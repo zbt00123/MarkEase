@@ -98,7 +98,10 @@ try:
     import clr
     import System
     CLR_AVAILABLE = True
-except ImportError:
+except Exception as e:
+    # ★ 修复：捕获 RuntimeError 等所有异常，防止 .NET 环境问题导致整个 App 无法启动
+    # （失效时 PDF 导出功能不可用，但其他功能正常）
+    print(f'[MarkEase] pythonnet load failed: {e}')
     CLR_AVAILABLE = False
 
 
@@ -191,7 +194,7 @@ APP_INFO = {
     'outline_url': 'https://chatgpt.com/',
     'coded_by': 'DeepSeek',
     'coded_url': 'https://chat.deepseek.com/',
-    'license': '仅供学习使用，可以任意修改、复制、发布代码，严禁商用。',
+    'license': 'MIT License',
 }
 
 

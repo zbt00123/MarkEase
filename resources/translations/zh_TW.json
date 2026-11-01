@@ -70,7 +70,7 @@
     "about_outline": "大綱",
     "about_coding": "編碼",
     "about_copyright": "版權說明",
-    "about_copyright_text": "僅供學習使用，可以任意修改、複製、發佈程式碼，嚴禁商業用途。",
+    "about_copyright_text": "本專案基於 MIT License 發佈，可自由使用、修改、分發與商業使用；第三方元件授權請見 THIRD_PARTY_NOTICES.md。",
     "about_acknowledgements": "鳴謝",
     "toc_title": "目錄",
     "discard": "不儲存",

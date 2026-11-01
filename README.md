@@ -4,8 +4,10 @@
 
 [![Release](https://img.shields.io/github/v/release/zbt00123/MarkEase)](https://github.com/zbt00123/MarkEase/releases) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
 
-> ⚠️ **杀毒软件可能误报**，请将 `MarkEase.exe` 添加信任。
-> 本程序使用 WebView2 渲染，启动时已禁用其后台网络与组件更新；如仍告警，请加入白名单。
+> ⚠️ **Windows SmartScreen / 杀毒软件提示**
+> 发布包目前**尚未代码签名**，首次运行可能看到「Windows 已保护你的电脑」：
+> 点击「更多信息 → 仍要运行」即可（签名申请说明见下方「Code signing policy」）。
+> 本程序使用 WebView2 渲染，启动时已禁用其后台网络与组件更新；如杀毒软件误报，请将 `MarkEase.exe` 添加信任。
 
 ---
 
@@ -132,7 +134,7 @@
 ### 📦 下载使用
 
 1. 前往 [Releases](https://github.com/zbt00123/MarkEase/releases) 下载
-2. 解压 `MarkEase_v<版本号>_Windows_x64_portable.7z`（版本号见 Releases 页）
+2. 解压发布包（`.7z` / `.zip`，以 Releases 页实际文件为准）
 3. 双击 `MarkEase.exe`
 
 > 首次启动会自动添加右键「新建 → Markdown 文件」项。
@@ -164,9 +166,30 @@ python main.py
 
 ---
 
+## 🔏 Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+
+- Committers and reviewers: [@zbt00123](https://github.com/zbt00123)
+- Approvers: [@zbt00123](https://github.com/zbt00123)
+- Privacy: MarkEase 不收集、不上传任何用户数据。仅在你主动操作或程序自检时访问网络：
+  - 你主动插入 / 打开网络图片时，通过内置 `/proxy` 按该图片 URL 下载；
+  - 你主动「插入链接」时，抓取目标网页标题；
+  - 每 30 天向 GitHub Releases 检查一次更新（一次 HTTPS 请求，不含任何个人信息），
+    也可在「帮助 → 检查更新」手动触发。
+
+---
+
 ## 📄 许可证
 
-本项目基于 [MIT License](LICENSE) 发布，**仅供学习使用，严禁商用**。
+本项目基于 [MIT License](LICENSE) 发布，Copyright (c) 2026 zbt00123。
+
+- **你可以**：自由使用、复制、修改、合并、发布、分发、再许可和/或销售本软件的副本，
+  也可用于商业项目。
+- **唯一要求**：在软件的所有副本或重要部分中，保留上述版权声明与本许可声明。
+- **免责**：本软件按「原样」提供，不附带任何明示或暗示的担保。
+
+第三方组件按各自许可证发布，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ---
 

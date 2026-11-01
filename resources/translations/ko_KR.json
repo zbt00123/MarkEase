@@ -70,7 +70,7 @@
     "about_outline": "개요",
     "about_coding": "코딩",
     "about_copyright": "저작권 안내",
-    "about_copyright_text": "학습 목적으로만 사용할 수 있으며, 코드를 자유롭게 수정, 복사, 배포할 수 있지만 상업적 이용은 엄격히 금지됩니다.",
+    "about_copyright_text": "MIT License로 배포됩니다. 사용, 수정, 배포 및 상업적 이용이 자유롭습니다. 타사 라이선스는 THIRD_PARTY_NOTICES.md를 참조하세요.",
     "about_acknowledgements": "감사의 말",
     "toc_title": "목차",
     "discard": "저장 안 함",

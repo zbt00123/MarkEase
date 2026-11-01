@@ -13,12 +13,12 @@ VSVersionInfo(
     StringFileInfo(
       [
         StringTable(
-          u'080404b0',
+          u'040904b0',
           [StringStruct(u'CompanyName', u'ZBT Studio'),
            StringStruct(u'FileDescription', u'MarkEase'),
            StringStruct(u'FileVersion', u'2.1.3'),
            StringStruct(u'InternalName', u'MarkEase'),
-           StringStruct(u'LegalCopyright', u'仅供学习使用'),
+           StringStruct(u'LegalCopyright', u'Copyright (c) 2026 zbt00123'),
            StringStruct(u'OriginalFilename', u'MarkEase.exe'),
            StringStruct(u'ProductName', u'MarkEase'),
            StringStruct(u'ProductVersion', u'2.1.3')]

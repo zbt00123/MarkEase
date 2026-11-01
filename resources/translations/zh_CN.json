@@ -70,7 +70,7 @@
     "about_outline": "大纲",
     "about_coding": "编码",
     "about_copyright": "版权说明",
-    "about_copyright_text": "仅供学习使用，可以任意修改、复制、发布代码，严禁商用。",
+    "about_copyright_text": "本项目基于 MIT License 发布，可自由使用、修改、分发与商用；第三方组件许可见 THIRD_PARTY_NOTICES.md。",
     "about_acknowledgements": "鸣谢",
     "toc_title": "目录",
     "discard": "不保存",

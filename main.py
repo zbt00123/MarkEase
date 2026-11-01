@@ -7,8 +7,8 @@ MarkEase 主入口（阶段 15 修订：修复启动缓存导致的偶发空白�
 - 前端从 asset server 的 HTTP 地址加载
 - background_color 依据主题
 - 支持双击 .md / .markdown / .pdf 启动（命令行参数）
-- ★ 修复：显式指定 WebView2 user data folder，避免 pywebview 内部
-        "删除失败 → 复用旧缓存" 导致的偶发空白
+- ★ v2.1.3 修订：每次启动使用独立、可写的 WebView2 数据目录
+        （修复打包后 WebView2 报 0x800700AA、窗口空白的问题）
 - ★ v2.1.1：closing 事件异步通知前端（避免 WebView2 死锁）
 - ★ v2.1.1：新增看门狗，窗口未响应超时 → 强制退出
 - ★ v2.1.2：新增日志系统（app/logging_setup.py），仅错误/崩溃落盘
@@ -139,29 +139,141 @@ _log_event('app_boot_start',
 # ★★★ 必须在 import webview 之前设置 ★★★
 
 # ------------------------------------------------------------------
-# 1) 显式指定 WebView2 user data folder（稳定路径，避免缓存冲突）
+# 1) WebView2 用户数据目录（★ 每次启动使用独立、干净、可写的目录）
 #
-#    背景：pywebview 每次 webview.start() 会创建一个临时 user data folder，
-#         退出时尝试删除。若删除失败（如 BrowserProcess 提前退出），
-#         下次启动可能复用一个"半旧"的 folder，导致 JS 缓存与磁盘上的
-#         app.js 不一致 → 打开文档时白屏。
+#    背景（"打包后窗口空白"的根因，两层叠加）：
+#      a) pywebview 在私有模式下把 WebView2 配置目录设为
+#         tempfile.TemporaryDirectory()。但如果进程无法写 %TEMP%
+#         （杀软/沙箱/权限受限的机器上很常见），临时目录创建失败，
+#         pywebview 会静默把 cache_dir 留成 None。
+#      b) 此时 WebView2 回退到环境变量 WEBVIEW2_USER_DATA_FOLDER 或默认目录。
+#         该目录若来自上一次异常退出（崩溃 / 强杀 / 看门狗 os._exit(1)），
+#         残留的 EBWebView 档案会带着锁，WebView2 初始化直接抛：
+#             (0x800700AA) 请求的资源在使用中
+#         pywebview 只打印一行日志，窗口照常显示但内容永远空白。
 #
-#    解决：显式指定到一个固定路径，让 WebView2 始终用同一个 folder，
-#         并让缓存自然老化（浏览器会自动淘汰）。
+#    解决：
+#      - 按优先级探测一个"确实可写"的目录（exe 目录 → LOCALAPPDATA →
+#        ~/.markease → TEMP），不依赖 tempfile 是否可用；
+#      - 每次启动用 run-<pid> 独立子目录，启动前清理已退出进程的残留，
+#        彻底避免上一次崩溃留下的锁；
+#      - 同时设置 WEBVIEW2_USER_DATA_FOLDER 并传给
+#        webview.start(storage_path=...)，无论 pywebview 走哪条分支都用它；
+#      - 本程序 private_mode=True 且 --disk-cache-size=1 已关闭磁盘缓存，
+#        因此"每次全新目录"不会丢失任何需要持久化的数据。
 # ------------------------------------------------------------------
-_USER_DATA_DIR = os.path.join(
-    os.path.expanduser('~'), '.markease', 'webview2_data'
-)
+
+def _pid_alive(pid):
+    """判断 PID 是否仍存活（用于清理残留 profile）。"""
+    try:
+        import psutil
+        return bool(psutil.pid_exists(pid))
+    except Exception:
+        pass
+    try:
+        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED
+        if not h:
+            return False
+        ctypes.windll.kernel32.CloseHandle(h)
+        return True
+    except Exception:
+        return True  # 判断不了就保守处理，不删
+
+
+def _is_writable_dir(path):
+    """能否在 path 下创建目录并写入文件。"""
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, '.mk_write_test')
+        with open(probe, 'wb') as f:
+            f.write(b'ok')
+        os.remove(probe)
+        return True
+    except Exception:
+        return False
+
+
+def _webview_profile_bases():
+    """按优先级返回候选 profile 根目录（第一个可写的会被采用）。"""
+    bases = []
+
+    # 1) 程序目录（仅打包版：与 logs/ 保持一致；受限环境里往往只有这里可写）
+    try:
+        if getattr(sys, 'frozen', False):
+            app_dir = os.path.dirname(os.path.abspath(sys.executable))
+            bases.append(os.path.join(app_dir, 'webview2'))
+    except Exception:
+        pass
+
+    # 2) Windows 用户本地数据
+    local = os.environ.get('LOCALAPPDATA')
+    if local:
+        bases.append(os.path.join(local, 'MarkEase', 'webview2'))
+
+    # 3) 用户目录（与 settings.json 同级的 .markease）
+    try:
+        bases.append(os.path.join(os.path.expanduser('~'), '.markease',
+                                  'webview2'))
+    except Exception:
+        pass
+
+    # 4) 临时目录（最后兜底）
+    tmp = os.environ.get('TEMP') or os.environ.get('TMP')
+    if tmp:
+        bases.append(os.path.join(tmp, 'MarkEase', 'webview2'))
+
+    return bases
+
+
+def _prepare_webview_user_data_dir():
+    """创建本次启动专用的 WebView2 目录，并清理已退出进程的残留目录。"""
+    base = None
+    for candidate in _webview_profile_bases():
+        if _is_writable_dir(candidate):
+            base = candidate
+            break
+    if base is None:
+        print('[MarkEase] no writable webview2 profile dir found')
+        return None
+
+    # 清理历史残留（仍被其它存活实例占用的目录会删除失败，忽略即可）
+    try:
+        for name in os.listdir(base):
+            m = re.match(r'^run-(\d+)$', name)
+            if not m:
+                continue
+            pid = int(m.group(1))
+            if pid == os.getpid() or _pid_alive(pid):
+                continue
+            try:
+                import shutil
+                shutil.rmtree(os.path.join(base, name), ignore_errors=True)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    run_dir = os.path.join(base, 'run-%d' % os.getpid())
+    if not _is_writable_dir(run_dir):
+        print(f'[MarkEase] cannot create webview2 run dir: {run_dir}')
+        return None
+    return run_dir
+
+
+_USER_DATA_DIR = _prepare_webview_user_data_dir()
 try:
-    os.makedirs(_USER_DATA_DIR, exist_ok=True)
-    os.environ['WEBVIEW2_USER_DATA_FOLDER'] = _USER_DATA_DIR
-    print(f'[MarkEase] webview2 user data: {_USER_DATA_DIR}')
-    _log_event('webview2_user_data_set', 'WEBVIEW2_USER_DATA_FOLDER set',
-               path=_USER_DATA_DIR)
+    if _USER_DATA_DIR:
+        os.environ['WEBVIEW2_USER_DATA_FOLDER'] = _USER_DATA_DIR
+        print(f'[MarkEase] webview2 user data: {_USER_DATA_DIR}')
+        _log_event('webview2_user_data_set', 'WEBVIEW2_USER_DATA_FOLDER set',
+                   path=_USER_DATA_DIR)
+    else:
+        _log_error('webview2_user_data_unavailable',
+                   'No writable WebView2 profile dir; relying on defaults')
 except Exception as e:
-    print(f'[MarkEase] cannot create user data dir: {e}')
+    print(f'[MarkEase] cannot set user data dir: {e}')
     _log_error('webview2_user_data_failed',
-               'Failed to create webview2 user data dir',
+               'Failed to set webview2 user data dir',
                exception=e, path=_USER_DATA_DIR)
 
 # ------------------------------------------------------------------
@@ -540,12 +652,23 @@ def main():
             gui='edgechromium',
             debug=False,
             icon=icon_path if icon_path else None,
+            # ★ 显式指定本次启动的 WebView2 目录：避免 pywebview 使用临时目录
+            #   或上一次崩溃残留的坏档案，导致 0x800700AA 空白窗口。
+            storage_path=_USER_DATA_DIR,
         )
     except Exception as e:
         _log_critical('webview_start_failed',
                       'webview.start raised',
                       exception=e)
         raise
+    finally:
+        # 退出时删除本次专用目录（失败也无妨，下次启动会清理）
+        if _USER_DATA_DIR:
+            try:
+                import shutil
+                shutil.rmtree(_USER_DATA_DIR, ignore_errors=True)
+            except Exception:
+                pass
 
     _log_event('webview_start_returned',
                'webview.start returned; main() is exiting')

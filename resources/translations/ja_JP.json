@@ -70,7 +70,7 @@
     "about_outline": "概要",
     "about_coding": "コーディング",
     "about_copyright": "著作権表示",
-    "about_copyright_text": "学習目的にのみ使用できます。コードの修正、複製、配布は自由ですが、商用利用は固く禁じられています。",
+    "about_copyright_text": "MIT License で公開されています。使用・改変・配布・商用利用は自由です。サードパーティのライセンスは THIRD_PARTY_NOTICES.md を参照してください。",
     "about_acknowledgements": "謝辞",
     "toc_title": "目次",
     "discard": "保存しない",

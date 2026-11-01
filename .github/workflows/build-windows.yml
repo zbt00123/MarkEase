@@ -1,0 +1,98 @@
+name: Build Windows portable
+
+# 说明：
+#   - SignPath Foundation 要求「被签名的二进制必须由仓库中的 CI 配置、在 GitHub 托管
+#     runner 上从源码构建」。本工作流就是那个可验证的构建入口。
+#   - 目前只产出未签名 zip；申请通过后，取消注释最后一段即可提交签名。
+#   - 触发：手动 workflow_dispatch，或推送 v* 标签。
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller python-docx lxml psutil
+
+      - name: Build (PyInstaller)
+        run: python -m PyInstaller --clean --noconfirm MarkEase.spec
+
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          $exe = 'dist/MarkEase/MarkEase.exe'
+          if (-not (Test-Path $exe)) { throw "missing $exe" }
+          if (-not (Test-Path 'dist/MarkEase/MarkEase.exe.config')) {
+            throw 'missing MarkEase.exe.config (needed by pythonnet on non-ASCII paths)'
+          }
+          if (-not (Test-Path 'dist/MarkEase/_internal/pythonnet/runtime/Python.Runtime.dll')) {
+            throw 'missing pythonnet runtime'
+          }
+          if (-not (Test-Path 'dist/MarkEase/_internal/web/index.html')) {
+            throw 'missing web assets'
+          }
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $ver = python -c "import re;print('.'.join(re.search(r'filevers=\((\d+),\s*(\d+),\s*(\d+)', open('version_info.txt', encoding='utf-8').read()).groups()))"
+          New-Item -ItemType Directory -Force out | Out-Null
+          $zip = "out/MarkEase_v${ver}_Windows_x64_portable.zip"
+          Compress-Archive -Path 'dist/MarkEase' -DestinationPath $zip -CompressionLevel Optimal
+          Write-Host "artifact: $zip"
+          Get-ChildItem out | Format-Table Name, Length
+
+      - name: Upload unsigned artifact
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: markease-unsigned
+          path: out/*.zip
+          if-no-files-found: error
+
+      # =====================================================================
+      # 申请通过后启用：交给 SignPath 签名（需要先安装 SignPath GitHub App）
+      # 需要的仓库配置：
+      #   secrets.SIGNPATH_API_TOKEN  —— SignPath 用户 API Token（有 submitter 权限）
+      #   vars.SIGNPATH_ORG_ID        —— SignPath 组织 ID
+      #   project-slug / signing-policy-slug / artifact-configuration-slug
+      #   按你在 SignPath 控制台创建的名称填写
+      # =====================================================================
+      # - name: Submit signing request
+      #   uses: signpath/github-action-submit-signing-request@v3
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+      #     organization-id: ${{ vars.SIGNPATH_ORG_ID }}
+      #     project-slug: markease
+      #     signing-policy-slug: release-signing
+      #     artifact-configuration-slug: markease-portable
+      #     github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+      #     wait-for-completion: true
+      #     output-artifact-directory: signed
+      #
+      # - name: Upload signed artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: markease-signed
+      #     path: signed/*.zip

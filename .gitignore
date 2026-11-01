@@ -10,6 +10,8 @@ logs/
 dist/
 build/
 *.spec
+# ★ 精确放行：打包 spec 必须纳入版本管理，否则打包修复（.exe.config 复制）会丢失
+!MarkEase.spec
 
 # 忽略发布文件（已存在于 GitHub Releases）
 release/
@@ -20,10 +22,16 @@ logs/
 
 # 忽略开发文档
 开发手册/
-scripts/
+
+# 忽略脚本目录，仅精确放行唯一发布入口（打包后校验 MarkEase.exe.config）
+scripts/*
+!scripts/1.一键打包.py
 
 *.pyc
 *.pyo
 .venv/
+
+# 输入法/第三方工具在本目录留下的日志
+debug.log
 
 tree.txt
