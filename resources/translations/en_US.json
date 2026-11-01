@@ -103,6 +103,7 @@
     "underline": "Underline",
     "underline_hint": "Underline",
     "strikethrough": "Strikethrough",
+    "clear_format": "Clear formatting",
     "quote": "Quote",
     "quote_placeholder": "Quote",
     "inline_code": "Inline Code",

@@ -64,6 +64,7 @@
         bold: '加粗',
         italic: '斜体',
         strikethrough: '删除线',
+        clear_format: '清除格式',
         quote: '引用',
         inline_code: '行内代码',
         code_block: '代码块',

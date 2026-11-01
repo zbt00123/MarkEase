@@ -1,6 +1,8 @@
 // MarkEase 菜单栏逻辑（阶段 14 修订 2：支持二级子菜单 + i18n）
 //   ★ v2.1.2：日志菜单（data-action="logs"）由 app.js 注册处理函数，
 //             本模块只负责通用分发，无需特判。
+//   ★ v2.1.3：所有菜单项 mousedown 加 preventDefault，防止抢夺焦点
+//             （修复预览编辑态 / 编辑器内点击菜单导致 selection 丢失）
 (function () {
     'use strict';
 
@@ -19,8 +21,12 @@
             return;
         }
 
-        // 顶级菜单项
+        // ★ v2.1.3：顶级菜单项 —— mousedown preventDefault 阻止焦点抢走
         menubar.querySelectorAll('.menu-item').forEach(item => {
+            item.addEventListener('mousedown', (e) => {
+                // 阻止焦点从 CodeMirror / contenteditable 迁移
+                e.preventDefault();
+            });
             item.addEventListener('mouseenter', () => {
                 if (activeMenuEl && activeMenuEl !== item) {
                     openMenu(item);
@@ -36,8 +42,11 @@
             });
         });
 
-        // 所有可点击的动作项（包括子菜单里的）
+        // ★ v2.1.3：所有可点击的动作项 —— 同样 preventDefault
         menubar.querySelectorAll('.menu-entry[data-action]').forEach(entry => {
+            entry.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+            });
             entry.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (entry.classList.contains('disabled')) return;
@@ -54,8 +63,11 @@
             });
         });
 
-        // 二级菜单父项
+        // ★ v2.1.3：二级菜单父项 —— 同样 preventDefault
         menubar.querySelectorAll('.menu-entry.has-submenu').forEach(parent => {
+            parent.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+            });
             parent.addEventListener('mouseenter', () => {
                 openSubmenu(parent);
             });

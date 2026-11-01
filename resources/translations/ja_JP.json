@@ -103,6 +103,7 @@
     "underline": "下線",
     "underline_hint": "下線",
     "strikethrough": "取り消し線",
+    "clear_format": "書式をクリア",
     "quote": "引用",
     "quote_placeholder": "引用内容",
     "inline_code": "インラインコード",

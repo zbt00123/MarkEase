@@ -103,6 +103,7 @@
     "underline": "下划线",
     "underline_hint": "下划线",
     "strikethrough": "删除线",
+    "clear_format": "清除格式",
     "quote": "引用",
     "quote_placeholder": "引用内容",
     "inline_code": "行内代码",

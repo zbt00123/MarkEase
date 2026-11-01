@@ -1,14 +1,15 @@
 // MarkEase 渲染管线（阶段 16-13 修复 2）
 //   ★ 本轮修改：
-//     1) BUILD_TAG 更新为 render-v22
-//     2) preprocessHtmlBlocks 新增 <ins> / <u> 预处理
+//     1) BUILD_TAG 更新为 render-v23
+//     2) domToMarkdown 支持 <strike>（预览编辑态删除线由 execCommand 产生）
+//     3) preprocessHtmlBlocks 新增 <ins> / <u> 预处理
 //        —— 把内部 markdown 提前用 marked.parseInline 解析
 //        —— 解决 <ins>**粗体**</ins> 渲染成源代码的问题
-//     3) restoreHtmlBlocks 改为多轮循环替换，处理嵌套占位符
+//     4) restoreHtmlBlocks 改为多轮循环替换，处理嵌套占位符
 (function (global) {
     'use strict';
 
-    var BUILD_TAG = 'render-v22';
+    var BUILD_TAG = 'render-v23';
     console.log('[MarkEase] ' + BUILD_TAG + ' loaded');
 
     var KATEX_OPTS = {
@@ -200,7 +201,8 @@
                     case 'em':
                     case 'i': out += '*' + inner + '*'; break;
                     case 'del':
-                    case 's': out += '~~' + inner + '~~'; break;
+                    case 's':
+                    case 'strike': out += '~~' + inner + '~~'; break;
                     case 'ins':
                     case 'u': out += '<ins>' + inner + '</ins>'; break;
                     case 'code': out += '`' + inner + '`'; break;

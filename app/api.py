@@ -28,6 +28,10 @@
     - get_log_dir()        返回日志目录路径
     - open_logs_dir()      在文件管理器中打开日志目录
     - log_frontend_error() 接收前端上报的 JS 错误
+
+★ v2.1.3 新增（剪贴板）：
+    - read_clipboard_text() 后端读取系统剪贴板纯文本
+      （修复编辑窗口 / 预览编辑态右键菜单「粘贴」失效）
 """
 
 import os
@@ -189,6 +193,79 @@ APP_INFO = {
     'coded_url': 'https://chat.deepseek.com/',
     'license': '仅供学习使用，可以任意修改、复制、发布代码，严禁商用。',
 }
+
+
+# ============================================================
+#  ★ v2.1.3：读取 Windows 系统剪贴板文本
+#
+#  WebView2 下 document.execCommand('paste') 会被 Chromium 直接拒绝，
+#  navigator.clipboard.readText() 又依赖 clipboard-read 权限，均不可靠。
+#  因此「右键菜单 → 粘贴」「编辑菜单 → 粘贴」改由 Python 后端读取剪贴板，
+#  再由前端插入到保存好的光标 / 选区位置。
+#
+#  只读取 CF_UNICODETEXT，返回纯文本：
+#    - 从 MarkEase 预览区复制时，text/plain 就是 Markdown 源码，可原样粘贴；
+#    - 从 Word / 浏览器复制时，返回可见纯文本，符合 Markdown 源编辑预期。
+# ============================================================
+def _read_clipboard_text_windows():
+    """读取 Windows 剪贴板中的 Unicode 文本（CF_UNICODETEXT）。
+
+    剪贴板可能被其他进程短暂占用，OpenClipboard 失败时重试若干次。
+    读取失败会抛出异常，由调用方转成 {ok: False, error: ...}。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+
+    CF_UNICODETEXT = 13
+
+    user32.OpenClipboard.argtypes = [wintypes.HWND]
+    user32.OpenClipboard.restype = wintypes.BOOL
+    user32.CloseClipboard.argtypes = []
+    user32.CloseClipboard.restype = wintypes.BOOL
+    user32.IsClipboardFormatAvailable.argtypes = [wintypes.UINT]
+    user32.IsClipboardFormatAvailable.restype = wintypes.BOOL
+    user32.GetClipboardData.argtypes = [wintypes.UINT]
+    user32.GetClipboardData.restype = wintypes.HANDLE
+    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalLock.restype = wintypes.LPVOID
+    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalUnlock.restype = wintypes.BOOL
+
+    last_error = None
+    opened = False
+    for _ in range(6):
+        if user32.OpenClipboard(None):
+            opened = True
+            break
+        last_error = ctypes.get_last_error()
+        time.sleep(0.05)
+
+    if not opened:
+        raise OSError(
+            '无法打开系统剪贴板（可能被其他程序占用）'
+            + (f'，错误码 {last_error}' if last_error else '')
+        )
+
+    try:
+        if not user32.IsClipboardFormatAvailable(CF_UNICODETEXT):
+            return ''
+
+        handle = user32.GetClipboardData(CF_UNICODETEXT)
+        if not handle:
+            return ''
+
+        ptr = kernel32.GlobalLock(handle)
+        if not ptr:
+            return ''
+        try:
+            return ctypes.wstring_at(ptr)
+        finally:
+            kernel32.GlobalUnlock(handle)
+    finally:
+        user32.CloseClipboard()
 
 
 class Settings:
@@ -649,6 +726,28 @@ class Api:
                            'window.destroy raised',
                            exception=e)
         return {'ok': True}
+
+    # ============================================================
+    #  ★ v2.1.3：剪贴板读取（右键菜单 / 编辑菜单「粘贴」）
+    # ============================================================
+    def read_clipboard_text(self):
+        """返回系统剪贴板中的纯文本。
+
+        前端拿到文本后自行插入 CodeMirror / 预览编辑态，
+        从而绕开 Chromium 对脚本粘贴的限制。
+        """
+        try:
+            if sys.platform == 'win32':
+                text = _read_clipboard_text_windows()
+            else:
+                # 阶段 0 平台层抽取后再补 macOS / Linux 实现
+                raise RuntimeError('当前平台暂不支持读取系统剪贴板')
+            return {'ok': True, 'text': text or ''}
+        except Exception as e:
+            _log_error('clipboard_read_failed',
+                       'read_clipboard_text failed',
+                       exception=e)
+            return {'ok': False, 'error': str(e)}
 
     # ============================================================
     #  图片迁移工具

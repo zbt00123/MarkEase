@@ -2,6 +2,9 @@
 //   ★ 本轮修改：
 //     1) 新增 toggleUnderlineMultiline：多行选区按行独立包裹 <ins>
 //     2) toggleUnderlineFormat 检测跨行选区，走多行分支
+//   ★ v2.1.3：
+//     3) 预览编辑态：行内格式改作用于 contenteditable；复杂操作（列表/标题/
+//        表格/链接/图片/脚注/折叠/格式刷）明确拒绝，不再误改 CodeMirror 文档
 (function () {
     'use strict';
 
@@ -53,6 +56,12 @@
     const TOOLTIP_DELAY = 350;
     const TOOLTIP_GAP = 12;
     const TOOLTIP_EDGE = 6;
+
+    // ★ v2.1.3：是否处于预览编辑态（此时格式命令作用于 contenteditable，
+    //           而不是 CodeMirror 文档；列表 / 插入图片 / 表格等复杂操作禁止）
+    function isPreviewEditing() {
+        return !!(window.MKPreviewEdit && window.MKPreviewEdit.isActive());
+    }
 
     // ============================================================
     //  扫描光标/选区两侧的 * 或 _ 包裹层数
@@ -1118,6 +1127,8 @@
             it.className = 'tb-dropdown-item';
             it.dataset.heading = String(i);
             it.textContent = 'H' + i;
+            // ★ v2.1.3：阻止 mousedown 抢焦点，保留预览编辑态的选区
+            it.addEventListener('mousedown', (e) => { e.preventDefault(); });
             it.addEventListener('click', (e) => {
                 e.stopPropagation();
                 applyHeading(view, i);
@@ -1267,6 +1278,19 @@
     }
 
     function dispatchAction(action) {
+        // ★ v2.1.3：预览编辑态 —— 撤销/重做走原生，复杂操作直接拒绝
+        if (isPreviewEditing()) {
+            if (action === 'undo' || action === 'redo') {
+                window.MKPreviewEdit.exec(action);
+                refreshToolbarState();
+                return;
+            }
+            if (action === 'insert_image') {
+                setStatusHint('预览编辑状态下不支持插入图片，请先点击空白处结束编辑');
+                return;
+            }
+        }
+
         const fn = externalHandlers[action];
         if (typeof fn === 'function') {
             try { fn(); } catch (e) { console.error('[toolbar]', action, e); }
@@ -1282,6 +1306,13 @@
     // ============================================================
     function insertFootnote() {
         if (!view || !_IH) return;
+
+        // ★ v2.1.3：预览编辑态不支持插入脚注
+        if (isPreviewEditing()) {
+            setStatusHint('预览编辑状态下不支持插入脚注，请先点击空白处结束编辑');
+            return;
+        }
+
         restoreSavedSelection();
 
         const state = view.state;
@@ -1552,6 +1583,30 @@
 
     function refreshToolbarState() {
         if (!view) return;
+
+        // ★ v2.1.3：预览编辑态 —— 按钮状态取自浏览器原生格式状态，
+        //           避免仍然显示 CodeMirror 光标处的格式
+        if (isPreviewEditing()) {
+            let b = false, i = false, u = false, s = false;
+            try {
+                b = document.queryCommandState('bold');
+                i = document.queryCommandState('italic');
+                u = document.queryCommandState('underline');
+                s = document.queryCommandState('strikeThrough');
+            } catch (e) { /* ignore */ }
+            setPressed('bold', b);
+            setPressed('italic', i);
+            setPressed('underline', u);
+            setPressed('strike', s);
+            setPressed('inlineCode', false);
+            setPressed('codeBlock', false);
+            setPressed('ul', false);
+            setPressed('ol', false);
+            setPressed('taskList', false);
+            setPressed('quote', false);
+            return;
+        }
+
         let st;
         try { st = getFormatState(view.state); } catch (e) { return; }
 
@@ -1587,6 +1642,19 @@
     // ============================================================
     function handleFormat(fmt) {
         if (!view) return;
+
+        // ★ v2.1.3：预览编辑态 —— 只允许行内基础格式，且直接作用于 contenteditable
+        if (isPreviewEditing()) {
+            if (fmt === 'bold' || fmt === 'italic' ||
+                fmt === 'underline' || fmt === 'strike') {
+                window.MKPreviewEdit.format(fmt);
+                refreshToolbarState();
+            } else {
+                setStatusHint('预览编辑状态下不支持该操作，请先点击空白处结束编辑');
+            }
+            return;
+        }
+
         restoreSavedSelection();
 
         switch (fmt) {
@@ -1859,6 +1927,13 @@
 
     function applyHeading(editorView, level) {
         if (!editorView || !_ES || !_IH) return;
+
+        // ★ v2.1.3：预览编辑态不支持修改标题层级
+        if (isPreviewEditing()) {
+            setStatusHint('预览编辑状态下不支持修改标题，请先点击空白处结束编辑');
+            return;
+        }
+
         const { state } = editorView;
 
         const spec = state.changeByRange(range => {
@@ -1987,6 +2062,12 @@
     //  格式刷
     // ============================================================
     function handlePainterClick() {
+        // ★ v2.1.3：预览编辑态不支持格式刷
+        if (isPreviewEditing()) {
+            setStatusHint('预览编辑状态下不支持格式刷，请先点击空白处结束编辑');
+            return;
+        }
+
         restoreSavedSelection();
 
         if (view && !_painter.active) {
@@ -2306,6 +2387,14 @@
     // ============================================================
     function handleEraser() {
         if (!view || !_IH) return;
+
+        // ★ v2.1.3：预览编辑态 —— 直接清除 contenteditable 内的格式
+        if (isPreviewEditing()) {
+            window.MKPreviewEdit.clearFormat();
+            refreshToolbarState();
+            return;
+        }
+
         restoreSavedSelection();
 
         let state = view.state;
@@ -2474,6 +2563,11 @@
     //  表格下拉
     // ============================================================
     function toggleTableMenu() {
+        // ★ v2.1.3：预览编辑态不支持插入表格
+        if (isPreviewEditing()) {
+            setStatusHint('预览编辑状态下不支持插入表格，请先点击空白处结束编辑');
+            return;
+        }
         if (_tableOpen) { closeTableMenu(); return; }
         openTableMenu();
     }
@@ -2586,6 +2680,13 @@
     // ============================================================
     function handleCollapse() {
         if (!view || !_IH) return;
+
+        // ★ v2.1.3：预览编辑态不支持折叠
+        if (isPreviewEditing()) {
+            setStatusHint('预览编辑状态下不支持折叠，请先点击空白处结束编辑');
+            return;
+        }
+
         restoreSavedSelection();
         const state = view.state;
         const range = state.selection.main;
@@ -2642,6 +2743,11 @@
     //  插入链接弹窗
     // ============================================================
     function openLinkDialog() {
+        // ★ v2.1.3：预览编辑态不支持插入链接
+        if (isPreviewEditing()) {
+            setStatusHint('预览编辑状态下不支持插入链接，请先点击空白处结束编辑');
+            return;
+        }
         ensureLinkModalBuilt();
         if (!_linkModal) return;
 

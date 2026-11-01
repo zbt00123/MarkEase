@@ -8,6 +8,12 @@
 //     5) 帮助菜单「日志」动作 onOpenLogs -> api.open_logs_dir()
 //     6) 前端错误上报 setupFrontendErrorReporting()
 //     7) 极早期错误队列消费 flushEarlyErrors()
+//   ★ v2.1.3 新增：
+//     8) 剪贴板粘贴改走后端 read_clipboard_text()（execCommand('paste') 被拒绝）
+//     9) 预览编辑态自建右键菜单 + 选区保存/恢复
+//    10) 预览编辑态 Ctrl+Z / Ctrl+B 交还浏览器原生编辑命令
+//    11) 预览编辑态基础格式（加粗/斜体/下划线/删除线/清除格式）
+//    12) 文件 / 模式操作前先提交预览编辑内容
 import { EditorState, Compartment, EditorSelection, StateField, StateEffect } from './vendor/state.mjs';
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, Decoration } from './vendor/view.mjs';
 import { defaultKeymap, history, historyKeymap, undo, redo, isolateHistory } from './vendor/commands.mjs';
@@ -143,6 +149,9 @@ let _footnoteRefsSnapshot = null;
 let _footnoteCleanupTimer = null;
 
 let _ctxMenuEl = null;
+
+// ★ v2.1.3：预览编辑态保存的选区（右键菜单 / 菜单栏操作前保存，操作时恢复）
+let _previewSavedRange = null;
 
 // ★ v2.1.2：前端错误上报去重表
 let _feErrorDedupe = new Map();
@@ -711,19 +720,12 @@ function initMenubarByHandlers() {
         import_html: onImportHtml,
         export_html: onExportHtml,
         exit: onExit,
-        undo: onUndo,
-        redo: onRedo,
-        cut: () => document.execCommand('cut'),
-        copy: () => document.execCommand('copy'),
-        paste: () => document.execCommand('paste'),
-        select_all: () => {
-            if (editorView) {
-                editorView.dispatch({
-                    selection: { anchor: 0, head: editorView.state.doc.length }
-                });
-                editorView.focus();
-            }
-        },
+        undo: menuUndo,
+        redo: menuRedo,
+        cut: menuCut,
+        copy: menuCopy,
+        paste: menuPaste,
+        select_all: menuSelectAll,
         find: () => { if (window.FindBar) window.FindBar.open(false); },
         mode_edit:    () => setMode('edit'),
         mode_split:   () => setMode('split'),
@@ -893,9 +895,19 @@ function onRedo() {
     editorView.focus();
 }
 
-function onExit() {
+async function onExit() {
+    // ★ v2.1.3：关闭前提交预览编辑态内容，保证脏状态检查生效
+    commitActivePreviewEdit();
     if (window.pywebview && window.pywebview.api) {
-        window.pywebview.api.close_window().catch(() => {});
+        try {
+            // 先等脏状态同步到后端，再请求关闭，避免竞态导致不弹保存提示
+            if (window.pywebview.api.set_dirty) {
+                await window.pywebview.api.set_dirty(isDirty);
+            }
+        } catch (e) { /* ignore */ }
+        try {
+            await window.pywebview.api.close_window();
+        } catch (e) { /* ignore */ }
     }
 }
 
@@ -992,6 +1004,8 @@ function zoomReset() {
 
 // ---------------- 模式 ----------------
 function setMode(newMode) {
+    // ★ v2.1.3：切换模式前先提交预览编辑态内容
+    commitActivePreviewEdit();
     mode = newMode;
     mainEl.setAttribute('data-mode', mode);
     if (window.Toolbar) {
@@ -1061,6 +1075,7 @@ function updatePreview() {
         : null;
 
     activeEditableEl = null;
+    _previewSavedRange = null;
     window.renderMarkdown(getContent(), {
         target: previewEl,
         docDir: currentDocDir
@@ -2069,9 +2084,10 @@ function showEditorContextMenu(x, y) {
         { key: 'undo', labelKey: 'undo', fallback: '撤销', shortcut: 'Ctrl+Z', action: () => onUndo() },
         { key: 'redo', labelKey: 'redo', fallback: '重做', shortcut: 'Ctrl+Y', action: () => onRedo() },
         { type: 'sep' },
-        { key: 'cut', labelKey: 'cut', fallback: '剪切', shortcut: 'Ctrl+X', action: () => document.execCommand('cut') },
-        { key: 'copy', labelKey: 'copy', fallback: '复制', shortcut: 'Ctrl+C', action: () => document.execCommand('copy') },
-        { key: 'paste', labelKey: 'paste', fallback: '粘贴', shortcut: 'Ctrl+V', action: () => document.execCommand('paste') },
+        { key: 'cut', labelKey: 'cut', fallback: '剪切', shortcut: 'Ctrl+X', action: () => editorExecCommand('cut') },
+        { key: 'copy', labelKey: 'copy', fallback: '复制', shortcut: 'Ctrl+C', action: () => editorExecCommand('copy') },
+        // ★ v2.1.3：execCommand('paste') 被 Chromium 拒绝，改为后端读取剪贴板
+        { key: 'paste', labelKey: 'paste', fallback: '粘贴', shortcut: 'Ctrl+V', action: () => { pasteIntoEditor(); } },
         { type: 'sep' },
         {
             key: 'select_all', labelKey: 'select_all', fallback: '全选', shortcut: 'Ctrl+A',
@@ -2089,6 +2105,31 @@ function showEditorContextMenu(x, y) {
             action: () => { if (window.FindBar) window.FindBar.open(false); }
         },
     ];
+    _renderContextMenu(x, y, items);
+}
+
+// ★ v2.1.3：预览编辑态右键菜单
+//   pywebview 在 debug=False 时关闭了 WebView2 原生右键菜单，
+//   因此 contenteditable 内必须由应用自己提供菜单。
+function showPreviewEditContextMenu(x, y) {
+    savePreviewSelection();
+
+    const items = [
+        { key: 'undo', labelKey: 'undo', fallback: '撤销', shortcut: 'Ctrl+Z', action: () => previewExecCommand('undo') },
+        { key: 'redo', labelKey: 'redo', fallback: '重做', shortcut: 'Ctrl+Y', action: () => previewExecCommand('redo') },
+        { type: 'sep' },
+        { key: 'cut', labelKey: 'cut', fallback: '剪切', shortcut: 'Ctrl+X', action: () => previewExecCommand('cut') },
+        { key: 'copy', labelKey: 'copy', fallback: '复制', shortcut: 'Ctrl+C', action: () => previewExecCommand('copy') },
+        { key: 'paste', labelKey: 'paste', fallback: '粘贴', shortcut: 'Ctrl+V', action: () => { pasteIntoPreviewEditable(); } },
+        { key: 'select_all', labelKey: 'select_all', fallback: '全选', shortcut: 'Ctrl+A', action: () => previewSelectAll() },
+        { type: 'sep' },
+        { key: 'bold', labelKey: 'bold', fallback: '加粗', shortcut: 'Ctrl+B', action: () => previewFormat('bold') },
+        { key: 'italic', labelKey: 'italic', fallback: '斜体', shortcut: 'Ctrl+I', action: () => previewFormat('italic') },
+        { key: 'underline', labelKey: 'underline', fallback: '下划线', shortcut: 'Ctrl+U', action: () => previewFormat('underline') },
+        { key: 'strike', labelKey: 'strikethrough', fallback: '删除线', action: () => previewFormat('strike') },
+        { key: 'clear_format', labelKey: 'clear_format', fallback: '清除格式', action: () => previewFormat('clear') },
+    ];
+
     _renderContextMenu(x, y, items);
 }
 
@@ -2162,7 +2203,19 @@ function setupPreviewContextMenu() {
 
     container.addEventListener('contextmenu', (e) => {
         if (isInsideContentEditable(e.target)) {
+            // ★ v2.1.3：预览编辑态提供应用内右键菜单
+            //   WebView2 原生菜单在 debug=False 时被 pywebview 关闭，
+            //   之前这里直接 return，导致编辑态下完全没有可用菜单。
+            e.preventDefault();
+            e.stopPropagation();
+            if (!isPreviewEditingActive()) return;
+            showPreviewEditContextMenu(e.clientX, e.clientY);
             return;
+        }
+
+        // 右键点击编辑区外：先结束当前预览编辑（与左键点击空白处一致）
+        if (isPreviewEditingActive()) {
+            exitEditable(activeEditableEl);
         }
 
         e.preventDefault();
@@ -2737,6 +2790,31 @@ async function resolveDragConflict(action) {
 // ============================================================
 let _linkClickTimer = null;
 
+// ★ v2.1.3：进入预览编辑前，把 Markdown 渲染出的 <ins>/<del> 换成
+//   浏览器原生格式命令认识的 <u>/<s>。
+//   否则再次点击「下划线 / 删除线」会叠加一层 <u>/<strike>，无法取消。
+//   提交时 domToMarkdown / extractLiInlineText 会还原为 <ins> / ~~。
+function normalizePreviewFormatTags(root) {
+    if (!root || !root.querySelectorAll) return;
+    const map = { ins: 'u', del: 's' };
+    const nodes = root.querySelectorAll('ins, del');
+    for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        if (!node.parentNode) continue;
+        if (node.closest && node.closest('pre')) continue;
+        const tag = node.tagName.toLowerCase();
+        const newTag = map[tag];
+        if (!newTag) continue;
+
+        const repl = document.createElement(newTag);
+        for (let a = 0; a < node.attributes.length; a++) {
+            repl.setAttribute(node.attributes[a].name, node.attributes[a].value);
+        }
+        while (node.firstChild) repl.appendChild(node.firstChild);
+        node.parentNode.replaceChild(repl, node);
+    }
+}
+
 function enterEditable(el, e) {
     if (!el) return;
     if (el.getAttribute('contenteditable') === 'true') return;
@@ -2751,12 +2829,20 @@ function enterEditable(el, e) {
     el.setAttribute('contenteditable', 'true');
     el.classList.add('preview-editing');
     activeEditableEl = el;
+    _previewSavedRange = null;
+
+    // ★ v2.1.3：<ins>/<del> → <u>/<s>，让原生格式命令可以正确切换/取消
+    normalizePreviewFormatTags(el);
 
     // ★ 阶段 16-13：重置输入标记
     _editableHadInput = false;
 
     // ★ 阶段 16-13：监听 input 事件
-    const onInput = () => { _editableHadInput = true; };
+    // ★ v2.1.3：预览编辑期间立即标记为脏，避免关闭窗口时静默丢失内容
+    const onInput = () => {
+        _editableHadInput = true;
+        setDirty(true);
+    };
     el.addEventListener('input', onInput);
     el.__mkInputHandler = onInput;
 
@@ -2856,7 +2942,7 @@ function setupPreviewEditing() {
         try {
             editable.dispatchEvent(new Event('input', { bubbles: true }));
         } catch (err) { /* ignore */ }
-        _editableHadInput = true;
+        markPreviewEditDirty();
     }, true);
 
     previewEl.addEventListener('click', (e) => {
@@ -2966,6 +3052,31 @@ function setupPreviewEditing() {
 
     previewEl.addEventListener('input', () => {
         if (previewComposing) return;
+    });
+
+    // ★ v2.1.3：持续记录预览编辑态选区
+    //   点击菜单栏 / 右键菜单时焦点与选区可能变化，操作前用它恢复目标
+    document.addEventListener('selectionchange', () => {
+        if (!isPreviewEditingActive()) return;
+        const sel = window.getSelection();
+        if (!sel || !sel.rangeCount) return;
+        const node = sel.anchorNode;
+        if (!node) return;
+        try {
+            if (activeEditableEl.contains(node)) {
+                _previewSavedRange = sel.getRangeAt(0).cloneRange();
+            }
+        } catch (e) { /* ignore */ }
+    });
+
+    // ★ v2.1.3：预览编辑态同步工具栏格式按钮状态
+    ['mouseup', 'keyup'].forEach(function (evt) {
+        previewEl.addEventListener(evt, function () {
+            if (isPreviewEditingActive() && window.Toolbar &&
+                typeof window.Toolbar.refresh === 'function') {
+                try { window.Toolbar.refresh(); } catch (e) { /* ignore */ }
+            }
+        }, true);
     });
 
     if (window.setupInlineFormat) {
@@ -3095,6 +3206,450 @@ function insertHtmlAtCursor(html) {
     sel.addRange(range);
 }
 
+// ============================================================
+//  ★ v2.1.3：剪贴板 & 预览编辑态菜单操作
+//
+//  背景：WebView2 下 document.execCommand('paste') 会被 Chromium 拒绝，
+//  navigator.clipboard.readText() 又依赖权限；同时 pywebview 在
+//  debug=False 时关闭了原生右键菜单。因此：
+//    1) 「粘贴」统一走后端 read_clipboard_text() 读取系统剪贴板；
+//    2) 预览编辑态由应用内菜单提供剪切 / 复制 / 粘贴 / 撤销 / 基础格式；
+//    3) 所有操作前先恢复保存的选区，避免点击菜单导致目标丢失。
+// ============================================================
+function isPreviewEditingActive() {
+    return !!(activeEditableEl &&
+        activeEditableEl.getAttribute &&
+        activeEditableEl.getAttribute('contenteditable') === 'true');
+}
+
+function markPreviewEditDirty() {
+    _editableHadInput = true;
+    setDirty(true);
+}
+
+// ---------- 剪贴板 ----------
+async function readClipboardText() {
+    // 1) 后端（Windows 系统剪贴板，最可靠）
+    try {
+        if (window.pywebview && window.pywebview.api &&
+            typeof window.pywebview.api.read_clipboard_text === 'function') {
+            const r = await window.pywebview.api.read_clipboard_text();
+            if (r && r.ok) {
+                return String(r.text == null ? '' : r.text);
+            }
+        }
+    } catch (e) {
+        console.warn('[clipboard] backend read failed', e);
+    }
+
+    // 2) 浏览器 Clipboard API 兜底（可能需要权限）
+    try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+            return await navigator.clipboard.readText();
+        }
+    } catch (e) {
+        console.warn('[clipboard] navigator read failed', e);
+    }
+    return null;
+}
+
+// ---------- 预览编辑态选区保存 / 恢复 ----------
+function getSelectionRangeIn(root) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    if (!root) return range;
+    try {
+        if (root.contains(range.startContainer) && root.contains(range.endContainer)) {
+            return range;
+        }
+    } catch (e) { /* ignore */ }
+    return null;
+}
+
+function savePreviewSelection() {
+    if (!isPreviewEditingActive()) return;
+    const range = getSelectionRangeIn(activeEditableEl);
+    if (range) {
+        try { _previewSavedRange = range.cloneRange(); } catch (e) { /* ignore */ }
+    }
+}
+
+function restorePreviewSelection() {
+    if (!isPreviewEditingActive()) return false;
+    const el = activeEditableEl;
+    try { el.focus({ preventScroll: true }); } catch (e) {
+        try { el.focus(); } catch (e2) { /* ignore */ }
+    }
+
+    const sel = window.getSelection();
+    if (!sel) return false;
+
+    if (_previewSavedRange) {
+        try {
+            if (el.contains(_previewSavedRange.startContainer) &&
+                el.contains(_previewSavedRange.endContainer)) {
+                sel.removeAllRanges();
+                sel.addRange(_previewSavedRange);
+                return true;
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    const current = getSelectionRangeIn(el);
+    if (current) {
+        sel.removeAllRanges();
+        sel.addRange(current);
+        return true;
+    }
+    return false;
+}
+
+// ---------- 编辑器（CodeMirror）剪切 / 复制 / 粘贴 ----------
+function editorExecCommand(cmd) {
+    if (!editorView) return false;
+    try { editorView.focus(); } catch (e) { /* ignore */ }
+    let ok = false;
+    try { ok = document.execCommand(cmd, false, null); } catch (e) {
+        console.warn('[editor exec]', cmd, e);
+    }
+    if (!ok) {
+        setStatus(cmd === 'cut' ? '请先选中要剪切的文字' : '请先选中要复制的文字');
+    }
+    return ok;
+}
+
+function insertTextIntoEditor(text) {
+    if (!editorView) return false;
+    try { editorView.focus(); } catch (e) { /* ignore */ }
+    const sel = editorView.state.selection.main;
+    const from = sel.from;
+    const to = sel.to;
+    editorView.dispatch({
+        changes: { from, to, insert: text },
+        selection: { anchor: from + text.length },
+        annotations: [isolateHistory.of('full')]
+    });
+    return true;
+}
+
+async function pasteIntoEditor() {
+    if (!editorView) return;
+    try {
+        const text = await readClipboardText();
+        if (text == null) {
+            setStatus('无法读取剪贴板内容');
+            return;
+        }
+        if (text.length === 0) {
+            setStatus('剪贴板为空');
+            return;
+        }
+        insertTextIntoEditor(text);
+        setStatus('已粘贴');
+    } catch (e) {
+        console.warn('[paste] editor', e);
+        setStatus('粘贴失败: ' + (e && e.message ? e.message : e));
+    }
+}
+
+// ---------- 预览编辑态插入 ----------
+function insertPlainTextAtSelection(text) {
+    const sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return false;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+    const node = document.createTextNode(text);
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return true;
+}
+
+async function pasteIntoPreviewEditable() {
+    if (!isPreviewEditingActive()) return;
+    const el = activeEditableEl;
+
+    try {
+        const text = await readClipboardText();
+        if (text == null) {
+            setStatus('无法读取剪贴板内容');
+            return;
+        }
+        if (text.length === 0) {
+            setStatus('剪贴板为空');
+            return;
+        }
+
+        // 异步读取期间可能已经退出编辑
+        if (!isPreviewEditingActive() || activeEditableEl !== el) return;
+
+        restorePreviewSelection();
+
+        const tag = (el.tagName || '').toLowerCase();
+        const normalized = text.replace(/\r\n?/g, '\n');
+        let ok = false;
+
+        try {
+            if (tag === 'pre') {
+                ok = document.execCommand('insertText', false, normalized);
+            } else {
+                const html = normalized
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/\n/g, '<br>');
+                ok = document.execCommand('insertHTML', false, html);
+            }
+        } catch (e) {
+            console.warn('[preview paste]', e);
+            ok = false;
+        }
+
+        if (!ok) {
+            ok = insertPlainTextAtSelection(normalized);
+        }
+        if (!ok) {
+            setStatus('粘贴失败：未找到插入位置');
+            return;
+        }
+
+        markPreviewEditDirty();
+        try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) { /* ignore */ }
+        savePreviewSelection();
+        setStatus('已粘贴');
+    } catch (e) {
+        console.warn('[paste] preview', e);
+        setStatus('粘贴失败: ' + (e && e.message ? e.message : e));
+    }
+}
+
+// ---------- 预览编辑态其它编辑命令 ----------
+function previewExecCommand(cmd) {
+    if (!isPreviewEditingActive()) return false;
+    restorePreviewSelection();
+
+    let ok = false;
+    try { ok = document.execCommand(cmd, false, null); } catch (e) {
+        console.warn('[preview exec]', cmd, e);
+    }
+    if (ok) {
+        savePreviewSelection();
+    } else if (cmd === 'cut' || cmd === 'copy') {
+        setStatus(cmd === 'cut' ? '请先选中要剪切的文字' : '请先选中要复制的文字');
+    }
+    return ok;
+}
+
+function previewSelectAll() {
+    if (!isPreviewEditingActive()) return;
+    const el = activeEditableEl;
+    try { el.focus({ preventScroll: true }); } catch (e) { /* ignore */ }
+
+    let range = document.createRange();
+    range.selectNodeContents(el);
+
+    // li 内的嵌套列表是 contenteditable=false 的临时禁用区，
+    // 全选时不要把子列表一起选中（否则剪切会破坏结构）
+    const nested = el.querySelector && el.querySelector('[data-md-tmp-cedisabled="1"]');
+    if (nested && el.contains(nested)) {
+        try {
+            const inlineRange = document.createRange();
+            inlineRange.setStart(el, 0);
+            inlineRange.setEndBefore(nested);
+            range = inlineRange;
+        } catch (e) { /* 保留整体选择 */ }
+    }
+
+    const sel = window.getSelection();
+    if (!sel) return;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    _previewSavedRange = range.cloneRange();
+}
+
+// ---------- 预览编辑态基础格式（加粗 / 斜体 / 下划线 / 删除线 / 清除） ----------
+const PREVIEW_FORMAT_COMMANDS = {
+    bold: 'bold',
+    italic: 'italic',
+    underline: 'underline',
+    strike: 'strikeThrough',
+};
+
+// 去掉选中内容中的内联格式标签，保留文字 / 链接 / 图片 / 脚注引用 / 公式
+function stripInlineFormatHtml(node) {
+    let out = '';
+    const children = node.childNodes;
+    for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        if (child.nodeType === 3) {
+            out += escapeHtmlText(child.nodeValue);
+            continue;
+        }
+        if (child.nodeType !== 1) continue;
+
+        const tag = child.tagName.toLowerCase();
+
+        if (tag === 'br') { out += '<br>'; continue; }
+        if (tag === 'img') { out += child.outerHTML; continue; }
+        if (tag === 'code') {
+            out += '<code>' + escapeHtmlText(child.textContent) + '</code>';
+            continue;
+        }
+        if (tag === 'sup' && child.getAttribute('data-footnote-ref') === '1') {
+            out += child.outerHTML;
+            continue;
+        }
+        if (child.classList &&
+            (child.classList.contains('katex') ||
+             child.classList.contains('math-block'))) {
+            out += child.outerHTML;
+            continue;
+        }
+        if (tag === 'a') {
+            const href = child.getAttribute('href') || '';
+            out += '<a href="' + escapeHtmlAttr(href) + '">' +
+                   stripInlineFormatHtml(child) + '</a>';
+            continue;
+        }
+        out += stripInlineFormatHtml(child);
+    }
+    return out;
+}
+
+function previewClearFormat() {
+    const sel = window.getSelection();
+    const el = activeEditableEl;
+    if (!el || !sel || !sel.rangeCount) return false;
+
+    const range = sel.getRangeAt(0);
+
+    // 光标：清除「后续输入」的格式状态
+    if (range.collapsed) {
+        try { return document.execCommand('removeFormat', false, null); }
+        catch (e) { return false; }
+    }
+
+    const fragment = range.cloneContents();
+    const plainHtml = stripInlineFormatHtml(fragment);
+    if (!plainHtml) return false;
+
+    let ok = false;
+    try { ok = document.execCommand('insertHTML', false, plainHtml); } catch (e) { ok = false; }
+
+    if (!ok) {
+        // 兜底：直接替换选区（不进入原生撤销栈）
+        range.deleteContents();
+        let frag = null;
+        try { frag = range.createContextualFragment(plainHtml); } catch (e) { frag = null; }
+        if (frag) {
+            range.insertNode(frag);
+        } else {
+            range.insertNode(document.createTextNode(fragment.textContent || ''));
+        }
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        ok = true;
+    }
+    return ok;
+}
+
+function previewFormat(kind) {
+    if (!isPreviewEditingActive()) return false;
+    const el = activeEditableEl;
+    if (!el) return false;
+
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag === 'pre') {
+        setStatus('代码块内不支持格式操作');
+        return false;
+    }
+
+    restorePreviewSelection();
+    try { document.execCommand('styleWithCSS', false, false); } catch (e) { /* ignore */ }
+
+    let ok = false;
+    if (kind === 'clear') {
+        ok = previewClearFormat();
+    } else {
+        const cmd = PREVIEW_FORMAT_COMMANDS[kind];
+        if (!cmd) return false;
+        try { ok = document.execCommand(cmd, false, null); } catch (e) {
+            console.warn('[preview format]', e);
+        }
+    }
+
+    if (!ok) {
+        setStatus('格式操作未生效（请先选中文字）');
+        return false;
+    }
+
+    markPreviewEditDirty();
+    try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) { /* ignore */ }
+    savePreviewSelection();
+
+    if (window.Toolbar && typeof window.Toolbar.refresh === 'function') {
+        try { window.Toolbar.refresh(); } catch (e) { /* ignore */ }
+    }
+    return true;
+}
+
+// ---------- 菜单栏统一切口 ----------
+function menuUndo() {
+    if (isPreviewEditingActive()) { previewExecCommand('undo'); return; }
+    onUndo();
+}
+
+function menuRedo() {
+    if (isPreviewEditingActive()) { previewExecCommand('redo'); return; }
+    onRedo();
+}
+
+function menuCut() {
+    if (isPreviewEditingActive()) { previewExecCommand('cut'); return; }
+    editorExecCommand('cut');
+}
+
+function menuCopy() {
+    if (isPreviewEditingActive()) { previewExecCommand('copy'); return; }
+    editorExecCommand('copy');
+}
+
+function menuPaste() {
+    if (isPreviewEditingActive()) { pasteIntoPreviewEditable(); return; }
+    pasteIntoEditor();
+}
+
+function menuSelectAll() {
+    if (isPreviewEditingActive()) { previewSelectAll(); return; }
+    if (!editorView) return;
+    editorView.dispatch({
+        selection: { anchor: 0, head: editorView.state.doc.length }
+    });
+    editorView.focus();
+}
+
+// 在执行「文件 / 模式」类操作前，把预览编辑态的内容先提交到 Markdown
+function commitActivePreviewEdit() {
+    if (!isPreviewEditingActive()) return;
+    const el = activeEditableEl;
+    if (el) exitEditable(el);
+}
+
+// 工具栏 / 其它模块使用的预览编辑态接口
+window.MKPreviewEdit = {
+    isActive: isPreviewEditingActive,
+    saveSelection: savePreviewSelection,
+    restoreSelection: restorePreviewSelection,
+    format: previewFormat,
+    clearFormat: function () { return previewFormat('clear'); },
+    exec: previewExecCommand,
+    selectAll: previewSelectAll,
+};
+
 function startTableCellEdit(cell, e) {
     if (!cell) return;
     if (cell.getAttribute('contenteditable') === 'true') return;
@@ -3106,6 +3661,19 @@ function startTableCellEdit(cell, e) {
     cell.setAttribute('contenteditable', 'true');
     cell.classList.add('preview-editing', 'table-cell-editing');
     activeEditableEl = cell;
+    _previewSavedRange = null;
+
+    // ★ v2.1.3：单元格内同样规范化 <ins>/<del>
+    normalizePreviewFormatTags(cell);
+
+    // ★ v2.1.3：表格单元格编辑同样立即标记为脏
+    const onInput = () => {
+        _editableHadInput = true;
+        setDirty(true);
+    };
+    cell.addEventListener('input', onInput);
+    cell.__mkInputHandler = onInput;
+
     cell.focus();
 
     if (document.caretRangeFromPoint) {
@@ -3302,6 +3870,13 @@ function isInsideContentEditable(node) {
         el = el.parentElement;
     }
     return false;
+}
+
+// ★ v2.1.3：当前 DOM 选区起点节点（用于判断是否处于 contenteditable 内）
+function getSelectionAnchorNode() {
+    const sel = window.getSelection ? window.getSelection() : null;
+    if (!sel || !sel.rangeCount) return null;
+    return sel.anchorNode;
 }
 
 function fragmentToMarkdown(node) {
@@ -3502,10 +4077,23 @@ function setupGlobalKeyboard() {
 
         const k = (e.key || '').toLowerCase();
 
+        // ★ v2.1.3：预览编辑态（contenteditable）交给浏览器原生编辑命令。
+        //   之前这里把 Ctrl+Z / Ctrl+B 等全局拦截，导致：
+        //     - Ctrl+Z 撤销整个 CodeMirror 文档（甚至退回到打开文档之前）；
+        //     - Ctrl+B 变成切换目录而不是加粗。
+        const activeEl = document.activeElement;
+        const editingInPreview =
+            isInsideContentEditable(activeEl) ||
+            isInsideContentEditable(getSelectionAnchorNode());
+        if (editingInPreview && (
+                k === 'z' || k === 'y' || k === 'b' ||
+                k === 'i' || k === 'u')) {
+            return;
+        }
+
         const isUndo = (k === 'z' && !e.shiftKey);
         const isRedo = (k === 'y') || (k === 'z' && e.shiftKey);
         if (isUndo || isRedo) {
-            const activeEl = document.activeElement;
             if (activeEl && activeEl.closest &&
                 (activeEl.closest('#editor') || activeEl.closest('.cm-editor'))) {
                 return;
@@ -3532,9 +4120,8 @@ function setupGlobalKeyboard() {
         }
         if (k === 'w') {
             e.preventDefault();
-            if (window.pywebview && window.pywebview.api) {
-                window.pywebview.api.close_window().catch(() => {});
-            }
+            // ★ v2.1.3：与「退出」一致，先提交预览编辑内容
+            onExit();
             return;
         }
         if (k === '1') { e.preventDefault(); setMode('edit'); return; }
@@ -3594,6 +4181,7 @@ function exitEditable(el) {
     el.setAttribute('contenteditable', 'false');
     el.classList.remove('preview-editing', 'table-cell-editing');
     if (activeEditableEl === el) activeEditableEl = null;
+    _previewSavedRange = null;
     updatePreview();
 }
 
@@ -3704,7 +4292,7 @@ function extractLiInlineText(li) {
             out += '**' + extractLiInlineText(node) + '**';
         } else if (tag === 'em' || tag === 'i') {
             out += '*' + extractLiInlineText(node) + '*';
-        } else if (tag === 'del' || tag === 's') {
+        } else if (tag === 'del' || tag === 's' || tag === 'strike') {
             out += '~~' + extractLiInlineText(node) + '~~';
         } else if (tag === 'ins' || tag === 'u') {
             out += '<ins>' + extractLiInlineText(node) + '</ins>';
@@ -3833,6 +4421,7 @@ function applyPreviewEdit(el) {
 
 // ---------------- 文件 ----------------
 async function onNew() {
+    commitActivePreviewEdit();
     if (isDirty) {
         const ok = await showConfirm(
             T('unsaved_content_title', '未保存的内容'),
@@ -3856,6 +4445,7 @@ async function onNew() {
 }
 
 async function onOpen() {
+    commitActivePreviewEdit();
     const result = await window.pywebview.api.open_file_dialog();
     if (!result.ok) {
         if (!result.cancelled) setStatus('打开失败: ' + (result.error || ''));
@@ -3895,6 +4485,7 @@ async function onOpen() {
 }
 
 async function onSave() {
+    commitActivePreviewEdit();
     if (_forceSaveAsNextTime) {
         _forceSaveAsNextTime = false;
         return await onSaveAs();
@@ -3945,6 +4536,7 @@ async function onSave() {
 }
 
 async function onSaveAs() {
+    commitActivePreviewEdit();
     const result = await window.pywebview.api.save_file_as(getContent());
     if (!result.ok) {
         if (!result.cancelled) setStatus('保存失败: ' + (result.error || ''));
@@ -3993,6 +4585,11 @@ async function onSaveAs() {
 
 // ---------------- 插入图片 ----------------
 async function onInsertImage() {
+    // ★ v2.1.3：预览编辑态禁止插入图片等复杂操作
+    if (isPreviewEditingActive()) {
+        setStatus('请先结束预览编辑（点击空白处或按 Esc），再插入图片');
+        return;
+    }
     try {
         const result = await window.pywebview.api.open_image_picker();
         if (!result || !result.ok) {
@@ -4041,6 +4638,7 @@ function insertImageMarkdown_fromText(mdText, unsaved) {
 
 // ---------------- PDF ----------------
 async function onImportPdf() {
+    commitActivePreviewEdit();
     setStatus('正在导入 PDF...');
     const result = await window.pywebview.api.import_pdf_dialog();
     if (!result.ok) {
@@ -4065,6 +4663,7 @@ async function onImportPdf() {
 }
 
 async function onExportPdf() {
+    commitActivePreviewEdit();
     setStatus('正在导出 PDF...');
     const result = await window.pywebview.api.export_pdf(getContent());
     if (!result.ok) {
@@ -4083,6 +4682,7 @@ async function onExportPdf() {
 async function onExportHtml() {
     if (!editorView) return;
 
+    commitActivePreviewEdit();
     setStatus(T('exporting_html', '正在导出 HTML...'));
 
     try {
@@ -4130,6 +4730,7 @@ async function onExportHtml() {
 }
 
 async function onImportHtml() {
+    commitActivePreviewEdit();
     setStatus(T('importing_html', '正在导入 HTML...'));
     try {
         const r = await window.pywebview.api.import_html_dialog();

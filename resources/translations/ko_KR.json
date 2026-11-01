@@ -103,6 +103,7 @@
     "underline": "밑줄",
     "underline_hint": "밑줄",
     "strikethrough": "취소선",
+    "clear_format": "서식 지우기",
     "quote": "인용",
     "quote_placeholder": "인용 내용",
     "inline_code": "인라인 코드",
