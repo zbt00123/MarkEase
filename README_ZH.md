@@ -4,7 +4,7 @@
 
 [![Release](https://img.shields.io/github/v/release/zbt00123/MarkEase)](https://github.com/zbt00123/MarkEase/releases) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
 
-中文 | <a href="https://README.md">English</a>
+中文 | [English](README.md)
 
 > ⚠️ **Windows SmartScreen / 杀毒软件提示**
 > 发布包目前**尚未进行代码签名**，首次运行时可能看到「Windows 已保护你的电脑」：
