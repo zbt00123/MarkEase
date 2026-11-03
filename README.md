@@ -8,7 +8,7 @@ English | [中文](README_ZH.md)
 
 > ⚠️ **Windows SmartScreen / Antivirus Warning**
 > Release packages are currently **not code-signed**. On first run you may see "Windows protected your PC":
-> Click "More info → Run anyway" (see "Code signing policy" below for signing application details).
+> Click "More info → Run anyway".
 > This program uses WebView2 for rendering and has disabled its background network and component updates at startup. If your antivirus flags it as a false positive, please add `MarkEase.exe` to your trust list.
 
 ---
@@ -168,17 +168,14 @@ python main.py
 
 ---
 
-## 🔏 Code signing policy
+## 🔐 Privacy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+MarkEase does not collect or upload any user data. Network access occurs only when you actively perform an action or during program self-checks:
 
-- Committers and reviewers: [@zbt00123](https://github.com/zbt00123)
-- Approvers: [@zbt00123](https://github.com/zbt00123)
-- Privacy: MarkEase does not collect or upload any user data. Network access occurs only when you actively perform an action or during program self-checks:
-  - When you actively insert / open a network image, it is downloaded via the built-in `/proxy` using that image URL;
-  - When you actively "Insert Link," the target webpage title is fetched;
-  - Every 30 days, a check for updates is made to GitHub Releases (a single HTTPS request, containing no personal information),
-    which can also be manually triggered via "Help → Check for Updates."
+- When you actively insert / open a network image, it is downloaded via the built-in `/proxy` using that image URL;
+- When you actively "Insert Link," the target webpage title is fetched;
+- Every 30 days, a check for updates is made to GitHub Releases (a single HTTPS request, containing no personal information),
+  which can also be manually triggered via "Help → Check for Updates."
 
 ---
 
