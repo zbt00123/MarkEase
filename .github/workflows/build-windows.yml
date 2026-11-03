@@ -1,10 +1,12 @@
 name: Build Windows portable
 
 # 说明：
-#   - SignPath Foundation 要求「被签名的二进制必须由仓库中的 CI 配置、在 GitHub 托管
-#     runner 上从源码构建」。本工作流就是那个可验证的构建入口。
-#   - 目前只产出未签名 zip；申请通过后，取消注释最后一段即可提交签名。
+#   - 这是 MarkEase 的 Windows 便携版 CI 构建入口：在 GitHub 托管的
+#     windows-latest 上从源码构建，并产出可分发的 zip。
 #   - 触发：手动 workflow_dispatch，或推送 v* 标签。
+#   - 所有 action 均使用 Node 24 运行时（v7 系列），避免 Node 20 弃用警告。
+#   - 如后续接入代码签名（SignPath / Azure Trusted Signing）或 Microsoft Store
+#     打包，在 Upload 之后追加对应步骤即可。
 
 on:
   workflow_dispatch:
@@ -21,10 +23,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.14'
           cache: 'pip'
@@ -65,34 +67,11 @@ jobs:
 
       - name: Upload unsigned artifact
         id: upload-unsigned
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: markease-unsigned
           path: out/*.zip
           if-no-files-found: error
 
-      # =====================================================================
-      # 申请通过后启用：交给 SignPath 签名（需要先安装 SignPath GitHub App）
-      # 需要的仓库配置：
-      #   secrets.SIGNPATH_API_TOKEN  —— SignPath 用户 API Token（有 submitter 权限）
-      #   vars.SIGNPATH_ORG_ID        —— SignPath 组织 ID
-      #   project-slug / signing-policy-slug / artifact-configuration-slug
-      #   按你在 SignPath 控制台创建的名称填写
-      # =====================================================================
-      # - name: Submit signing request
-      #   uses: signpath/github-action-submit-signing-request@v3
-      #   with:
-      #     api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-      #     organization-id: ${{ vars.SIGNPATH_ORG_ID }}
-      #     project-slug: markease
-      #     signing-policy-slug: release-signing
-      #     artifact-configuration-slug: markease-portable
-      #     github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
-      #     wait-for-completion: true
-      #     output-artifact-directory: signed
-      #
-      # - name: Upload signed artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: markease-signed
-      #     path: signed/*.zip
+      # 后续如需代码签名（SignPath / Azure Trusted Signing）或 Microsoft Store 打包，
+      # 在这里追加对应步骤；当前只产出未签名便携包。
