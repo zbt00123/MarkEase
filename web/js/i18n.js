@@ -45,6 +45,7 @@
         check_update: '检查更新',
         close: '关闭',
         cancel: '取消',
+        discard: '不保存',
         later: '稍后',
         open_download_page: '打开发布页',
         update_notes: '更新内容',
@@ -84,6 +85,11 @@
         words: '字数',
         lines: '行数',
         ok: '确定',
+
+        // ★ 关闭未保存文档提示
+        unsaved_content_title: '未保存的内容',
+        unsaved_message: '当前文档有未保存的修改，是否保存？',
+        recovered_after_crash: '界面异常后已恢复编辑内容',
 
         // ★ v2.1.2：帮助菜单 - 日志
         logs: '日志',

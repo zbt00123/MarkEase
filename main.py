@@ -59,7 +59,7 @@ def _read_version_from_version_info():
 
 
 # 前端 BUILD_TAG（与 web/js/render.js 保持一致；仅作日志标识）
-_RENDER_BUILD_TAG = 'render-v23'
+_RENDER_BUILD_TAG = 'render-v24'
 
 
 def _init_logging_early():
@@ -482,6 +482,146 @@ def _start_hang_watchdog(window, timeout_sec=10, check_interval=2):
                thread_name='MarkEaseWatchdog')
 
 
+# 应用正在关闭时，忽略 WebView2 的进程退出事件（避免退出时误 reload / 误报错误）
+_APP_SHUTTING_DOWN = False
+
+# WebView2 进程崩溃恢复状态（模块级持有，避免 handler 被 GC）
+_WEBVIEW2_RECOVERY_STATE = {
+    'installing': False,
+    'installed': False,
+    'handler': None,
+    'reloads': [],
+}
+
+
+def _install_webview2_process_failed_recovery(window, api):
+    """
+    监听 WebView2 的 ProcessFailed 事件。
+
+    背景：WebView2 的 renderer / GPU 进程偶发崩溃时，WinForms 窗口仍然存在，
+    但 WebView2 内容区会永久空白，Python 侧没有任何异常。用户关闭重开才恢复。
+    这里在 renderer / GPU 失效后自动 Reload 一次（限频），并让前端通过
+    take_recovery_state 恢复后端保存的最新编辑内容。
+    """
+    state = _WEBVIEW2_RECOVERY_STATE
+    if state.get('installed') or state.get('installing'):
+        return
+    state['installing'] = True
+
+    def _attach_on_ui():
+        try:
+            native = window.native
+            wv = getattr(native, 'webview', None)
+            core = getattr(wv, 'CoreWebView2', None) if wv is not None else None
+        except Exception as e:
+            state['installing'] = False
+            print(f'[MarkEase][webview2] recovery: cannot access core: {e}')
+            _log_error('webview2_recovery_core_failed',
+                       'Cannot access WebView2 CoreWebView2',
+                       exception=e)
+            return
+
+        if core is None:
+            state['installing'] = False
+            print('[MarkEase][webview2] recovery: CoreWebView2 is None')
+            _log_error('webview2_recovery_core_none',
+                       'CoreWebView2 is None; skip crash recovery')
+            return
+
+        def on_process_failed(sender, args):
+            try:
+                kind = str(getattr(args, 'ProcessFailedKind', 'unknown'))
+            except Exception:
+                kind = 'unknown'
+
+            if _APP_SHUTTING_DOWN:
+                return
+
+            print(f'[MarkEase][webview2] process failed: {kind}')
+            _log_error('webview2_process_failed',
+                       'WebView2 process failed',
+                       kind=kind)
+
+            # Browser process 退出后 CoreWebView2 已不可用，Reload 无法恢复
+            if kind == 'BrowserProcessExited':
+                _log_error('webview2_browser_process_exited',
+                           'WebView2 browser process exited; reload impossible',
+                           kind=kind)
+                return
+
+            # 只有真正会让内容区空白的进程类型才自动 reload
+            recoverable = (
+                'RenderProcessExited',
+                'RenderProcessUnresponsive',
+                'GpuProcessExited',
+            )
+            if kind not in recoverable:
+                _log_event('webview2_process_failed_ignored',
+                           'Non-recoverable WebView2 process failure kind',
+                           kind=kind)
+                return
+
+            now = time.monotonic()
+            state['reloads'] = [
+                t for t in state['reloads'] if now - t < 60.0
+            ]
+            if len(state['reloads']) >= 3:
+                print('[MarkEase][webview2] recovery: too many reloads, stop')
+                _log_error('webview2_recovery_gave_up',
+                           'WebView2 crashed repeatedly; stop auto reload',
+                           kind=kind,
+                           reloads_within_60s=len(state['reloads']))
+                return
+            state['reloads'].append(now)
+
+            try:
+                # 标记恢复：reload 后前端会调用 take_recovery_state 恢复内容
+                try:
+                    api._recovery_pending = True
+                except Exception:
+                    pass
+                sender.Reload()
+                print(f'[MarkEase][webview2] reloaded after {kind}')
+                _log_event('webview2_reload_after_failure',
+                           'WebView2 reloaded after process failure',
+                           kind=kind,
+                           reload_count=len(state['reloads']))
+            except Exception as e:
+                print(f'[MarkEase][webview2] reload failed: {e}')
+                _log_error('webview2_reload_failed',
+                           'Reload after WebView2 process failure raised',
+                           exception=e, kind=kind)
+
+        try:
+            core.ProcessFailed += on_process_failed
+            state['handler'] = on_process_failed
+            state['installed'] = True
+            state['installing'] = False
+            print('[MarkEase][webview2] crash recovery installed')
+            _log_event('webview2_recovery_installed',
+                       'WebView2 ProcessFailed recovery installed')
+        except Exception as e:
+            state['installing'] = False
+            print(f'[MarkEase][webview2] recovery install failed: {e}')
+            _log_error('webview2_recovery_install_failed',
+                       'Failed to subscribe WebView2 ProcessFailed',
+                       exception=e)
+
+    def _attach():
+        try:
+            from System import Action
+            window.native.Invoke(Action(_attach_on_ui))
+        except Exception as e:
+            state['installing'] = False
+            print(f'[MarkEase][webview2] recovery attach failed: {e}')
+            _log_error('webview2_recovery_attach_failed',
+                       'Failed to marshal recovery attach to UI thread',
+                       exception=e)
+
+    threading.Thread(target=_attach, daemon=True,
+                     name='MarkEaseWebView2Recovery').start()
+
+
 def main():
     _log_event('main_enter', 'main() started',
                argv_count=len(sys.argv))
@@ -576,8 +716,10 @@ def main():
     def on_closing():
         # ★ 修复死锁：不能在 closing 回调里同步调用 evaluate_js。
         #   改用独立线程 + 小延迟异步通知前端弹窗。
+        global _APP_SHUTTING_DOWN
         try:
             if api._force_close:
+                _APP_SHUTTING_DOWN = True
                 _log_event('closing_force',
                            'closing event: force_close=True; allow')
                 return True
@@ -602,9 +744,11 @@ def main():
                 t = threading.Thread(target=_notify_frontend, daemon=True)
                 t.start()
                 return False  # 取消本次关闭
+            _APP_SHUTTING_DOWN = True
             _log_event('closing_clean',
                        'closing event: clean state; allow')
         except Exception as e:
+            _APP_SHUTTING_DOWN = True
             print(f'[MarkEase] on_closing error: {e}')
             _log_error('on_closing_error',
                        'Unexpected error inside on_closing',
@@ -612,6 +756,8 @@ def main():
         return True
 
     def on_closed():
+        global _APP_SHUTTING_DOWN
+        _APP_SHUTTING_DOWN = True
         _log_event('window_closed', 'Window closed event received')
         try:
             api.close_all_pickers()
@@ -626,6 +772,16 @@ def main():
                        'api._asset_server.stop raised',
                        exception=e)
 
+    def on_loaded():
+        try:
+            _install_webview2_process_failed_recovery(window, api)
+        except Exception as e:
+            print(f'[MarkEase][webview2] recovery hook failed: {e}')
+            _log_error('webview2_recovery_hook_failed',
+                       'on_loaded recovery hook raised',
+                       exception=e)
+
+    window.events.loaded += on_loaded
     window.events.closing += on_closing
     window.events.closed += on_closed
 

@@ -39,6 +39,7 @@
     "ja_JP": "日本語",
     "saved": "已保存",
     "unsaved": "未保存",
+    "recovered_after_crash": "界面异常后已恢复编辑内容",
     "words": "字数",
     "lines": "行数",
     "zoom": "缩放",

@@ -72,7 +72,12 @@
             'data-footnote-backref': 1,
             'role': 1, 'aria-label': 1,
         },
-        'img':   { 'src': 1, 'alt': 1, 'title': 1, 'width': 1, 'height': 1 },
+        'img':   {
+            'src': 1, 'alt': 1, 'title': 1, 'width': 1, 'height': 1,
+            // ★ 保存渲染前的原始 src / alt，供预览编辑回写 Markdown
+            'data-md-src': 1,
+            'data-md-alt': 1,
+        },
         'input': { 'type': 1, 'checked': 1, 'disabled': 1 },
         'td':    { 'align': 1, 'colspan': 1, 'rowspan': 1 },
         'th':    { 'align': 1, 'colspan': 1, 'rowspan': 1 },

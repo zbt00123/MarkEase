@@ -2751,6 +2751,10 @@
         ensureLinkModalBuilt();
         if (!_linkModal) return;
 
+        // ★ 记录当前选区：无论从工具栏按钮还是“更多”溢出菜单进入，
+        //   都能把选中的文字自动填进「名称」，并在插入时替换该选区。
+        saveCurrentSelection();
+
         const urlInput = _linkModal.querySelector('.tb-link-url');
         const nameInput = _linkModal.querySelector('.tb-link-name');
         const iconCheck = _linkModal.querySelector('.tb-link-icon');
@@ -2787,11 +2791,22 @@
             .replace(/"/g, '&quot;');
     }
 
-    function escapeTextContent(s) {
-        return String(s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+    // Markdown 链接文字转义：防止选中的文字里出现 [ ] \ < > 破坏链接结构
+    function escapeMdLinkText(s) {
+        return String(s == null ? '' : s)
+            .replace(/[\\\[\]<>]/g, '\\$&');
+    }
+
+    // Markdown 链接地址：含空白 / 括号 / 尖括号时用 <...> 包裹，避免截断
+    function escapeMdLinkUrl(url) {
+        if (!/[\s()<>]/.test(url)) return url;
+        const safe = String(url)
+            .replace(/</g, '%3C')
+            .replace(/>/g, '%3E')
+            .replace(/\s/g, function (ch) {
+                return encodeURIComponent(ch);
+            });
+        return '<' + safe + '>';
     }
 
     function ensureLinkModalBuilt() {
@@ -2955,20 +2970,24 @@ body.dark .tb-link-modal-actions .tb-link-confirm { background: #1f6feb; color: 
         if (!view || !_IH) return;
         restoreSavedSelection();
 
-        let normalizedUrl = url;
-        if (!/^[a-z]+:\/\//i.test(normalizedUrl) && !/^mailto:/i.test(normalizedUrl)) {
+        let normalizedUrl = String(url || '').trim();
+        if (!normalizedUrl) return;
+
+        // 没有协议（http:// / https:// / mailto: / tel: 等）时补 https://
+        if (!/^[a-z][a-z0-9+.-]*:/i.test(normalizedUrl)) {
             normalizedUrl = 'https://' + normalizedUrl;
         }
 
-        const safeUrl = escapeAttr(normalizedUrl);
-        const safeName = escapeTextContent(name);
+        const linkText = String(name || '').trim() || normalizedUrl;
+        const safeName = escapeMdLinkText(linkText);
+        const safeUrl = escapeMdLinkUrl(normalizedUrl);
 
-        let linkMd;
-        if (iconHtml) {
-            linkMd = '<a href="' + safeUrl + '">' + iconHtml + safeName + '</a>';
-        } else {
-            linkMd = '<a href="' + safeUrl + '">' + safeName + '</a>';
-        }
+        // ★ 使用标准 Markdown 链接语法：[文字](地址)
+        //   “显示网站图标”时图标作为链接文字里的内联 HTML 保留，
+        //   图标与网站名称之间补一个空格：
+        //   [<img src="..." ...> 文字](地址)
+        const iconPrefix = iconHtml ? iconHtml + ' ' : '';
+        const linkMd = '[' + iconPrefix + safeName + '](' + safeUrl + ')';
 
         const state = view.state;
         const range = state.selection.main;

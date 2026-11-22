@@ -564,6 +564,8 @@ class Api:
         # ★ 新增：关闭前的未保存检查状态
         self._is_dirty = False
         self._force_close = False
+        # ★ WebView2 进程异常 reload 后，前端取一次恢复内容
+        self._recovery_pending = False
 
     def set_window(self, window):
         self._window = window
@@ -1784,6 +1786,43 @@ class Api:
     def update_content(self, content):
         self._current_content = content
         return True
+
+    def take_recovery_state(self):
+        """
+        WebView2 renderer/GPU 进程异常、页面自动 reload 后，由前端调用一次：
+        返回后端保存的最新编辑内容，并清除恢复标记。
+        正常启动时直接返回 ok=False，不影响任何逻辑。
+        """
+        try:
+            if not self._recovery_pending:
+                return {'ok': False}
+            self._recovery_pending = False
+
+            path = self._current_file or ''
+            doc_dir = ''
+            if path:
+                try:
+                    doc_dir = os.path.dirname(os.path.abspath(path))
+                except Exception:
+                    doc_dir = ''
+
+            print('[MarkEase][recovery] frontend took recovery state: '
+                  'path=%s dirty=%s len=%s'
+                  % (path or '<none>', bool(self._is_dirty),
+                     len(self._current_content or '')))
+
+            return {
+                'ok': True,
+                'content': self._current_content or '',
+                'path': path,
+                'doc_dir': doc_dir,
+                'dirty': bool(self._is_dirty),
+            }
+        except Exception as e:
+            _log_error('take_recovery_state_failed',
+                       'take_recovery_state raised',
+                       exception=e)
+            return {'ok': False, 'error': str(e)}
 
     # ---------- PDF ----------
     def import_pdf_dialog(self):

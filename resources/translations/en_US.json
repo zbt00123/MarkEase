@@ -39,6 +39,7 @@
     "ja_JP": "日本語",
     "saved": "Saved",
     "unsaved": "Unsaved",
+    "recovered_after_crash": "Recovered unsaved content after a UI error",
     "words": "Words",
     "lines": "Lines",
     "zoom": "Zoom",

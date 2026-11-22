@@ -462,6 +462,7 @@ def _embed_images_in_html(html, doc_dir, stats):
 # ============================================================
 
 def _strip_dark_media(css_text):
+    """删除 CSS 中所有 @media (prefers-color-scheme: dark) { ... } 块。"""
     if not css_text:
         return css_text
 
@@ -502,6 +503,73 @@ def _strip_dark_media(css_text):
         i = k
 
     return ''.join(result)
+
+
+# ★ 浅色媒体查询匹配（github-markdown.css 把浅色变量放在这里）
+LIGHT_MEDIA_RE = re.compile(
+    r'@media\s*\(\s*prefers-color-scheme\s*:\s*light\s*\)',
+    re.IGNORECASE
+)
+
+
+def _unwrap_light_media(css_text):
+    """
+    把 @media (prefers-color-scheme: light) { ... } 解包为无条件规则。
+
+    导出的 HTML 本身强制浅色主题（<meta name="color-scheme" content="light only">）。
+    但 github-markdown.css 的浅色 CSS 变量（--color-border-default 等）定义在
+    @media (prefers-color-scheme: light) 里：当阅读端浏览器 / 系统为深色模式时，
+    该媒体查询不匹配，变量全部未定义，表格边框、标题下划线等
+    `border: 1px solid var(--color-border-default)` 声明会整体失效。
+    因此导出时必须把浅色块解包，让浅色变量在任何系统主题下都生效。
+    """
+    if not css_text:
+        return css_text
+
+    result = []
+    i = 0
+    n = len(css_text)
+
+    while i < n:
+        m = LIGHT_MEDIA_RE.search(css_text, i)
+        if not m:
+            result.append(css_text[i:])
+            break
+
+        result.append(css_text[i:m.start()])
+
+        j = m.end()
+        while j < n and css_text[j] in ' \t\n\r':
+            j += 1
+
+        if j >= n or css_text[j] != '{':
+            # 不是合法的媒体块，保留原文继续
+            result.append(css_text[m.start():m.end()])
+            i = m.end()
+            continue
+
+        depth = 1
+        k = j + 1
+        while k < n and depth > 0:
+            if css_text[k] == '{':
+                depth += 1
+            elif css_text[k] == '}':
+                depth -= 1
+            k += 1
+
+        # 解包：只保留媒体查询内部规则（去掉外层 @media 包裹）
+        if depth == 0:
+            result.append(css_text[j + 1:k - 1])
+        else:
+            result.append(css_text[j + 1:])
+        i = k
+
+    return ''.join(result)
+
+
+def _normalize_export_css(css_text):
+    """导出 HTML 前统一 CSS：删除深色媒体块 + 解包浅色媒体块。"""
+    return _unwrap_light_media(_strip_dark_media(css_text))
 
 
 # ============================================================
@@ -550,9 +618,39 @@ def _inline_katex_fonts(css_text, fonts_dir):
 # ============================================================
 
 BASE_CSS = '''
+/* ===== GitHub 浅色主题变量兜底 =====
+   导出 HTML 强制浅色；表格边框、标题下划线等依赖
+   --color-border-default / --color-border-muted。
+   即使 github-markdown.css 缺失或阅读端为深色系统主题，这里也能保证边框可见。 */
+.markdown-body {
+    --color-fg-default: #1f2328;
+    --color-fg-muted: #656d76;
+    --color-fg-subtle: #6e7781;
+    --color-canvas-default: #ffffff;
+    --color-canvas-subtle: #f6f8fa;
+    --color-border-default: #d0d7de;
+    --color-border-muted: #d8dee4;
+    --color-neutral-muted: rgba(175, 184, 193, 0.2);
+    --color-accent-fg: #0969da;
+    --color-accent-emphasis: #0969da;
+    --color-success-fg: #1a7f37;
+    --color-success-emphasis: #1f883d;
+    --color-attention-fg: #9a6700;
+    --color-attention-emphasis: #9a6700;
+    --color-attention-subtle: #fff8c5;
+    --color-danger-fg: #d1242f;
+    --color-danger-emphasis: #cf222e;
+    --color-done-fg: #8250df;
+    --color-done-emphasis: #8250df;
+    --base-size-8: 8px;
+    --base-size-16: 16px;
+}
 * { box-sizing: border-box; }
 img { max-width: 100%; height: auto; }
 hr { border: none; border-top: 1px solid #d0d7de; margin: 24px 0; }
+.markdown-body table { border-collapse: collapse; }
+.markdown-body table th,
+.markdown-body table td { border: 1px solid #d0d7de; }
 '''
 
 
@@ -601,10 +699,13 @@ body {{
     color: #1f2328 !important;
     color-scheme: light only !important;
 }}
-.markdown-body table,
+.markdown-body table {{
+    background: #ffffff;
+    color: #1f2328;
+}}
+/* 单元格不设背景，让奇数行白 / 偶数行灰的斑马纹透出来（与预览一致） */
 .markdown-body table th,
 .markdown-body table td {{
-    background: #ffffff;
     color: #1f2328;
 }}
 .markdown-body table tr {{
@@ -720,11 +821,16 @@ ul.contains-task-list, ol.contains-task-list {{
         background: #ffffff !important;
         color: #1f2328 !important;
     }}
-    .markdown-body table,
-    .markdown-body table th,
-    .markdown-body table td {{
+    .markdown-body table {{
         background: #ffffff !important;
         color: #1f2328 !important;
+    }}
+    .markdown-body table th,
+    .markdown-body table td {{
+        color: #1f2328 !important;
+    }}
+    .markdown-body table tr {{
+        background: #ffffff !important;
     }}
     .markdown-body table tr:nth-child(2n) {{
         background: #f6f8fa !important;
@@ -815,7 +921,7 @@ def export_html(
             if os.path.isfile(gm_path):
                 try:
                     raw = _read_text(gm_path)
-                    github_md_css = _strip_dark_media(raw)
+                    github_md_css = _normalize_export_css(raw)
                 except Exception:
                     github_md_css = ''
 
@@ -823,7 +929,7 @@ def export_html(
             if os.path.isfile(hl_path):
                 try:
                     raw = _read_text(hl_path)
-                    highlight_css = _strip_dark_media(raw)
+                    highlight_css = _normalize_export_css(raw)
                 except Exception:
                     highlight_css = ''
 
@@ -831,7 +937,7 @@ def export_html(
             if os.path.isfile(katex_path):
                 try:
                     raw = _read_text(katex_path)
-                    raw = _strip_dark_media(raw)
+                    raw = _normalize_export_css(raw)
                     katex_css = _inline_katex_fonts(raw, fonts_dir)
                 except Exception:
                     katex_css = ''

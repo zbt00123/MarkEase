@@ -142,6 +142,7 @@ const tocListEl = document.getElementById('toc-list');
 let pendingDragConflict = null;
 
 let _forceSaveAsNextTime = false;
+let _recoveryNoticePending = false;
 let _openedOriginalContent = '';
 let _openedFilePath = '';
 
@@ -460,6 +461,7 @@ window.addEventListener('pywebviewready', async () => {
         initZoomBar();
 
         await openStartupFileIfAny();
+        await restoreRecoveryStateIfAny();
 
         _openedOriginalContent = getContent();
         _openedFilePath = currentFile || '';
@@ -476,6 +478,10 @@ window.addEventListener('pywebviewready', async () => {
             window.MenuBar.refreshI18n();
         }
         setStatus(T('ready', '就绪'));
+        if (_recoveryNoticePending) {
+            _recoveryNoticePending = false;
+            setStatus(T('recovered_after_crash', '界面异常后已恢复编辑内容'));
+        }
         console.log('[MarkEase] 初始化完成');
 
         if (window.__markEaseSplashFallback) {
@@ -527,6 +533,36 @@ window.addEventListener('pywebviewready', async () => {
         } catch (e) { /* ignore */ }
     }
 });
+
+// ★ WebView2 进程异常、页面自动 reload 后，从后端恢复最近编辑内容
+async function restoreRecoveryStateIfAny() {
+    if (!(window.pywebview && window.pywebview.api &&
+          window.pywebview.api.take_recovery_state)) {
+        return;
+    }
+    try {
+        const r = await window.pywebview.api.take_recovery_state();
+        if (!r || !r.ok) return;
+
+        const content = r.content == null ? '' : String(r.content);
+        if (!content && !r.path) return;
+
+        currentFile = r.path || '';
+        currentDocDir = r.doc_dir
+            ? String(r.doc_dir)
+            : (currentFile ? currentFile.replace(/[\\/][^\\/]+$/, '') : '');
+        syncGlobalFileState();
+
+        setContent(content);
+        setFilePathDisplay(currentFile || '');
+        setDirty(!!r.dirty);
+        _recoveryNoticePending = true;
+        setStatus(T('recovered_after_crash', '界面异常后已恢复编辑内容'));
+        console.log('[recovery] restored after WebView2 failure');
+    } catch (e) {
+        console.warn('[recovery] restore failed', e);
+    }
+}
 
 async function openStartupFileIfAny() {
     if (!(window.pywebview && window.pywebview.api &&
@@ -4236,7 +4272,8 @@ function extractLiInlineText(li) {
     for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i];
         if (node.nodeType === 3) {
-            out += node.nodeValue;
+            // ★ 与 domToMarkdown 保持一致：&nbsp; 还原为普通空格
+            out += node.nodeValue.replace(/\u00a0/g, ' ');
             continue;
         }
         if (node.nodeType !== 1) continue;
@@ -4264,47 +4301,75 @@ function extractLiInlineText(li) {
             out += '\n';
         } else if (tag === 'img') {
             const src = node.getAttribute('src') || '';
-            const alt = node.getAttribute('alt') || '';
-            let realSrc = src;
-            if (/^http:\/\/127\.0\.0\.1:\d+\/proxy\?url=/i.test(src)) {
-                try {
-                    realSrc = decodeURIComponent(src.replace(
-                        /^http:\/\/127\.0\.0\.1:\d+\/proxy\?url=/i, ''));
-                } catch (e) { /* 保留 */ }
-            } else if (/^http:\/\/127\.0\.0\.1:\d+\/fs\//i.test(src)) {
-                try {
-                    realSrc = decodeURIComponent(src.replace(
-                        /^http:\/\/127\.0\.0\.1:\d+\/fs\//i, ''));
-                } catch (e) { /* 保留 */ }
-            } else if (/^file:\/\//i.test(src)) {
-                try {
-                    realSrc = decodeURIComponent(src.replace(
-                        /^file:\/\/\/?/i, ''));
-                } catch (e) { /* 保留 */ }
+            const width = node.getAttribute('width') || '';
+            const height = node.getAttribute('height') || '';
+
+            // ★ 与 domToMarkdown 一致：优先使用渲染时保存的原始 src / alt
+            const mdSrc = node.getAttribute('data-md-src');
+            const mdAlt = node.getAttribute('data-md-alt');
+            const alt = mdAlt !== null ? mdAlt : (node.getAttribute('alt') || '');
+            let realSrc = mdSrc || src;
+
+            if (!mdSrc) {
+                if (/^http:\/\/127\.0\.0\.1:\d+\/proxy\?url=/i.test(src)) {
+                    try {
+                        realSrc = decodeURIComponent(src.replace(
+                            /^http:\/\/127\.0\.0\.1:\d+\/proxy\?url=/i, ''));
+                    } catch (e) { /* 保留 */ }
+                } else if (/^http:\/\/127\.0\.0\.1:\d+\/fs\//i.test(src)) {
+                    try {
+                        realSrc = decodeURIComponent(src.replace(
+                            /^http:\/\/127\.0\.0\.1:\d+\/fs\//i, ''));
+                    } catch (e) { /* 保留 */ }
+                } else if (/^file:\/\//i.test(src)) {
+                    try {
+                        realSrc = decodeURIComponent(src.replace(
+                            /^file:\/\/\/?/i, ''));
+                    } catch (e) { /* 保留 */ }
+                }
             }
-            if (/[\s()<>]/.test(realSrc) && !realSrc.startsWith('<')) {
-                realSrc = '<' + realSrc + '>';
+            if (width || height) {
+                // 带尺寸的图标图片：与 domToMarkdown 保持一致，输出内联 HTML
+                let attrs = ' src="' + String(realSrc).replace(/"/g, '&quot;') + '"';
+                if (alt || mdAlt !== null) {
+                    attrs += ' alt="' + String(alt).replace(/"/g, '&quot;') + '"';
+                }
+                if (width) attrs += ' width="' + String(width).replace(/"/g, '&quot;') + '"';
+                if (height) attrs += ' height="' + String(height).replace(/"/g, '&quot;') + '"';
+                out += '<img' + attrs + '>';
+            } else {
+                if (/[\s()<>]/.test(realSrc) && !realSrc.startsWith('<')) {
+                    realSrc = '<' + realSrc + '>';
+                }
+                out += '![' + alt + '](' + realSrc + ')';
             }
-            out += '![' + alt + '](' + realSrc + ')';
         } else if (tag === 'code') {
-            out += '`' + node.textContent + '`';
+            if (node.textContent) out += '`' + node.textContent + '`';
         } else if (tag === 'strong' || tag === 'b') {
-            out += '**' + extractLiInlineText(node) + '**';
+            const inner = extractLiInlineText(node);
+            if (inner) out += '**' + inner + '**';
         } else if (tag === 'em' || tag === 'i') {
-            out += '*' + extractLiInlineText(node) + '*';
+            const inner = extractLiInlineText(node);
+            if (inner) out += '*' + inner + '*';
         } else if (tag === 'del' || tag === 's' || tag === 'strike') {
-            out += '~~' + extractLiInlineText(node) + '~~';
+            const inner = extractLiInlineText(node);
+            if (inner) out += '~~' + inner + '~~';
         } else if (tag === 'ins' || tag === 'u') {
-            out += '<ins>' + extractLiInlineText(node) + '</ins>';
+            const inner = extractLiInlineText(node);
+            if (inner) out += '<ins>' + inner + '</ins>';
         } else if (tag === 'a') {
+            // ★ 图标链接也还原为 Markdown：[<img ...> 名称](地址)
             const href = node.getAttribute('href') || '';
             const txt = extractLiInlineText(node);
-            if (node.querySelector('img')) {
-                out += '<a href="' + href + '">' + txt + '</a>';
-            } else if (href) {
-                out += '[' + txt + '](' + href + ')';
-            } else {
+            if (!href) {
                 out += txt;
+            } else {
+                const title = node.getAttribute('title');
+                if (title) {
+                    out += '[' + txt + '](' + href + ' "' + title + '")';
+                } else {
+                    out += '[' + txt + '](' + href + ')';
+                }
             }
         } else if (tag === 'sup' && node.getAttribute('data-footnote-ref') === '1') {
             const idx = node.getAttribute('data-footnote-index') || '';
@@ -4484,6 +4549,8 @@ async function onOpen() {
     _forceSaveAsNextTime = false;
 }
 
+// ★ 返回 true 表示文档已写入 Markdown 文件；
+//   取消保存 / 保存失败 / 只导出了 PDF 都返回 false（关闭流程会保持窗口打开）。
 async function onSave() {
     commitActivePreviewEdit();
     if (_forceSaveAsNextTime) {
@@ -4494,7 +4561,7 @@ async function onSave() {
     const result = await window.pywebview.api.save_file(getContent());
     if (!result.ok) {
         if (!result.cancelled) setStatus('保存失败: ' + (result.error || ''));
-        return;
+        return false;
     }
     if (result.path && result.path.toLowerCase().endsWith('.pdf')) {
         currentFile = '';
@@ -4502,7 +4569,7 @@ async function onSave() {
         syncGlobalFileState();
         setFilePathDisplay('', '（已导出 PDF）');
         setStatus('已导出 PDF：' + result.path);
-        return;
+        return false;
     }
 
     if (result.content != null && result.content !== getContent()) {
@@ -4521,7 +4588,7 @@ async function onSave() {
         _openedOriginalContent = getContent();
         _openedFilePath = currentFile || '';
         try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
-        return;
+        return true;
     }
 
     currentFile = result.path;
@@ -4533,14 +4600,16 @@ async function onSave() {
     _openedOriginalContent = getContent();
     _openedFilePath = currentFile || '';
     try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
+    return true;
 }
 
+// ★ 返回 true 表示文档已写入 Markdown 文件（PDF 导出不算保存）。
 async function onSaveAs() {
     commitActivePreviewEdit();
     const result = await window.pywebview.api.save_file_as(getContent());
     if (!result.ok) {
         if (!result.cancelled) setStatus('保存失败: ' + (result.error || ''));
-        return;
+        return false;
     }
     if (result.path && result.path.toLowerCase().endsWith('.pdf')) {
         currentFile = '';
@@ -4548,7 +4617,7 @@ async function onSaveAs() {
         syncGlobalFileState();
         setFilePathDisplay('', '（已导出 PDF）');
         setStatus('已导出 PDF：' + result.path);
-        return;
+        return false;
     }
 
     if (result.content != null && result.content !== getContent()) {
@@ -4568,7 +4637,7 @@ async function onSaveAs() {
         _openedFilePath = currentFile || '';
         _forceSaveAsNextTime = false;
         try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
-        return;
+        return true;
     }
 
     currentFile = result.path;
@@ -4581,6 +4650,7 @@ async function onSaveAs() {
     _openedFilePath = currentFile || '';
     _forceSaveAsNextTime = false;
     try { await window.pywebview.api.set_current_file(currentFile || ''); } catch (e) {}
+    return true;
 }
 
 // ---------------- 插入图片 ----------------
@@ -5169,6 +5239,87 @@ function showConfirm(title, message) {
 }
 
 // ============================================================
+//  关闭未保存文档：取消 / 不保存 / 保存
+//    - 取消：关闭提示框，保持文档打开
+//    - 不保存：不写入文件，直接关闭窗口
+//    - 保存：保存成功后关闭窗口（从未保存过会先弹另存为）
+// ============================================================
+function showUnsavedCloseDialog() {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        // ★ 高于工具栏链接弹窗（z-index: 20000）等浮层，保证关闭提示始终可见
+        overlay.style.zIndex = '30000';
+
+        const modal = document.createElement('div');
+        modal.className = 'modal message-modal';
+        modal.style.maxWidth = '440px';
+        modal.style.width = '92%';
+
+        const h3 = document.createElement('h3');
+        h3.textContent = T('unsaved_content_title', '未保存的内容');
+
+        const p = document.createElement('p');
+        p.className = 'message-modal-body';
+        p.textContent = T('unsaved_message', '当前文档有未保存的修改，是否保存？');
+
+        const actions = document.createElement('div');
+        actions.className = 'modal-actions';
+
+        function makeBtn(className, text) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = className;
+            btn.textContent = text;
+            return btn;
+        }
+
+        const cancelBtn = makeBtn('btn-plain', T('cancel', '取消'));
+        const discardBtn = makeBtn('btn-plain', T('discard', '不保存'));
+        const saveBtn = makeBtn('btn-primary', T('save', '保存'));
+
+        actions.appendChild(cancelBtn);
+        actions.appendChild(discardBtn);
+        actions.appendChild(saveBtn);
+        modal.appendChild(h3);
+        modal.appendChild(p);
+        modal.appendChild(actions);
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        let done = false;
+        function finish(result) {
+            if (done) return;
+            done = true;
+            document.removeEventListener('keydown', onKey, true);
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            resolve(result);
+        }
+        function onKey(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                finish('cancel');
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                finish('save');
+            }
+        }
+
+        cancelBtn.addEventListener('click', () => finish('cancel'));
+        discardBtn.addEventListener('click', () => finish('discard'));
+        saveBtn.addEventListener('click', () => finish('save'));
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) finish('cancel');
+        });
+        document.addEventListener('keydown', onKey, true);
+
+        setTimeout(() => saveBtn.focus(), 20);
+    });
+}
+
+// ============================================================
 //  检查更新
 // ============================================================
 function setupUpdateModal() {
@@ -5370,17 +5521,35 @@ function toggleTheme() {
     }
 }
 
-// ★ 新增：关闭前的未保存确认（由后端 closing 事件触发）
+// ★ 关闭前的未保存确认（由后端 closing 事件触发）
+//   v2.1.4：改为 取消 / 不保存 / 保存 三个按钮
 let _closeDialogOpen = false;
 window.onCloseRequested = async function () {
     if (_closeDialogOpen) return;
     _closeDialogOpen = true;
     try {
-        const ok = await showConfirm(
-            T('unsaved_content_title', '未保存的内容'),
-            T('unsaved_content_warning', '未保存的内容将丢失，继续？')
-        );
-        if (ok) {
+        const choice = await showUnsavedCloseDialog();
+
+        if (choice === 'cancel') return;
+
+        if (choice === 'discard') {
+            try {
+                await window.pywebview.api.force_close();
+            } catch (e) { /* ignore */ }
+            return;
+        }
+
+        if (choice === 'save') {
+            // 已保存过的文档直接保存；从未保存过会弹“另存为”。
+            // 取消/失败/仅导出 PDF 时 onSave 返回 false → 保持窗口打开。
+            let saved = false;
+            try {
+                saved = await onSave();
+            } catch (e) {
+                setStatus('保存失败: ' + (e && e.message ? e.message : e));
+                saved = false;
+            }
+            if (!saved) return;
             try {
                 await window.pywebview.api.force_close();
             } catch (e) { /* ignore */ }

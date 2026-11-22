@@ -39,6 +39,7 @@
     "ja_JP": "日本語",
     "saved": "저장됨",
     "unsaved": "저장 안 됨",
+    "recovered_after_crash": "화면 오류 후 편집 내용을 복구했습니다",
     "words": "단어",
     "lines": "줄",
     "zoom": "확대/축소",

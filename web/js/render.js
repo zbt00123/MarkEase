@@ -1,5 +1,11 @@
 // MarkEase 渲染管线（阶段 16-13 修复 2）
-//   ★ 本轮修改：
+//   ★ v2.1.4 修改：
+//     1) BUILD_TAG 更新为 render-v24
+//     2) 含图标 <img> 的链接在 domToMarkdown 中还原为 Markdown 链接
+//     3) 图片保存 data-md-src，预览编辑回写时还原原始相对路径/网络 URL
+//     4) 链接内的图标图片允许双击编辑，普通正文图片仍禁止
+//     5) contenteditable 的 &nbsp; 回写时还原为普通空格
+//   ★ 历史修改：
 //     1) BUILD_TAG 更新为 render-v23
 //     2) domToMarkdown 支持 <strike>（预览编辑态删除线由 execCommand 产生）
 //     3) preprocessHtmlBlocks 新增 <ins> / <u> 预处理
@@ -9,7 +15,7 @@
 (function (global) {
     'use strict';
 
-    var BUILD_TAG = 'render-v23';
+    var BUILD_TAG = 'render-v24';
     console.log('[MarkEase] ' + BUILD_TAG + ' loaded');
 
     var KATEX_OPTS = {
@@ -140,7 +146,9 @@
         for (let i = 0; i < nodes.length; i++) {
             const node = nodes[i];
             if (node.nodeType === 3) {
-                out += node.nodeValue;
+                // ★ 预览编辑时 contenteditable 会把普通空格写成 &nbsp;，
+                //   回写 Markdown 前统一还原为普通空格
+                out += node.nodeValue.replace(/\u00a0/g, ' ');
             } else if (node.nodeType === 1) {
                 const tag = node.tagName.toLowerCase();
 
@@ -150,30 +158,39 @@
 
                 if (tag === 'img') {
                     const src = node.getAttribute('src') || '';
-                    const alt = node.getAttribute('alt') || '';
                     const width = node.getAttribute('width') || '';
                     const height = node.getAttribute('height') || '';
-                    let realSrc = src;
 
-                    if (/^http:\/\/127\.0\.0\.1:\d+\/proxy\?url=/i.test(src)) {
-                        realSrc = _fromProxyUrl(src);
-                    }
-                    else if (/^http:\/\/127\.0\.0\.1:\d+\/fs\//i.test(src)) {
-                        try {
-                            realSrc = decodeURIComponent(src.replace(
-                                /^http:\/\/127\.0\.0\.1:\d+\/fs\//i, ''));
-                        } catch (e) { /* 保留 */ }
-                    }
-                    else if (/^file:\/\//i.test(src)) {
-                        try {
-                            realSrc = decodeURIComponent(src.replace(
-                                /^file:\/\/\/?/i, ''));
-                        } catch (e) { /* 保留 */ }
+                    // ★ 优先使用渲染时保存的原始 src / alt（相对路径/原始网络 URL/
+                    //   原始 HTML 实体），保证预览编辑回写的 Markdown 与源文档一致。
+                    const mdSrc = node.getAttribute('data-md-src');
+                    const mdAlt = node.getAttribute('data-md-alt');
+                    const alt = mdAlt !== null ? mdAlt : (node.getAttribute('alt') || '');
+                    let realSrc = mdSrc || src;
+
+                    if (!mdSrc) {
+                        if (/^http:\/\/127\.0\.0\.1:\d+\/proxy\?url=/i.test(src)) {
+                            realSrc = _fromProxyUrl(src);
+                        }
+                        else if (/^http:\/\/127\.0\.0\.1:\d+\/fs\//i.test(src)) {
+                            try {
+                                realSrc = decodeURIComponent(src.replace(
+                                    /^http:\/\/127\.0\.0\.1:\d+\/fs\//i, ''));
+                            } catch (e) { /* 保留 */ }
+                        }
+                        else if (/^file:\/\//i.test(src)) {
+                            try {
+                                realSrc = decodeURIComponent(src.replace(
+                                    /^file:\/\/\/?/i, ''));
+                            } catch (e) { /* 保留 */ }
+                        }
                     }
 
                     if (width || height) {
                         let attrs = ' src="' + String(realSrc).replace(/"/g, '&quot;') + '"';
-                        if (alt) attrs += ' alt="' + String(alt).replace(/"/g, '&quot;') + '"';
+                        if (alt || mdAlt !== null) {
+                            attrs += ' alt="' + String(alt).replace(/"/g, '&quot;') + '"';
+                        }
                         if (width) attrs += ' width="' + String(width).replace(/"/g, '&quot;') + '"';
                         if (height) attrs += ' height="' + String(height).replace(/"/g, '&quot;') + '"';
                         out += '<img' + attrs + '>';
@@ -196,35 +213,31 @@
                 const inner = domToMarkdown(node, opts);
                 switch (tag) {
                     case 'br': out += '\n'; break;
+                    // 空的行内格式标签不再输出标记（避免删空文字后残留 **** / ~~~~）
                     case 'strong':
-                    case 'b': out += '**' + inner + '**'; break;
+                    case 'b': out += inner ? '**' + inner + '**' : ''; break;
                     case 'em':
-                    case 'i': out += '*' + inner + '*'; break;
+                    case 'i': out += inner ? '*' + inner + '*' : ''; break;
                     case 'del':
                     case 's':
-                    case 'strike': out += '~~' + inner + '~~'; break;
+                    case 'strike': out += inner ? '~~' + inner + '~~' : ''; break;
                     case 'ins':
-                    case 'u': out += '<ins>' + inner + '</ins>'; break;
-                    case 'code': out += '`' + inner + '`'; break;
+                    case 'u': out += inner ? '<ins>' + inner + '</ins>' : ''; break;
+                    case 'code': out += inner ? '`' + inner + '`' : ''; break;
                     case 'a': {
                         if (node.getAttribute &&
                             node.getAttribute('data-footnote-backref') === '1') {
                             break;
                         }
-                        if (node.querySelector('img')) {
-                            const href = node.getAttribute('href') || '';
-                            let attrs = ' href="' + String(href).replace(/"/g, '&quot;') + '"';
-                            const title = node.getAttribute('title');
-                            if (title) attrs += ' title="' + String(title).replace(/"/g, '&quot;') + '"';
-                            out += '<a' + attrs + '>' + inner + '</a>';
+                        // ★ 链接文字里即使含图标 <img>，也统一还原为 Markdown 链接：
+                        //   [<img src="..." ...> 名称](地址)
+                        //   这样预览编辑修改链接文字后才能无损写回源文档。
+                        const href = node.getAttribute('href') || '';
+                        const title = node.getAttribute('title');
+                        if (title) {
+                            out += '[' + inner + '](' + href + ' "' + title + '")';
                         } else {
-                            const href = node.getAttribute('href') || '';
-                            const title = node.getAttribute('title');
-                            if (title) {
-                                out += '[' + inner + '](' + href + ' "' + title + '")';
-                            } else {
-                                out += '[' + inner + '](' + href + ')';
-                            }
+                            out += '[' + inner + '](' + href + ')';
                         }
                         break;
                     }
@@ -831,12 +844,24 @@
             var placeholder = '@@MKHTML' + idx + 'MKHTML@@';
 
             var rewritten = match;
+            var hasMdSrc = /\bdata-md-src\s*=/i.test(match);
+            var hasMdAlt = /\bdata-md-alt\s*=/i.test(match);
+            var altMatch = match.match(/(?:^|\s)alt\s*=\s*(["'])([\s\S]*?)\1/i);
+            var altVal = altMatch ? altMatch[2] : '';
             if (docDir !== undefined) {
                 rewritten = match.replace(
                     /(\bsrc\s*=\s*)(["'])([^"']*)(\2)/i,
                     function (m, prefix, quote1, srcVal) {
                         var newSrc = _rewriteSrc(srcVal, docDir || '');
-                        return prefix + quote1 + newSrc + quote1;
+                        // ★ 在重写前保存原始 src / alt，供预览编辑回写 Markdown
+                        var extra = '';
+                        if (!hasMdSrc) {
+                            extra += ' data-md-src="' + _escapeAttr(srcVal) + '"';
+                        }
+                        if (altMatch && !hasMdAlt) {
+                            extra += ' data-md-alt="' + _escapeAttr(altVal) + '"';
+                        }
+                        return prefix + quote1 + newSrc + quote1 + extra;
                     }
                 );
             }
@@ -982,6 +1007,13 @@
             var img = imgs[i];
             var src = img.getAttribute('src');
             if (!src) continue;
+
+            // ★ 保存 Markdown 里的原始 src（可能是相对路径 assets/x.png），
+            //   预览编辑回写时用它还原，避免变成 /fs/ 解码后的绝对路径。
+            if (!img.hasAttribute('data-md-src')) {
+                img.setAttribute('data-md-src', src);
+            }
+
             if (img.getAttribute('data-resolved') === '1') continue;
 
             if (/^(data:|blob:)/i.test(src)) {
@@ -1043,6 +1075,17 @@
                 var tag = child.tagName.toLowerCase();
                 if (BLOCK_TAGS_FOR_LI[tag]) return true;
             }
+        }
+        return false;
+    }
+
+    // ★ 只有“链接内的图标图片”不阻止编辑；
+    //   普通正文图片仍保持不可双击编辑，避免误改图片块。
+    function hasImageOutsideLink(el) {
+        var imgs = el.querySelectorAll('img');
+        for (var i = 0; i < imgs.length; i++) {
+            var img = imgs[i];
+            if (!img.closest || !img.closest('a')) return true;
         }
         return false;
     }
@@ -1162,7 +1205,7 @@
                 }
             }
 
-            if (el.querySelector('img')) {
+            if (hasImageOutsideLink(el)) {
                 el.setAttribute('data-md-editable', '0');
                 continue;
             }
