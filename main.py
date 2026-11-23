@@ -12,6 +12,8 @@ MarkEase 主入口（阶段 15 修订：修复启动缓存导致的偶发空白�
 - ★ v2.1.1：closing 事件异步通知前端（避免 WebView2 死锁）
 - ★ v2.1.1：新增看门狗，窗口未响应超时 → 强制退出
 - ★ v2.1.2：新增日志系统（app/logging_setup.py），仅错误/崩溃落盘
+- ★ 2026-11-23：WebView2 浏览器进程退出（BrowserProcessExited）后
+        自动重建控件并恢复内容，不再整窗永久空白
 """
 
 import os
@@ -490,8 +492,546 @@ _WEBVIEW2_RECOVERY_STATE = {
     'installing': False,
     'installed': False,
     'handler': None,
+    'core': None,
+    'generation': 0,
     'reloads': [],
+    'rebuilds': [],
+    'rebuilding': False,
+    'rebuild_token': None,
 }
+
+
+def _enum_name(value, default='unknown'):
+    """把 pythonnet 枚举转成短名称（'Crashed' 而不是全限定名）。"""
+    try:
+        if value is None:
+            return default
+        name = str(value)
+        return name.rsplit('.', 1)[-1] or default
+    except Exception:
+        return default
+
+
+def _webview2_failure_info(args):
+    """
+    收集 CoreWebView2ProcessFailedEventArgs 的诊断字段。
+
+    WebView2 SDK 1.0.3856 提供：
+      ProcessFailedKind / Reason / ExitCode / ProcessDescription /
+      FailureSourceModulePath
+    Reason 里 Crashed / Terminated / OutOfMemory / ProfileDeleted 等
+    可以直接区分“原生崩溃”“被外部杀掉”“显存/内存不足”“profile 被删”。
+    """
+    info = {}
+    try:
+        info['kind'] = _enum_name(getattr(args, 'ProcessFailedKind', None))
+    except Exception:
+        info['kind'] = 'unknown'
+
+    try:
+        reason = getattr(args, 'Reason', None)
+        if reason is not None:
+            info['reason'] = _enum_name(reason)
+    except Exception:
+        pass
+
+    try:
+        code = getattr(args, 'ExitCode', None)
+        if code is not None:
+            code = int(code)
+            info['exit_code'] = code
+            info['exit_code_hex'] = '0x%08X' % (code & 0xFFFFFFFF)
+    except Exception:
+        pass
+
+    try:
+        desc = getattr(args, 'ProcessDescription', None)
+        if desc:
+            info['process_description'] = str(desc)
+    except Exception:
+        pass
+
+    try:
+        module = getattr(args, 'FailureSourceModulePath', None)
+        if module:
+            info['failure_source_module_path'] = str(module)
+    except Exception:
+        pass
+
+    return info
+
+
+def _show_webview2_fatal_dialog(detail=''):
+    """WebView2 无法自动恢复时，用系统弹窗告诉用户怎么做（避免“静默空白”）。"""
+    message = (
+        '界面渲染组件（WebView2）已崩溃，自动恢复失败。\n\n'
+        '请关闭本窗口后重新打开文档。已保存到磁盘的内容不会丢失。\n'
+    )
+    if detail:
+        message += '\n' + str(detail) + '\n'
+    try:
+        import System.Windows.Forms as WinForms
+        WinForms.MessageBox.Show(
+            message, 'MarkEase',
+            WinForms.MessageBoxButtons.OK,
+            WinForms.MessageBoxIcon.Error,
+        )
+    except Exception:
+        pass
+
+
+def _show_webview2_fatal_dialog_async(detail=''):
+    """在独立线程弹窗：ProcessFailed 处理器本身就在 UI 线程上，避免重入。"""
+    try:
+        threading.Thread(
+            target=_show_webview2_fatal_dialog,
+            args=(detail,),
+            daemon=True,
+            name='MarkEaseWebView2FatalDialog',
+        ).start()
+    except Exception:
+        pass
+
+
+def _read_creation_props(control):
+    """读取旧 WebView2 控件的 CreationProperties 关键值（必须在 Dispose 之前调用）。"""
+    values = {'args': '', 'exe': '', 'user_data': ''}
+    if control is None:
+        return values
+    try:
+        props = control.CreationProperties
+    except Exception:
+        return values
+    try:
+        values['args'] = str(props.AdditionalBrowserArguments or '')
+    except Exception:
+        pass
+    try:
+        values['exe'] = str(props.BrowserExecutableFolder or '')
+    except Exception:
+        pass
+    try:
+        values['user_data'] = str(props.UserDataFolder or '')
+    except Exception:
+        pass
+    return values
+
+
+def _create_rebuilt_webview2_control(window, old_args='', old_exe='',
+                                     old_user_data=''):
+    """
+    按 pywebview 的初始化方式新建一个 WebView2 控件（必须在 UI 线程调用）。
+
+    注意：同一个进程里 WebView2 会复用已经创建过的环境，
+    给新控件换一个 UserDataFolder 实际不生效（实测浏览器进程仍用原 profile，
+    新目录只会变成空目录）。因此这里沿用 `_USER_DATA_DIR` 原 profile，
+    与 Edge 崩溃后重启浏览器进程的行为一致。
+    """
+    from Microsoft.Web.WebView2.WinForms import (
+        CoreWebView2CreationProperties, WebView2,
+    )
+    from System.Drawing import Color
+
+    props = CoreWebView2CreationProperties()
+
+    user_data = _USER_DATA_DIR or old_user_data
+    if user_data:
+        try:
+            props.UserDataFolder = user_data
+        except Exception as e:
+            _log_error('webview2_rebuild_profile_failed',
+                       'Cannot set UserDataFolder for rebuilt WebView2',
+                       exception=e, path=user_data)
+
+    try:
+        import webview as _pywebview
+        private_mode = bool(_pywebview._state['private_mode'])
+    except Exception:
+        private_mode = True
+    try:
+        props.set_IsInPrivateModeEnabled(private_mode)
+    except Exception as e:
+        _log_event('webview2_rebuild_private_mode_failed',
+                   'Cannot set private mode for rebuilt WebView2',
+                   error=str(e))
+
+    browser_args = old_args or '--disable-features=ElasticOverscroll'
+    try:
+        props.AdditionalBrowserArguments = browser_args
+    except Exception as e:
+        _log_error('webview2_rebuild_args_failed',
+                   'Cannot copy AdditionalBrowserArguments',
+                   exception=e)
+
+    if old_exe:
+        try:
+            props.BrowserExecutableFolder = old_exe
+        except Exception:
+            pass
+
+    control = WebView2()
+    control.CreationProperties = props
+
+    try:
+        bg = str(getattr(window, 'background_color', '') or '')
+        if len(bg) == 7 and bg.startswith('#'):
+            control.DefaultBackgroundColor = Color.FromArgb(
+                255, int(bg[1:3], 16), int(bg[3:5], 16), int(bg[5:7], 16))
+    except Exception:
+        pass
+
+    return control
+
+
+def _bind_process_failed_to_core(core):
+    """
+    给当前 CoreWebView2 绑定一个“这一代”的 ProcessFailed 处理器。
+
+    每次重建都会递增 generation；旧 core 上残留的处理器在收到事件时
+    会因 generation 不匹配而直接忽略，避免旧控件 Dispose 时再次触发
+    一次多余的控件重建（曾导致 5 分钟内连续重建两次）。
+    """
+    state = _WEBVIEW2_RECOVERY_STATE
+    if core is None:
+        return False
+    if state.get('core') is core:
+        return True
+
+    window = state.get('window')
+    api = state.get('api')
+    if window is None or api is None:
+        return False
+
+    generation = int(state.get('generation', 0)) + 1
+    handler = _make_webview2_process_failed_handler(window, api, generation)
+
+    try:
+        core.ProcessFailed += handler
+        state['core'] = core
+        state['handler'] = handler
+        state['generation'] = generation
+        _log_event('webview2_recovery_bound',
+                   'WebView2 ProcessFailed handler bound to core',
+                   generation=generation)
+        print('[MarkEase][webview2] ProcessFailed handler bound (generation=%d)'
+              % generation)
+        return True
+    except Exception as e:
+        _log_error('webview2_recovery_bind_failed',
+                   'Failed to bind ProcessFailed to CoreWebView2',
+                   exception=e)
+        return False
+
+
+def _rebuild_webview2_on_ui(window, api, reason='unknown'):
+    """
+    在现有窗口里重建 WebView2 控件。
+
+    BrowserProcessExited 之后 CoreWebView2 已经不可用，Reload() 无法恢复，
+    窗口会永久空白（v2.1.4 只记录了日志）。这里换一个新控件、重新挂上
+    pywebview 的事件，再导航到同一个 URL；前端启动后会调用
+    take_recovery_state() 把后端保存的内容恢复回来。
+    """
+    state = _WEBVIEW2_RECOVERY_STATE
+
+    try:
+        form = window.native
+    except Exception:
+        form = None
+
+    try:
+        if form is None:
+            raise RuntimeError('window.native is gone')
+
+        try:
+            disposed = bool(form.IsDisposed)
+        except Exception:
+            disposed = False
+        if disposed:
+            raise RuntimeError('window is disposed')
+
+        try:
+            closed = bool(window.events.closed.is_set())
+        except Exception:
+            closed = False
+        if closed:
+            raise RuntimeError('window already closed')
+
+        browser = getattr(form, 'browser', None)
+        if browser is None:
+            raise RuntimeError('pywebview EdgeChrome is not available')
+
+        old_control = getattr(browser, 'webview', None)
+        old_values = _read_creation_props(old_control)
+
+        # 1) 先彻底摘掉、释放已失效的旧控件：
+        #    同一进程里 WebView2 会复用已有环境，旧 core / 旧控件必须在本步
+        #    释放干净，否则新控件会和“垂死”的旧环境共用同一个浏览器进程，
+        #    可能刚恢复就再次 ProcessFailed。
+        if old_control is not None:
+            try:
+                form.Controls.Remove(old_control)
+            except Exception:
+                pass
+            try:
+                old_control.Dispose()
+            except Exception as e:
+                _log_error('webview2_rebuild_old_dispose_failed',
+                           'Disposing failed WebView2 control raised',
+                           exception=e)
+        try:
+            state['core'] = None
+        except Exception:
+            pass
+
+        # 2) 建新控件（沿用原 profile / 浏览器参数）
+        new_control = _create_rebuilt_webview2_control(
+            window, old_values.get('args', ''), old_values.get('exe', ''),
+            old_values.get('user_data', ''))
+
+        # 3) 新控件 + pywebview 的全部事件
+        new_control.CoreWebView2InitializationCompleted += browser.on_webview_ready
+        new_control.NavigationStarting += browser.on_navigation_start
+        new_control.NavigationCompleted += browser.on_navigation_completed
+        new_control.WebMessageReceived += browser.on_script_notify
+
+        import System.Windows.Forms as WinForms
+        new_control.Dock = WinForms.DockStyle.Fill
+        form.Controls.Add(new_control)
+        new_control.BringToFront()
+
+        # 4) pywebview / 应用侧持有的引用全部指向新控件
+        browser.webview = new_control
+        form.webview = new_control
+
+        def _on_init(sender, args):
+            ok = False
+            try:
+                ok = bool(args.IsSuccess)
+            except Exception:
+                ok = False
+
+            if not ok:
+                state['rebuilding'] = False
+                try:
+                    init_exc = args.InitializationException
+                except Exception:
+                    init_exc = None
+                print('[MarkEase][webview2] rebuilt control failed to initialize')
+                _log_critical('webview2_rebuild_init_failed',
+                              'Rebuilt WebView2 control failed to initialize',
+                              reason=reason,
+                              error=str(init_exc) if init_exc else '')
+                _show_webview2_fatal_dialog_async(
+                    '错误：' + str(init_exc) if init_exc else '')
+                return
+
+            try:
+                if not _bind_process_failed_to_core(sender.CoreWebView2):
+                    print('[MarkEase][webview2] rebuild: ProcessFailed NOT bound')
+                    _log_error('webview2_rebuild_bind_not_bound',
+                               'ProcessFailed handler was not bound after rebuild',
+                               reason=reason)
+            except Exception as e:
+                _log_error('webview2_rebuild_bind_failed',
+                           'Binding ProcessFailed after rebuild raised',
+                           exception=e)
+
+            state['rebuilding'] = False
+            print('[MarkEase][webview2] control rebuilt; reloading page')
+            _log_event('webview2_rebuild_init_ok',
+                       'WebView2 control rebuilt; page reloading',
+                       reason=reason)
+
+        new_control.CoreWebView2InitializationCompleted += _on_init
+        # 双保险：导航前确保恢复标记已置位（正常路径在 _schedule 里已置位）
+        try:
+            api._recovery_pending = True
+        except Exception:
+            pass
+
+        print('[MarkEase][webview2] rebuilding control after %s' % reason)
+        _log_event('webview2_rebuild_started',
+                   'Rebuilding WebView2 control', reason=reason)
+        new_control.EnsureCoreWebView2Async(None)
+    except Exception as e:
+        state['rebuilding'] = False
+        print(f'[MarkEase][webview2] rebuild failed: {e}')
+        _log_critical('webview2_rebuild_failed',
+                      'Failed to rebuild WebView2 control',
+                      exception=e, reason=reason)
+        _show_webview2_fatal_dialog('错误：' + str(e))
+
+
+def _schedule_webview2_rebuild(window, api, reason='unknown'):
+    """安排一次控件重建（限频 3 次/5 分钟，且同一时间只允许一次）。"""
+    if _APP_SHUTTING_DOWN:
+        return False
+
+    state = _WEBVIEW2_RECOVERY_STATE
+    now = time.monotonic()
+    state['rebuilds'] = [t for t in state['rebuilds'] if now - t < 300.0]
+
+    if state.get('rebuilding'):
+        _log_event('webview2_rebuild_skipped',
+                   'WebView2 rebuild already in progress', reason=reason)
+        return False
+
+    if len(state['rebuilds']) >= 3:
+        print('[MarkEase][webview2] too many rebuilds, stop')
+        _log_error('webview2_rebuild_gave_up',
+                   'WebView2 failed repeatedly; not rebuilding again',
+                   reason=reason,
+                   rebuilds_within_300s=len(state['rebuilds']))
+        _show_webview2_fatal_dialog_async('界面组件多次崩溃。')
+        return False
+
+    state['rebuilding'] = True
+    state['rebuild_token'] = now
+    state['rebuilds'].append(now)
+
+    # reload / 重建后前端都会调用 take_recovery_state 恢复最新内容
+    try:
+        api._recovery_pending = True
+    except Exception:
+        pass
+
+    token = now
+
+    def _watchdog():
+        time.sleep(25.0)
+        try:
+            if (state.get('rebuilding') and
+                    state.get('rebuild_token') == token):
+                state['rebuilding'] = False
+                print('[MarkEase][webview2] rebuild timed out')
+                _log_critical('webview2_rebuild_timeout',
+                              'WebView2 control rebuild timed out',
+                              reason=reason)
+                _show_webview2_fatal_dialog('界面组件初始化超时。')
+        except Exception:
+            pass
+
+    def _worker():
+        # 等浏览器进程及其子进程真正退出、profile 锁释放后再建新控件
+        time.sleep(1.2)
+
+        def _do_rebuild():
+            _rebuild_webview2_on_ui(window, api, reason=reason)
+
+        try:
+            from System import Action
+            window.native.Invoke(Action(_do_rebuild))
+        except Exception as e:
+            state['rebuilding'] = False
+            print(f'[MarkEase][webview2] rebuild attach failed: {e}')
+            _log_error('webview2_rebuild_attach_failed',
+                       'Failed to marshal WebView2 rebuild to UI thread',
+                       exception=e)
+            _show_webview2_fatal_dialog('错误：' + str(e))
+
+    threading.Thread(target=_worker, daemon=True,
+                     name='MarkEaseWebView2Rebuild').start()
+    threading.Thread(target=_watchdog, daemon=True,
+                     name='MarkEaseWebView2RebuildWatchdog').start()
+
+    print('[MarkEase][webview2] rebuild scheduled after %s' % reason)
+    _log_event('webview2_rebuild_scheduled',
+               'Scheduled WebView2 control rebuild', reason=reason)
+    return True
+
+
+def _make_webview2_process_failed_handler(window, api, generation=0):
+    """构造某一代 CoreWebView2 的 ProcessFailed 处理器。"""
+
+    def on_process_failed(sender, args):
+        try:
+            if _APP_SHUTTING_DOWN:
+                return
+
+            state = _WEBVIEW2_RECOVERY_STATE
+            if generation != int(state.get('generation', 0)):
+                # 旧 core（已被重建替换）迟到的 ProcessFailed：忽略
+                print('[MarkEase][webview2] stale ProcessFailed ignored '
+                      '(generation=%s, current=%s)'
+                      % (generation, int(state.get('generation', 0))))
+                _log_event('webview2_stale_process_failed',
+                           'Ignoring ProcessFailed from a retired WebView2 core',
+                           generation=generation,
+                           current_generation=int(state.get('generation', 0)))
+                return
+
+            info = _webview2_failure_info(args)
+            kind = info.get('kind', 'unknown')
+
+            print('[MarkEase][webview2] process failed: %s reason=%s exit=%s'
+                  % (kind, info.get('reason', '?'),
+                     info.get('exit_code_hex', '?')))
+            _log_error('webview2_process_failed',
+                       'WebView2 process failed', **info)
+
+            # ★ 浏览器进程退出：CoreWebView2 已不可用，Reload 无效，
+            #   必须重建控件才能恢复（否则整窗永久空白）。
+            if kind == 'BrowserProcessExited':
+                _log_error('webview2_browser_process_exited',
+                           'WebView2 browser process exited; rebuilding control',
+                           **info)
+                _schedule_webview2_rebuild(window, api, reason=kind)
+                return
+
+            # 只有真正会让内容区空白的进程类型才自动 reload
+            recoverable = (
+                'RenderProcessExited',
+                'RenderProcessUnresponsive',
+                'GpuProcessExited',
+            )
+            if kind not in recoverable:
+                _log_event('webview2_process_failed_ignored',
+                           'Non-recoverable WebView2 process failure kind',
+                           **info)
+                return
+
+            now = time.monotonic()
+            state = _WEBVIEW2_RECOVERY_STATE
+            state['reloads'] = [
+                t for t in state['reloads'] if now - t < 60.0
+            ]
+            if len(state['reloads']) >= 3:
+                print('[MarkEase][webview2] recovery: too many reloads, '
+                      'falling back to control rebuild')
+                _log_error('webview2_recovery_gave_up',
+                           'WebView2 crashed repeatedly; stop auto reload',
+                           reloads_within_60s=len(state['reloads']),
+                           **info)
+                _schedule_webview2_rebuild(window, api, reason=kind)
+                return
+            state['reloads'].append(now)
+
+            try:
+                # 标记恢复：reload 后前端会调用 take_recovery_state 恢复内容
+                try:
+                    api._recovery_pending = True
+                except Exception:
+                    pass
+                sender.Reload()
+                print(f'[MarkEase][webview2] reloaded after {kind}')
+                _log_event('webview2_reload_after_failure',
+                           'WebView2 reloaded after process failure',
+                           kind=kind,
+                           reload_count=len(state['reloads']))
+            except Exception as e:
+                print(f'[MarkEase][webview2] reload failed: {e}')
+                _log_error('webview2_reload_failed',
+                           'Reload after WebView2 process failure raised',
+                           exception=e, **info)
+                # Reload 都失败了，说明控件已不可用，只能重建
+                _schedule_webview2_rebuild(window, api, reason=kind)
+        except Exception as e:
+            _log_error('webview2_process_failed_handler_raised',
+                       'ProcessFailed handler raised',
+                       exception=e)
+
+    return on_process_failed
 
 
 def _install_webview2_process_failed_recovery(window, api):
@@ -500,13 +1040,16 @@ def _install_webview2_process_failed_recovery(window, api):
 
     背景：WebView2 的 renderer / GPU 进程偶发崩溃时，WinForms 窗口仍然存在，
     但 WebView2 内容区会永久空白，Python 侧没有任何异常。用户关闭重开才恢复。
-    这里在 renderer / GPU 失效后自动 Reload 一次（限频），并让前端通过
-    take_recovery_state 恢复后端保存的最新编辑内容。
+    - renderer / GPU 失效 → 自动 Reload（限频），并由前端恢复内容；
+    - 浏览器进程退出（BrowserProcessExited）→ 重建 WebView2 控件；
+    - 重建失败 → 系统弹窗提示，绝不留下“静默空白窗口”。
     """
     state = _WEBVIEW2_RECOVERY_STATE
     if state.get('installed') or state.get('installing'):
         return
     state['installing'] = True
+    state['window'] = window
+    state['api'] = api
 
     def _attach_on_ui():
         try:
@@ -528,73 +1071,9 @@ def _install_webview2_process_failed_recovery(window, api):
                        'CoreWebView2 is None; skip crash recovery')
             return
 
-        def on_process_failed(sender, args):
-            try:
-                kind = str(getattr(args, 'ProcessFailedKind', 'unknown'))
-            except Exception:
-                kind = 'unknown'
-
-            if _APP_SHUTTING_DOWN:
-                return
-
-            print(f'[MarkEase][webview2] process failed: {kind}')
-            _log_error('webview2_process_failed',
-                       'WebView2 process failed',
-                       kind=kind)
-
-            # Browser process 退出后 CoreWebView2 已不可用，Reload 无法恢复
-            if kind == 'BrowserProcessExited':
-                _log_error('webview2_browser_process_exited',
-                           'WebView2 browser process exited; reload impossible',
-                           kind=kind)
-                return
-
-            # 只有真正会让内容区空白的进程类型才自动 reload
-            recoverable = (
-                'RenderProcessExited',
-                'RenderProcessUnresponsive',
-                'GpuProcessExited',
-            )
-            if kind not in recoverable:
-                _log_event('webview2_process_failed_ignored',
-                           'Non-recoverable WebView2 process failure kind',
-                           kind=kind)
-                return
-
-            now = time.monotonic()
-            state['reloads'] = [
-                t for t in state['reloads'] if now - t < 60.0
-            ]
-            if len(state['reloads']) >= 3:
-                print('[MarkEase][webview2] recovery: too many reloads, stop')
-                _log_error('webview2_recovery_gave_up',
-                           'WebView2 crashed repeatedly; stop auto reload',
-                           kind=kind,
-                           reloads_within_60s=len(state['reloads']))
-                return
-            state['reloads'].append(now)
-
-            try:
-                # 标记恢复：reload 后前端会调用 take_recovery_state 恢复内容
-                try:
-                    api._recovery_pending = True
-                except Exception:
-                    pass
-                sender.Reload()
-                print(f'[MarkEase][webview2] reloaded after {kind}')
-                _log_event('webview2_reload_after_failure',
-                           'WebView2 reloaded after process failure',
-                           kind=kind,
-                           reload_count=len(state['reloads']))
-            except Exception as e:
-                print(f'[MarkEase][webview2] reload failed: {e}')
-                _log_error('webview2_reload_failed',
-                           'Reload after WebView2 process failure raised',
-                           exception=e, kind=kind)
-
         try:
-            core.ProcessFailed += on_process_failed
-            state['handler'] = on_process_failed
+            if not _bind_process_failed_to_core(core):
+                raise RuntimeError('bind returned False')
             state['installed'] = True
             state['installing'] = False
             print('[MarkEase][webview2] crash recovery installed')
