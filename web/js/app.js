@@ -3856,6 +3856,26 @@ function cellToMarkdown(cell) {
 }
 
 // ---------------- 预览跨段选复制 ----------------
+// ★ v2.1.5：复制前还原代码块的行包裹，避免 text/html 落到其他应用
+// 时「块级行 + 原始换行文本」叠加成多余空行。
+function unwrapCodeLineWrappers(root) {
+    if (!root || !root.querySelectorAll) return;
+
+    root.querySelectorAll('.md-code-line').forEach(span => {
+        const parent = span.parentNode;
+        if (!parent) return;
+        while (span.firstChild) {
+            parent.insertBefore(span.firstChild, span);
+        }
+        parent.removeChild(span);
+    });
+
+    root.querySelectorAll('pre.md-code-wrap').forEach(pre => {
+        pre.classList.remove('md-code-wrap');
+        pre.removeAttribute('data-md-code-wrapped');
+    });
+}
+
 function setupPreviewCopy() {
     previewEl.addEventListener('copy', (e) => {
         const sel = window.getSelection();
@@ -3876,6 +3896,8 @@ function setupPreviewCopy() {
             const fragment = range.cloneContents();
             const wrap = document.createElement('div');
             wrap.appendChild(fragment);
+
+            unwrapCodeLineWrappers(wrap);
 
             const md = fragmentToMarkdown(wrap);
             const plain = sel.toString();

@@ -698,6 +698,50 @@ body.dark .markdown-body {
 }
 
 /* ============================================================
+   ★ v2.1.5：代码块自动换行（预览 / PDF 导出共用）
+   ------------------------------------------------------------
+   render.js 会把每个逻辑行包成 <span class="md-code-line">，
+   行首缩进写在 --md-code-indent。这里让长行自动换行，并让
+   续行按「行首缩进 + 2ch」悬挂缩进，不再出现横向滚动条；
+   打印时同样生效，避免 PDF 把超长代码行裁断。
+   ============================================================ */
+#preview pre.md-code-wrap {
+    overflow-x: hidden;
+    overflow-y: visible;
+    white-space: normal;
+}
+#preview pre.md-code-wrap > code {
+    display: block;
+    white-space: normal;
+    word-break: normal;
+}
+#preview pre.md-code-wrap .md-code-line {
+    display: block;
+    min-height: 1.45em;               /* 空行也占一行，不塌陷 */
+    padding-left: calc(var(--md-code-indent, 0) * 1ch + 2ch);
+    text-indent: calc(var(--md-code-indent, 0) * -1ch - 2ch);
+    white-space: pre-wrap;
+    overflow-wrap: break-word;        /* 旧内核回退 */
+    overflow-wrap: anywhere;          /* 超长 URL / token 也能断行 */
+    word-break: normal;
+    tab-size: 4;
+}
+
+/* 预览编辑态：行内展开成一个整体，和旧版编辑体验一致（回车/选区不乱序） */
+#preview pre.md-code-wrap.preview-editing,
+#preview pre.md-code-wrap.preview-editing > code {
+    white-space: pre-wrap;
+}
+#preview pre.md-code-wrap.preview-editing .md-code-line {
+    display: inline;
+    min-height: 0;
+    padding-left: 0;
+    text-indent: 0;
+    white-space: pre-wrap;
+    overflow-wrap: normal;
+}
+
+/* ============================================================
    PDF 导出（@media print）
    ============================================================ */
 @media print {
@@ -764,6 +808,27 @@ body.dark .markdown-body {
         padding: 0 !important;
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
+    }
+
+    /* ★ v2.1.5：打印时展开滚动区并保持换行，超长代码不再被裁断 / 截页 */
+    #preview pre {
+        overflow: visible !important;
+        page-break-inside: auto !important;
+        break-inside: auto !important;
+    }
+    #preview pre.md-code-wrap {
+        white-space: normal !important;
+    }
+    #preview pre.md-code-wrap > code {
+        display: block !important;
+        white-space: normal !important;
+    }
+    #preview pre.md-code-wrap .md-code-line {
+        padding-left: calc(var(--md-code-indent, 0) * 1ch + 2ch) !important;
+        text-indent: calc(var(--md-code-indent, 0) * -1ch - 2ch) !important;
+        white-space: pre-wrap !important;
+        overflow-wrap: break-word !important;
+        overflow-wrap: anywhere !important;
     }
 
     #preview .task-list-checkbox {

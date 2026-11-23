@@ -811,6 +811,35 @@ ul.contains-task-list, ol.contains-task-list {{
 .katex-inline {{ display: inline; }}
 .math-block {{ margin: 12px 0; text-align: center; }}
 .katex-error {{ color: #d1242f; }}
+/* ===== ★ v2.1.5：代码块自动换行（与 MarkEase 预览 / PDF 一致） ===== */
+.markdown-body pre.md-code-wrap {{
+    overflow-x: hidden;
+    white-space: normal;
+}}
+.markdown-body pre.md-code-wrap > code {{
+    display: block;
+    white-space: normal;
+    word-break: normal;
+}}
+.markdown-body pre.md-code-wrap .md-code-line {{
+    display: block;
+    min-height: 1.45em;
+    padding-left: calc(var(--md-code-indent, 0) * 1ch + 2ch);
+    text-indent: calc(var(--md-code-indent, 0) * -1ch - 2ch);
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    tab-size: 4;
+}}
+@media print {{
+    .markdown-body pre.md-code-wrap {{ overflow: visible; }}
+    .markdown-body pre.md-code-wrap .md-code-line {{
+        padding-left: calc(var(--md-code-indent, 0) * 1ch + 2ch);
+        text-indent: calc(var(--md-code-indent, 0) * -1ch - 2ch);
+        white-space: pre-wrap;
+    }}
+}}
 @media (prefers-color-scheme: dark) {{
     html, body {{
         background: #ffffff !important;

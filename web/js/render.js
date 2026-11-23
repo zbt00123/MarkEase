@@ -1,4 +1,8 @@
 // MarkEase 渲染管线（阶段 16-13 修复 2）
+//   ★ v2.1.5 修改：
+//     1) BUILD_TAG 更新为 render-v25
+//     2) 代码块按逻辑行包裹，长行自动换行 + 续行悬挂缩进
+//        （预览 / PDF 导出 / HTML 导出共用；不再出现横向滚动条或裁切）
 //   ★ v2.1.4 修改：
 //     1) BUILD_TAG 更新为 render-v24
 //     2) 含图标 <img> 的链接在 domToMarkdown 中还原为 Markdown 链接
@@ -15,7 +19,7 @@
 (function (global) {
     'use strict';
 
-    var BUILD_TAG = 'render-v24';
+    var BUILD_TAG = 'render-v25';
     console.log('[MarkEase] ' + BUILD_TAG + ' loaded');
 
     var KATEX_OPTS = {
@@ -998,6 +1002,150 @@
     }
 
     // ============================================================
+    //  ★ v2.1.5：代码块自动换行
+    //  - 把每个逻辑行包成 block 级 span，长行在容器内自动换行，
+    //    不再依赖 <pre> 的横向滚动条（PDF 打印时滚动区会被裁断）
+    //  - 行首缩进写入 --md-code-indent，续行按该缩进 +2ch 悬挂缩进，
+    //    换行后的文字仍然看得出代码层级
+    //  - 行与行之间保留原始 "\n" 文本节点：textContent 与源码完全一致，
+    //    预览编辑（extractPreText）、复制、HTML 导出都不会丢换行
+    //  - 跨行的高亮 <span> 在换行处先闭合、下一行再重开，高亮不丢
+    // ============================================================
+    var CODE_TAB_SIZE = 4;
+    var CODE_MAX_INDENT = 24;
+
+    function _decodeIndentText(s) {
+        return String(s)
+            .replace(/&nbsp;|&#160;|&#[xX]a0;/gi, ' ')
+            .replace(/&Tab;|&#9;|&#[xX]9;/gi, '\t')
+            .replace(/\u00a0/g, ' ');
+    }
+
+    function _codeIndentChars(text) {
+        var m = /^[ \t]*/.exec(String(text || ''));
+        if (!m) return 0;
+        var s = m[0];
+        var n = 0;
+        for (var i = 0; i < s.length; i++) {
+            n += (s.charAt(i) === '\t') ? CODE_TAB_SIZE : 1;
+        }
+        return n;
+    }
+
+    // 把高亮后的 HTML 按 "\n" 切成逻辑行；跨行的标签在断点处闭合 / 重开。
+    function _splitCodeHtmlLines(html) {
+        var tokenRe = /<[^>]*>|[^<]+/g;
+        var lineHtml = '';
+        var lineText = '';
+        var openTags = [];
+        var lines = [];
+        var m;
+
+        function closeOpenTags() {
+            var out = '';
+            for (var i = openTags.length - 1; i >= 0; i--) {
+                out += '</' + openTags[i].name + '>';
+            }
+            return out;
+        }
+
+        function reopenTags() {
+            var out = '';
+            for (var i = 0; i < openTags.length; i++) {
+                out += openTags[i].open;
+            }
+            return out;
+        }
+
+        function pushLine() {
+            lines.push({
+                html: lineHtml + closeOpenTags(),
+                indent: _codeIndentChars(lineText)
+            });
+            lineHtml = reopenTags();
+            lineText = '';
+        }
+
+        while ((m = tokenRe.exec(html)) !== null) {
+            var token = m[0];
+            if (!token) continue;
+
+            if (token.charAt(0) === '<') {
+                if (/^<\//.test(token)) {
+                    var closeMatch = /^<\s*\/\s*([a-zA-Z0-9:-]+)/.exec(token);
+                    if (closeMatch) {
+                        var closeName = closeMatch[1].toLowerCase();
+                        for (var ci = openTags.length - 1; ci >= 0; ci--) {
+                            if (openTags[ci].name === closeName) {
+                                openTags.splice(ci, 1);
+                                break;
+                            }
+                        }
+                    }
+                    lineHtml += token;
+                } else if (/^<!|^<\?/.test(token) ||
+                           /\/>\s*$/.test(token) ||
+                           /^<\s*(br|hr|img|input|meta|link|wbr|source|area|col|embed)\b/i.test(token)) {
+                    lineHtml += token;
+                } else {
+                    var openMatch = /^<\s*([a-zA-Z0-9:-]+)/.exec(token);
+                    openTags.push({
+                        name: (openMatch ? openMatch[1] : 'span').toLowerCase(),
+                        open: token
+                    });
+                    lineHtml += token;
+                }
+                continue;
+            }
+
+            var parts = token.split('\n');
+            for (var pi = 0; pi < parts.length; pi++) {
+                if (pi > 0) pushLine();
+                lineHtml += parts[pi];
+                lineText += _decodeIndentText(parts[pi]);
+            }
+        }
+
+        lines.push({
+            html: lineHtml + closeOpenTags(),
+            indent: _codeIndentChars(lineText)
+        });
+        return lines;
+    }
+
+    // 给预览里的代码块加行包裹（幂等：pre 上有 data-md-code-wrapped 就跳过）
+    function wrapCodeBlockLines(root) {
+        if (!root || !root.querySelectorAll) return;
+
+        var pres = root.querySelectorAll('pre');
+        for (var i = 0; i < pres.length; i++) {
+            var pre = pres[i];
+            if (pre.getAttribute('data-md-code-wrapped') === '1') continue;
+
+            var code = pre.querySelector(':scope > code');
+            if (!code) continue;
+
+            pre.classList.add('md-code-wrap');
+            pre.setAttribute('data-md-code-wrapped', '1');
+
+            var html = code.innerHTML;
+            if (!html) continue;
+
+            var lines = _splitCodeHtmlLines(html);
+            var out = [];
+            for (var li = 0; li < lines.length; li++) {
+                var indent = Math.min(lines[li].indent, CODE_MAX_INDENT);
+                out.push(
+                    '<span class="md-code-line" style="--md-code-indent:' +
+                    indent + '">' + lines[li].html + '</span>'
+                );
+            }
+            // 行间保留 "\n"：textContent / 预览编辑 / 复制仍拿到原始换行
+            code.innerHTML = out.join('\n');
+        }
+    }
+
+    // ============================================================
     //  图片解析兜底
     // ============================================================
     function resolveLocalImages(root, docDir) {
@@ -1482,6 +1630,9 @@
                 html = postprocessFootnotes(html, footnotePre.footnotes);
 
                 contentElement.innerHTML = html;
+
+                // ★ v2.1.5：代码块按行包裹（必须在 sanitize 之后、标记可编辑之前）
+                wrapCodeBlockLines(contentElement);
 
                 resolveLocalImages(contentElement, docDir);
                 renderMathBlocks(contentElement);

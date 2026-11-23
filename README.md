@@ -88,6 +88,7 @@ Even with content having **drastically different line spacing** such as code blo
 
 - **Import**: PyMuPDF parsing → automatic Markdown conversion
 - **Export**: High-definition vector PDF
+- **Code blocks**: Long lines wrap with hanging indentation in preview and PDF — no clipped code
 - **Source embedding**: Original Markdown embedded in PDF (`markease_source.md`) → **lossless round-trip**
 - **Image recovery**: If locally referenced images in Markdown are missing during import, automatically extract from PDF in order, write to system temp directory, and migrate to `assets/` on save
 

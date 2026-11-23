@@ -61,7 +61,7 @@ def _read_version_from_version_info():
 
 
 # 前端 BUILD_TAG（与 web/js/render.js 保持一致；仅作日志标识）
-_RENDER_BUILD_TAG = 'render-v24'
+_RENDER_BUILD_TAG = 'render-v25'
 
 
 def _init_logging_early():
