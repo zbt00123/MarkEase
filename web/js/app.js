@@ -399,9 +399,9 @@ window.SearchHighlight = {
 };
 
 // ---------------- 启动 ----------------
-window.addEventListener('pywebviewready', async () => {
+async function startMarkEase() {
     if (window.__markEaseInitialized) {
-        console.warn('[pywebviewready] skipped: already initialized');
+        console.warn('[MarkEase] start skipped: already initialized');
         return;
     }
     window.__markEaseInitialized = true;
@@ -537,7 +537,41 @@ window.addEventListener('pywebviewready', async () => {
             }
         } catch (e) { /* ignore */ }
     }
-});
+}
+
+window.addEventListener('pywebviewready', startMarkEase);
+
+// ★ macOS/WKWebView：pywebviewready 可能在 ES module 加载完成前就派发，
+//   导致 app.js 的监听器永远收不到事件（界面只剩静态骨架、工具栏为空）。
+//   模块加载完成后主动检查一次，并在 10 秒内轮询兜底。
+(function bootstrapWhenReady() {
+    function apiReady() {
+        return !!(window.pywebview && window.pywebview.api);
+    }
+    if (window.__markEaseInitialized) return;
+    if (apiReady()) {
+        startMarkEase();
+        return;
+    }
+    let tries = 0;
+    const timer = setInterval(function () {
+        tries += 1;
+        if (window.__markEaseInitialized) {
+            clearInterval(timer);
+            return;
+        }
+        if (apiReady()) {
+            clearInterval(timer);
+            console.log('[MarkEase] pywebviewready missed; starting directly');
+            startMarkEase();
+            return;
+        }
+        if (tries >= 100) {
+            clearInterval(timer);
+            console.error('[MarkEase] pywebview API not ready after 10s');
+        }
+    }, 100);
+})();
 
 // ★ WebView2 进程异常、页面自动 reload 后，从后端恢复最近编辑内容
 async function restoreRecoveryStateIfAny() {
@@ -813,6 +847,19 @@ function initMenubarByHandlers() {
 
     window.MenuBar.setChecked('toggle_toc', !tocEl.classList.contains('hidden'));
 }
+
+// ★ macOS 原生菜单 → 前端统一动作入口
+//   平台层通过 window.evaluate_js("MKMenuAction('save')") 调用。
+window.MKMenuAction = function (action) {
+    try {
+        if (window.MenuBar && typeof window.MenuBar.run === 'function') {
+            return window.MenuBar.run(action);
+        }
+    } catch (e) {
+        console.warn('[MKMenuAction] failed:', action, e);
+    }
+    return false;
+};
 
 // ---------------- 文件关联 handlers ----------------
 async function onSetDefaultProgram() {

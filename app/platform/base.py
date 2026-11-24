@@ -69,6 +69,10 @@ class PlatformBase:
         """窗口未响应看门狗（仅 Windows 有实现）。"""
         return None
 
+    def get_native_menu(self, window, api):
+        """返回 pywebview 原生菜单列表；None 表示沿用应用内 HTML 菜单。"""
+        return None
+
     def set_shutting_down(self, value):
         self._shutting_down = bool(value)
 

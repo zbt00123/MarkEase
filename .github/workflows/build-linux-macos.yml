@@ -131,40 +131,43 @@ jobs:
           echo '--- self-test ---'
           "$APP/Contents/MacOS/MarkEase" --self-test
 
-      # 真实启动一次窗口，确认 WebView 初始化不会崩溃。
-      # 预期由 timeout 结束（124）；早退说明启动失败。
+      # 真实启动一次窗口，并由 --ui-test 检查前端是否真正初始化：
+      # initialized=True + 工具栏按钮 > 0 才算通过，能直接抓出"空白窗口"。
       - name: GUI smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
           set +e
-          timeout 25s xvfb-run -a dist/MarkEase/MarkEase \
-            > /tmp/markease-gui.log 2>&1
-          code=$?
+          timeout 45s xvfb-run -a dist/MarkEase/MarkEase --ui-test \
+            2>&1 | tee /tmp/markease-ui-test.log
+          code=${PIPESTATUS[0]}
           set -e
-          cat /tmp/markease-gui.log || true
-          if [ "$code" -ne 124 ]; then
-            echo "::error::MarkEase exited early with code $code"
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--ui-test failed with code $code"
             exit 1
           fi
-          echo 'GUI stayed alive for 25s (killed by timeout as expected)'
+          grep -q '"initialized": true' /tmp/markease-ui-test.log
+          if grep -q '"toolbarButtons": 0' /tmp/markease-ui-test.log; then
+            echo "::error::toolbar did not initialize"
+            exit 1
+          fi
 
       - name: GUI smoke test (macOS)
         if: runner.os == 'macOS'
-        continue-on-error: true
         run: |
           set +e
-          dist/MarkEase.app/Contents/MacOS/MarkEase \
-            > /tmp/markease-gui.log 2>&1 &
-          pid=$!
-          sleep 15
-          if ! kill -0 "$pid" 2>/dev/null; then
-            echo "::error::MarkEase exited during startup"
-            cat /tmp/markease-gui.log
+          timeout 45s dist/MarkEase.app/Contents/MacOS/MarkEase --ui-test \
+            2>&1 | tee /tmp/markease-ui-test.log
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--ui-test failed with code $code"
             exit 1
           fi
-          kill "$pid" 2>/dev/null
-          wait "$pid" 2>/dev/null
-          echo 'GUI stayed alive for 15s'
+          grep -q '"initialized": true' /tmp/markease-ui-test.log
+          if grep -q '"toolbarButtons": 0' /tmp/markease-ui-test.log; then
+            echo "::error::toolbar did not initialize"
+            exit 1
+          fi
 
       - name: Package
         env:

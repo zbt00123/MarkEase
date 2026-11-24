@@ -849,6 +849,72 @@ def _run_self_test():
     return bool(result['ok'])
 
 
+def _start_ui_test(window):
+    """启动 8 秒后抓取前端真实状态并退出（CI 冒烟测试用）。
+
+    输出一行 JSON：是否初始化、工具栏按钮数、CodeMirror 是否创建、早期 JS 错误。
+    退出码：0 正常；3 初始化失败。这样 macOS / Linux 的空白窗口问题
+    在 CI 日志里可以直接定位。
+    """
+    import json as _json
+
+    def _worker():
+        time.sleep(8.0)
+        script = r"""(function () {
+          try {
+            var errs = window.__mkEarlyErrors || [];
+            var menubar = document.getElementById('menubar');
+            var mbVisible = false;
+            if (menubar) {
+              var s = getComputedStyle(menubar);
+              mbVisible = s.display !== 'none' && s.visibility !== 'hidden';
+            }
+            return JSON.stringify({
+              initialized: !!window.__markEaseInitialized,
+              hasApi: !!(window.pywebview && window.pywebview.api),
+              toolbarButtons: document.querySelectorAll('#toolbar .tb-btn').length,
+              editorReady: !!document.querySelector('.cm-editor'),
+              previewReady: !!document.querySelector('#preview'),
+              menubarVisible: mbVisible,
+              nativeMenuExpected: document.documentElement.classList.contains('platform-mac'),
+              readyState: document.readyState,
+              earlyErrors: errs.slice(0, 10),
+              ua: navigator.userAgent
+            });
+          } catch (e) {
+            return JSON.stringify({ fatal: String(e) });
+          }
+        })()"""
+
+        data = {}
+        try:
+            raw = window.evaluate_js(script)
+            if isinstance(raw, str):
+                data = _json.loads(raw)
+            elif isinstance(raw, dict):
+                data = raw
+        except Exception as e:
+            data = {'error': '%s: %s' % (type(e).__name__, e)}
+
+        print('[MarkEase][ui-test] ' + _json.dumps(data, ensure_ascii=False))
+        try:
+            window.destroy()
+        except Exception:
+            pass
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+        ok = bool(data.get('initialized')) and \
+            int(data.get('toolbarButtons') or 0) > 0
+        os._exit(0 if ok else 3)
+
+    threading.Thread(target=_worker, daemon=True,
+                     name='MarkEaseUITest').start()
+
+
 def main():
     _log_event('main_enter', 'main() started',
                argv_count=len(sys.argv))
@@ -942,6 +1008,16 @@ def main():
     api.set_window(window)
     _log_event('window_created', 'pywebview window created')
 
+    # macOS 使用系统原生菜单栏；Windows / Linux 返回 None，继续用应用内 HTML 菜单
+    native_menu = None
+    try:
+        native_menu = platform.get_native_menu(window, api)
+    except Exception as e:
+        print(f'[MarkEase] native menu failed: {e}')
+        _log_error('native_menu_failed',
+                   'platform.get_native_menu raised',
+                   exception=e)
+
     def on_closing():
         # ★ 修复死锁：不能在 closing 回调里同步调用 evaluate_js。
         #   改用独立线程 + 小延迟异步通知前端弹窗。
@@ -1027,6 +1103,10 @@ def main():
     window.events.closing += on_closing
     window.events.closed += on_closed
 
+    # CI 冒烟测试：启动后抓取前端状态，确认不是"静态骨架"
+    if '--ui-test' in sys.argv:
+        _start_ui_test(window)
+
     # ★ 启动看门狗：窗口未响应超时 → 强制退出
     try:
         platform.start_hang_watchdog(window)
@@ -1050,6 +1130,8 @@ def main():
             gui=platform.webview_gui(),
             debug=False,
             icon=icon_path if icon_path else None,
+            # macOS 原生菜单（Windows / Linux 为 None，传 [] 不生效）
+            menu=native_menu or [],
             # ★ 显式指定本次启动的 WebView2 目录：避免 pywebview 使用临时目录
             #   或上一次崩溃残留的坏档案，导致 0x800700AA 空白窗口。
             storage_path=_USER_DATA_DIR,

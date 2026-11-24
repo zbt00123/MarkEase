@@ -235,3 +235,8 @@ body.dark .submenu .menu-entry:hover:not(.disabled) {
 body.dark .menu-entry .menu-check {
     color: #58a6ff;
 }
+/* macOS: menu bar is native (app/platform/mac.py); hide the in-app HTML menubar. */
+html.platform-mac #menubar {
+    display: none !important;
+}
+

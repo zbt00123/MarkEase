@@ -184,8 +184,24 @@
         });
     }
 
+    function runAction(action) {
+        const fn = handlers[action];
+        if (typeof fn !== 'function') {
+            console.warn('[menubar] unknown action:', action);
+            return false;
+        }
+        try {
+            fn();
+            return true;
+        } catch (err) {
+            console.warn('[menubar] action failed:', action, err);
+            return false;
+        }
+    }
+
     window.MenuBar = {
         init: initMenubar,
+        run: runAction,
         setChecked: setMenuChecked,
         setEnabled: setMenuEnabled,
         closeAll: closeMenu,

@@ -15,6 +15,7 @@ MarkEase macOS 平台实现（WKWebView / PyObjC）。
 import os
 import sys
 import time
+import json
 import threading
 
 from .base import PlatformBase
@@ -60,6 +61,123 @@ class MacPlatform(PlatformBase):
         except Exception:
             pass
         return None
+
+    # ---------- 原生菜单（macOS 系统菜单栏） ----------
+    def get_native_menu(self, window, api):
+        """构建 macOS 系统菜单栏；菜单项通过 MKMenuAction 调用前端统一动作。"""
+        try:
+            import webview as _webview
+            from webview.menu import Menu, MenuAction, MenuSeparator
+        except Exception as e:
+            print(f'[MarkEase][mac] native menu unavailable: {e}')
+            return None
+
+        # 关闭 pywebview 默认 View/Edit 菜单，避免与 MarkEase 自己的菜单重复。
+        # （settings 是 UserDict，只允许修改已有键）
+        try:
+            _webview.settings['SHOW_DEFAULT_MENUS'] = False
+        except Exception as e:
+            print(f'[MarkEase][mac] cannot disable default menus: {e}')
+
+        labels = {}
+        try:
+            r = api.get_translations()
+            if r and r.get('ok'):
+                labels = r.get('dict') or {}
+        except Exception as e:
+            print(f'[MarkEase][mac] menu translations failed: {e}')
+
+        def _t(key, fallback):
+            value = labels.get(key)
+            return str(value) if value else fallback
+
+        def _action(action_id, title):
+            def _run():
+                try:
+                    script = ('window.MKMenuAction && '
+                              'window.MKMenuAction(%s);'
+                              % json.dumps(action_id))
+                    window.evaluate_js(script)
+                except Exception as exc:
+                    print(f'[MarkEase][mac] menu {action_id} failed: {exc}')
+
+            _run.__name__ = 'mk_menu_' + action_id
+            return MenuAction(title, _run)
+
+        def item(action_id, key, fallback):
+            return _action(action_id, _t(key, fallback))
+
+        file_menu = Menu(_t('file', '文件'), [
+            item('new', 'new', '新建'),
+            item('open', 'open', '打开'),
+            item('save', 'save', '保存'),
+            item('save_as', 'save_as', '另存为'),
+            MenuSeparator(),
+            item('insert_image', 'insert_image', '插入图片'),
+            MenuSeparator(),
+            Menu(_t('import', '导入'), [
+                item('import_pdf', 'import_pdf', '导入 PDF'),
+                item('import_html', 'import_html', '导入 HTML'),
+            ]),
+            Menu(_t('export', '导出'), [
+                item('export_pdf', 'export_pdf', '导出 PDF'),
+                item('export_html', 'export_html', '导出 HTML'),
+            ]),
+            MenuSeparator(),
+            item('exit', 'exit', '退出'),
+        ])
+
+        edit_menu = Menu(_t('edit', '编辑'), [
+            item('undo', 'undo', '撤销'),
+            item('redo', 'redo', '重做'),
+            MenuSeparator(),
+            item('cut', 'cut', '剪切'),
+            item('copy', 'copy', '复制'),
+            item('paste', 'paste', '粘贴'),
+            MenuSeparator(),
+            item('select_all', 'select_all', '全选'),
+            item('find', 'find', '查找'),
+        ])
+
+        view_menu = Menu(_t('view', '查看'), [
+            item('mode_edit', 'edit_mode', '编辑模式'),
+            item('mode_split', 'split_mode', '分屏模式'),
+            item('mode_preview', 'preview_mode', '预览模式'),
+            MenuSeparator(),
+            item('toggle_toc', 'show_toc', '显示/隐藏目录'),
+            MenuSeparator(),
+            item('zoom_in', 'zoom_in', '放大'),
+            item('zoom_out', 'zoom_out', '缩小'),
+            item('zoom_reset', 'reset_zoom', '重置缩放'),
+            MenuSeparator(),
+            item('toggle_theme', 'toggle_theme', '切换主题'),
+            MenuSeparator(),
+            Menu(_t('language', '语言'), [
+                item('lang_system', 'system', '跟随系统'),
+                item('lang_zh_CN', 'zh_CN', '简体中文'),
+                item('lang_zh_TW', 'zh_TW', '繁体中文'),
+                item('lang_en_US', 'en_US', 'English'),
+                item('lang_ja_JP', 'ja_JP', '日本語'),
+                item('lang_ko_KR', 'ko_KR', '한국어'),
+            ]),
+        ])
+
+        help_menu = Menu(_t('help', '帮助'), [
+            item('about', 'about', '关于 MarkEase'),
+            item('check_update', 'check_update', '检查更新'),
+            MenuSeparator(),
+            item('logs', 'logs', '日志'),
+            MenuSeparator(),
+            Menu(_t('settings', '设置'), [
+                item('set_default_program', 'set_default_program',
+                     '设为默认打开程序'),
+                item('register_shell_new', 'register_shell_new',
+                     '添加到「新建」菜单'),
+            ]),
+        ])
+
+        print('[MarkEase][mac] native menu installed')
+        return [file_menu, edit_menu, view_menu, help_menu]
 
     # ---------- 剪贴板 ----------
     def read_clipboard_text(self):
