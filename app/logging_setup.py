@@ -316,7 +316,21 @@ def _resolve_log_dir():
     except Exception:
         pass
 
-    # 3) Windows local appdata
+    # 3) 平台标准日志目录（macOS / Linux）
+    try:
+        if sys.platform == 'darwin':
+            candidates.append(Path.home() / 'Library' / 'Logs' / 'MarkEase')
+        elif sys.platform.startswith('linux'):
+            state_home = os.environ.get('XDG_STATE_HOME')
+            if state_home:
+                candidates.append(Path(state_home) / 'markease' / 'logs')
+            else:
+                candidates.append(Path.home() / '.local' / 'state' /
+                                  'markease' / 'logs')
+    except Exception:
+        pass
+
+    # 4) Windows local appdata
     try:
         local_app = os.environ.get('LOCALAPPDATA')
         if local_app:
@@ -324,7 +338,7 @@ def _resolve_log_dir():
     except Exception:
         pass
 
-    # 4) user home fallback
+    # 5) user home fallback
     try:
         candidates.append(Path.home() / '.markease' / 'logs')
     except Exception:

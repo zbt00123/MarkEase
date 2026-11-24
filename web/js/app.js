@@ -617,6 +617,23 @@ async function openStartupFileIfAny() {
     }
 }
 
+// ★ 跨平台：应用运行中由系统再次要求打开文件时调用
+//   （macOS open-file Apple Event → 平台层 evaluate_js）
+window.MKOpenStartupFile = async function () {
+    try {
+        if (isDirty) {
+            const ok = await showConfirm(
+                '打开新文件',
+                '当前文档有未保存的修改，仍要打开新文件吗？',
+                { okText: '打开', cancelText: '取消' }
+            );
+            if (!ok) return;
+        }
+    } catch (e) { /* ignore */ }
+    try { commitActivePreviewEdit(); } catch (e) { /* ignore */ }
+    await openStartupFileIfAny();
+};
+
 function hideSplash() {
     const splash = document.getElementById('splash');
     if (!splash) return;
@@ -2138,7 +2155,9 @@ function _renderContextMenu(x, y, items) {
 
         const shortcutSpan = document.createElement('span');
         shortcutSpan.className = 'mk-context-shortcut';
-        shortcutSpan.textContent = item.shortcut || '';
+        shortcutSpan.textContent = window.MKPlatform
+            ? MKPlatform.label(item.shortcut)
+            : (item.shortcut || '');
 
         row.appendChild(labelSpan);
         row.appendChild(shortcutSpan);

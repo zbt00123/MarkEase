@@ -57,6 +57,9 @@ try:
 except Exception:
     _logging = None
 
+# ★ 平台层：剪贴板 / PDF / 文件关联 / 文件管理器全部走这里
+from app.platform import platform
+
 
 def _log_event(event, message=None, **context):
     if _logging is None:
@@ -94,15 +97,10 @@ except AttributeError:
     _OPEN_DIALOG = webview.OPEN_DIALOG
     _SAVE_DIALOG = webview.SAVE_DIALOG
 
-try:
-    import clr
-    import System
-    CLR_AVAILABLE = True
-except Exception as e:
-    # ★ 修复：捕获 RuntimeError 等所有异常，防止 .NET 环境问题导致整个 App 无法启动
-    # （失效时 PDF 导出功能不可用，但其他功能正常）
-    print(f'[MarkEase] pythonnet load failed: {e}')
-    CLR_AVAILABLE = False
+# ★ pythonnet 不在模块导入时初始化。
+#   CoreWebView2 PDF 导出时才由 app/platform/win.py 按需 `import clr`；
+#   这样 macOS / Linux 完全不接触 .NET，Windows 启动也更快、更抗环境问题
+#   （受限环境里 import clr 可能直接让进程崩溃）。
 
 
 SETTINGS_FILE = os.path.join(os.path.expanduser('~'), '.markease', 'settings.json')
@@ -199,77 +197,16 @@ APP_INFO = {
 
 
 # ============================================================
-#  ★ v2.1.3：读取 Windows 系统剪贴板文本
+#  ★ v2.1.3 / 跨平台：读取系统剪贴板文本
 #
 #  WebView2 下 document.execCommand('paste') 会被 Chromium 直接拒绝，
 #  navigator.clipboard.readText() 又依赖 clipboard-read 权限，均不可靠。
 #  因此「右键菜单 → 粘贴」「编辑菜单 → 粘贴」改由 Python 后端读取剪贴板，
 #  再由前端插入到保存好的光标 / 选区位置。
 #
-#  只读取 CF_UNICODETEXT，返回纯文本：
-#    - 从 MarkEase 预览区复制时，text/plain 就是 Markdown 源码，可原样粘贴；
-#    - 从 Word / 浏览器复制时，返回可见纯文本，符合 Markdown 源编辑预期。
+#  平台差异（Win32 / pbpaste / xclip 等）全部收敛在
+#  app/platform/{win,mac,linux}.py::read_clipboard_text()。
 # ============================================================
-def _read_clipboard_text_windows():
-    """读取 Windows 剪贴板中的 Unicode 文本（CF_UNICODETEXT）。
-
-    剪贴板可能被其他进程短暂占用，OpenClipboard 失败时重试若干次。
-    读取失败会抛出异常，由调用方转成 {ok: False, error: ...}。
-    """
-    import ctypes
-    from ctypes import wintypes
-
-    user32 = ctypes.WinDLL('user32', use_last_error=True)
-    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-
-    CF_UNICODETEXT = 13
-
-    user32.OpenClipboard.argtypes = [wintypes.HWND]
-    user32.OpenClipboard.restype = wintypes.BOOL
-    user32.CloseClipboard.argtypes = []
-    user32.CloseClipboard.restype = wintypes.BOOL
-    user32.IsClipboardFormatAvailable.argtypes = [wintypes.UINT]
-    user32.IsClipboardFormatAvailable.restype = wintypes.BOOL
-    user32.GetClipboardData.argtypes = [wintypes.UINT]
-    user32.GetClipboardData.restype = wintypes.HANDLE
-    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
-    kernel32.GlobalLock.restype = wintypes.LPVOID
-    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
-    kernel32.GlobalUnlock.restype = wintypes.BOOL
-
-    last_error = None
-    opened = False
-    for _ in range(6):
-        if user32.OpenClipboard(None):
-            opened = True
-            break
-        last_error = ctypes.get_last_error()
-        time.sleep(0.05)
-
-    if not opened:
-        raise OSError(
-            '无法打开系统剪贴板（可能被其他程序占用）'
-            + (f'，错误码 {last_error}' if last_error else '')
-        )
-
-    try:
-        if not user32.IsClipboardFormatAvailable(CF_UNICODETEXT):
-            return ''
-
-        handle = user32.GetClipboardData(CF_UNICODETEXT)
-        if not handle:
-            return ''
-
-        ptr = kernel32.GlobalLock(handle)
-        if not ptr:
-            return ''
-        try:
-            return ctypes.wstring_at(ptr)
-        finally:
-            kernel32.GlobalUnlock(handle)
-    finally:
-        user32.CloseClipboard()
-
 
 class Settings:
     def __init__(self):
@@ -536,15 +473,15 @@ class Api:
         _log_event('asset_server_started', 'Asset server started',
                    port=self._asset_port)
 
+        # 首次启动的系统集成（Windows ShellNew / Linux .desktop）
         try:
-            from app import file_assoc
-            try:
-                reg_ver = int(self._settings.get('shell_new_registered', 0) or 0)
-            except Exception:
-                reg_ver = 0
+            reg_ver = int(self._settings.get('shell_new_registered', 0) or 0)
+        except Exception:
+            reg_ver = 0
 
-            if reg_ver < CURRENT_SHELL_NEW_VERSION:
-                r = file_assoc.setup_shell_new_on_first_run()
+        if reg_ver < CURRENT_SHELL_NEW_VERSION:
+            try:
+                r = platform.setup_file_associations_on_first_run()
                 if r and r.get('ok') and not r.get('skipped'):
                     self._settings.set('shell_new_registered',
                                        CURRENT_SHELL_NEW_VERSION)
@@ -555,11 +492,11 @@ class Api:
                                name=r.get('name'))
                 elif r and r.get('skipped'):
                     print(f'[MarkEase] shell-new skipped: {r.get("reason")}')
-        except Exception as e:
-            print(f'[MarkEase] shell-new setup failed: {e}')
-            _log_error('shell_new_setup_failed',
-                       'file_assoc shell-new setup raised',
-                       exception=e)
+            except Exception as e:
+                print(f'[MarkEase] shell-new setup failed: {e}')
+                _log_error('shell_new_setup_failed',
+                           'file_assoc shell-new setup raised',
+                           exception=e)
 
         # ★ 新增：关闭前的未保存检查状态
         self._is_dirty = False
@@ -620,24 +557,16 @@ class Api:
                        'User opened logs directory',
                        path=log_dir_str)
 
-            if sys.platform == 'win32':
-                # 优先在资源管理器中选中当前日志文件
+            # 优先在文件管理器中选中当前日志文件（平台层决定是否支持）
+            log_file = None
+            try:
+                lf = _logging.get_log_file()
+                if lf and os.path.exists(str(lf)):
+                    log_file = str(lf)
+            except Exception:
                 log_file = None
-                try:
-                    lf = _logging.get_log_file()
-                    if lf and os.path.exists(str(lf)):
-                        log_file = str(lf)
-                except Exception:
-                    log_file = None
 
-                if log_file:
-                    subprocess.Popen(['explorer', '/select,', log_file])
-                else:
-                    subprocess.Popen(['explorer', log_dir_str])
-            elif sys.platform == 'darwin':
-                subprocess.Popen(['open', log_dir_str])
-            else:
-                subprocess.Popen(['xdg-open', log_dir_str])
+            platform.open_directory(log_dir_str, select_path=log_file)
 
             return {'ok': True, 'path': log_dir_str}
         except Exception as e:
@@ -742,11 +671,7 @@ class Api:
         从而绕开 Chromium 对脚本粘贴的限制。
         """
         try:
-            if sys.platform == 'win32':
-                text = _read_clipboard_text_windows()
-            else:
-                # 阶段 0 平台层抽取后再补 macOS / Linux 实现
-                raise RuntimeError('当前平台暂不支持读取系统剪贴板')
+            text = platform.read_clipboard_text()
             return {'ok': True, 'text': text or ''}
         except Exception as e:
             _log_error('clipboard_read_failed',
@@ -1055,20 +980,18 @@ class Api:
     # ---------- 文件关联 ----------
     def set_as_default_program(self):
         try:
-            from app import file_assoc
-            return file_assoc.set_as_default_program()
+            return platform.set_as_default_program()
         except Exception as e:
             import traceback
             traceback.print_exc()
             _log_error('set_default_program_failed',
-                       'file_assoc.set_as_default_program raised',
+                       'platform.set_as_default_program raised',
                        exception=e)
             return {'ok': False, 'error': str(e)}
 
     def register_shell_new(self):
         try:
-            from app import file_assoc
-            r = file_assoc.register_shell_new()
+            r = platform.register_shell_new()
             if r and r.get('ok'):
                 self._settings.set('shell_new_registered',
                                    CURRENT_SHELL_NEW_VERSION)
@@ -1077,23 +1000,34 @@ class Api:
             import traceback
             traceback.print_exc()
             _log_error('register_shell_new_failed',
-                       'file_assoc.register_shell_new raised',
+                       'platform.register_shell_new raised',
                        exception=e)
             return {'ok': False, 'error': str(e)}
 
     def is_default_program(self):
         try:
-            from app import file_assoc
-            return {'ok': True, 'is_default': file_assoc.is_default_program()}
+            return {'ok': True, 'is_default': platform.is_default_program()}
         except Exception as e:
             return {'ok': False, 'is_default': False, 'error': str(e)}
 
     def get_default_program_display_name(self):
         try:
-            from app import file_assoc
-            return {'ok': True, 'name': file_assoc._get_display_name()}
+            return {'ok': True,
+                    'name': platform.get_default_program_name()}
         except Exception as e:
             return {'ok': False, 'name': 'Markdown File', 'error': str(e)}
+
+    # ---------- 平台信息（前端快捷键文案用） ----------
+    def get_platform_info(self):
+        return {
+            'ok': True,
+            'name': platform.name,
+            'is_mac': bool(platform.is_macos),
+            'is_windows': bool(platform.is_windows),
+            'is_linux': bool(platform.is_linux),
+            'modifier': '⌘' if platform.is_macos else 'Ctrl',
+            'pdf_export': bool(platform.supports_pdf_export()),
+        }
 
     # ---------- 检查更新 ----------
     def _fetch_latest_release(self):
@@ -1302,14 +1236,7 @@ class Api:
             return {'ok': False, 'error': '文件不存在：' + path}
 
         try:
-            if sys.platform == 'win32':
-                subprocess.Popen(['explorer', '/select,', path])
-            elif sys.platform == 'darwin':
-                subprocess.Popen(['open', '-R', path])
-            else:
-                folder = path if os.path.isdir(path) else os.path.dirname(path)
-                subprocess.Popen(['xdg-open', folder])
-            return {'ok': True}
+            return platform.reveal(path)
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
@@ -1755,8 +1682,8 @@ class Api:
         ext = os.path.splitext(path)[1].lower()
 
         if ext == '.pdf':
-            if not CLR_AVAILABLE:
-                return {'ok': False, 'error': '未安装 pythonnet，无法导出 PDF'}
+            if not platform.supports_pdf_export():
+                return {'ok': False, 'error': '当前系统缺少 PDF 导出组件'}
             return self._export_pdf_to_path(content, path)
 
         if not path.lower().endswith(('.md', '.markdown')):
@@ -1937,8 +1864,8 @@ class Api:
     def _export_pdf_to_path(self, content, pdf_path):
         if self._window is None:
             return {'ok': False, 'error': '窗口未就绪'}
-        if not CLR_AVAILABLE:
-            return {'ok': False, 'error': '未安装 pythonnet，无法导出 PDF'}
+        if not platform.supports_pdf_export():
+            return {'ok': False, 'error': '当前系统缺少 PDF 导出组件'}
 
         pdf_path = os.path.abspath(pdf_path)
         if not pdf_path.lower().endswith('.pdf'):
@@ -1959,48 +1886,17 @@ class Api:
                        '_wait_images_loaded raised',
                        exception=e)
 
-        task_holder = [None]
-        error_holder = [None]
-
-        def start_on_ui():
-            try:
-                native_window = self._window.native
-                webview_control = native_window.webview
-                core = webview_control.CoreWebView2
-                if core is None:
-                    error_holder[0] = '无法获取 CoreWebView2'
-                    return
-                task_holder[0] = core.PrintToPdfAsync(pdf_path, None)
-            except Exception as e:
-                error_holder[0] = str(e)
-                import traceback
-                traceback.print_exc()
-
+        # 平台实现：Windows CoreWebView2 / macOS WKWebView / Linux WebKit2
         try:
-            self._window.native.Invoke(System.Action(start_on_ui))
+            result = platform.export_pdf(self._window, pdf_path)
         except Exception as e:
-            _log_error('pdf_ui_dispatch_failed',
-                       'native.Invoke failed',
+            _log_error('pdf_export_failed', 'platform.export_pdf raised',
                        exception=e)
-            return {'ok': False, 'error': f'UI 线程调度失败: {e}'}
+            return {'ok': False, 'error': str(e)}
 
-        if error_holder[0]:
-            _log_error('pdf_export_start_failed',
-                       'PrintToPdfAsync start failed',
-                       message=error_holder[0])
-            return {'ok': False, 'error': f'导出启动失败: {error_holder[0]}'}
-
-        task = task_holder[0]
-        if task is None:
-            return {'ok': False, 'error': '未获取到导出任务'}
-
-        try:
-            task.Wait()
-        except Exception as e:
-            _log_error('pdf_export_wait_failed',
-                       'PrintToPdfAsync task.Wait failed',
-                       exception=e)
-            return {'ok': False, 'error': f'等待导出失败: {e}'}
+        if not (result or {}).get('ok'):
+            return {'ok': False,
+                    'error': (result or {}).get('error', '导出 PDF 失败')}
 
         if not os.path.exists(pdf_path):
             return {'ok': False, 'error': '未生成 PDF 文件'}
@@ -2026,8 +1922,8 @@ class Api:
     def export_pdf(self, content: str):
         if self._window is None:
             return {'ok': False, 'error': '窗口未就绪'}
-        if not CLR_AVAILABLE:
-            return {'ok': False, 'error': '未安装 pythonnet，无法导出 PDF'}
+        if not platform.supports_pdf_export():
+            return {'ok': False, 'error': '当前系统缺少 PDF 导出组件'}
 
         default_name = '未命名.pdf'
         if self._current_file:

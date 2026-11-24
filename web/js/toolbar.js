@@ -726,12 +726,21 @@
         return fallback || key;
     }
 
+    function platformLabel(text) {
+        try {
+            return window.MKPlatform ? window.MKPlatform.label(text)
+                : (text || '');
+        } catch (e) {
+            return text || '';
+        }
+    }
+
     function buildTooltip(item) {
         if (!item) return '';
         let base = '';
         if (item.titleKey) base = T(item.titleKey, item.title || item.titleKey);
         else if (item.title) base = item.title;
-        return base + (item.titleSuffix || '');
+        return base + platformLabel(item.titleSuffix);
     }
 
     // ============================================================
@@ -993,7 +1002,8 @@
             if (item.titleKey) {
                 btn.setAttribute('data-i18n-key', item.titleKey);
                 if (item.titleSuffix) {
-                    btn.setAttribute('data-i18n-suffix', item.titleSuffix);
+                    btn.setAttribute('data-i18n-suffix',
+                        platformLabel(item.titleSuffix));
                 }
             }
             btn.innerHTML = getIcon(item.icon);

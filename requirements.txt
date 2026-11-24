@@ -1,4 +1,31 @@
+# MarkEase 三平台共用依赖（按 sys_platform 条件安装）
+#
+# Windows : pywebview + WebView2（pythonnet 用于 PDF 导出）
+# macOS   : pywebview[cocoa]（pyobjc 由 pywebview 依赖带入，这里显式声明）
+# Linux   : pywebview + PyGObject / WebKit2GTK
+#
+# ★ PyInstaller 不参与 requirements，由 CI / 打包脚本单独安装。
+
 pywebview>=4.0
 PyMuPDF>=1.23
-pythonnet>=3.0
 Pillow>=10.0
+
+# ---------- Windows ----------
+pythonnet>=3.0; sys_platform == "win32"
+
+# ---------- Linux ----------
+# PyGObject 只提供源码包，构建需要 libgirepository1.0-dev / libcairo2-dev 等
+# （见 .github/workflows/build-linux-macos.yml 的 apt 安装步骤）。
+# 3.50.x 是最后一个基于 girepository-1.0 的稳定版，可兼容 Ubuntu 22.04 的 GLib。
+PyGObject==3.50.2; sys_platform == "linux"
+
+# ---------- macOS ----------
+pyobjc-core>=9.0; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=9.0; sys_platform == "darwin"
+pyobjc-framework-Quartz>=9.0; sys_platform == "darwin"
+pyobjc-framework-WebKit>=9.0; sys_platform == "darwin"
+
+# ---------- 三平台共用的转换依赖 ----------
+python-docx>=1.1
+lxml>=5.0
+psutil>=5.9

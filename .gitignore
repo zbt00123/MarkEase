@@ -9,9 +9,17 @@ logs/
 # 忽略打包输出
 dist/
 build/
+out/
 *.spec
-# ★ 精确放行：打包 spec 必须纳入版本管理，否则打包修复（.exe.config 复制）会丢失
+# ★ 精确放行：三平台打包 spec 必须纳入版本管理
 !MarkEase.spec
+!packaging/*.spec
+
+# 本地验证 / 权限修复临时产物
+_verify_dist/
+_verify_build/
+_build_check/
+_acl_reports/
 
 # 忽略发布文件（已存在于 GitHub Releases）
 release/

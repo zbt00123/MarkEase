@@ -36,6 +36,10 @@ except Exception as _logging_import_err:
 else:
     _LOGGING_IMPORT_ERROR = None
 
+# ★ 平台层：必须在 import webview 之前导入并初始化
+#   Windows 会在这里设置 WEBVIEW2_* 环境变量；macOS / Linux 无操作。
+from app.platform import platform
+
 
 def _read_version_from_version_info():
     """
@@ -139,174 +143,15 @@ _log_event('app_boot_start',
 
 
 # ★★★ 必须在 import webview 之前设置 ★★★
-
-# ------------------------------------------------------------------
-# 1) WebView2 用户数据目录（★ 每次启动使用独立、干净、可写的目录）
 #
-#    背景（"打包后窗口空白"的根因，两层叠加）：
-#      a) pywebview 在私有模式下把 WebView2 配置目录设为
-#         tempfile.TemporaryDirectory()。但如果进程无法写 %TEMP%
-#         （杀软/沙箱/权限受限的机器上很常见），临时目录创建失败，
-#         pywebview 会静默把 cache_dir 留成 None。
-#      b) 此时 WebView2 回退到环境变量 WEBVIEW2_USER_DATA_FOLDER 或默认目录。
-#         该目录若来自上一次异常退出（崩溃 / 强杀 / 看门狗 os._exit(1)），
-#         残留的 EBWebView 档案会带着锁，WebView2 初始化直接抛：
-#             (0x800700AA) 请求的资源在使用中
-#         pywebview 只打印一行日志，窗口照常显示但内容永远空白。
+#   Windows：WebView2 独立用户数据目录 + 反 360 / VPN 绕过参数；
+#   macOS  ：WKWebView 自己管理数据目录；
+#   Linux  ：WebKit2GTK 自己管理数据目录。
+#   具体实现见 app/platform/{win,mac,linux}.py。
 #
-#    解决：
-#      - 按优先级探测一个"确实可写"的目录（exe 目录 → LOCALAPPDATA →
-#        ~/.markease → TEMP），不依赖 tempfile 是否可用；
-#      - 每次启动用 run-<pid> 独立子目录，启动前清理已退出进程的残留，
-#        彻底避免上一次崩溃留下的锁；
-#      - 同时设置 WEBVIEW2_USER_DATA_FOLDER 并传给
-#        webview.start(storage_path=...)，无论 pywebview 走哪条分支都用它；
-#      - 本程序 private_mode=True 且 --disk-cache-size=1 已关闭磁盘缓存，
-#        因此"每次全新目录"不会丢失任何需要持久化的数据。
-# ------------------------------------------------------------------
-
-def _pid_alive(pid):
-    """判断 PID 是否仍存活（用于清理残留 profile）。"""
-    try:
-        import psutil
-        return bool(psutil.pid_exists(pid))
-    except Exception:
-        pass
-    try:
-        h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # QUERY_LIMITED
-        if not h:
-            return False
-        ctypes.windll.kernel32.CloseHandle(h)
-        return True
-    except Exception:
-        return True  # 判断不了就保守处理，不删
-
-
-def _is_writable_dir(path):
-    """能否在 path 下创建目录并写入文件。"""
-    try:
-        os.makedirs(path, exist_ok=True)
-        probe = os.path.join(path, '.mk_write_test')
-        with open(probe, 'wb') as f:
-            f.write(b'ok')
-        os.remove(probe)
-        return True
-    except Exception:
-        return False
-
-
-def _webview_profile_bases():
-    """按优先级返回候选 profile 根目录（第一个可写的会被采用）。"""
-    bases = []
-
-    # 1) 程序目录（仅打包版：与 logs/ 保持一致；受限环境里往往只有这里可写）
-    try:
-        if getattr(sys, 'frozen', False):
-            app_dir = os.path.dirname(os.path.abspath(sys.executable))
-            bases.append(os.path.join(app_dir, 'webview2'))
-    except Exception:
-        pass
-
-    # 2) Windows 用户本地数据
-    local = os.environ.get('LOCALAPPDATA')
-    if local:
-        bases.append(os.path.join(local, 'MarkEase', 'webview2'))
-
-    # 3) 用户目录（与 settings.json 同级的 .markease）
-    try:
-        bases.append(os.path.join(os.path.expanduser('~'), '.markease',
-                                  'webview2'))
-    except Exception:
-        pass
-
-    # 4) 临时目录（最后兜底）
-    tmp = os.environ.get('TEMP') or os.environ.get('TMP')
-    if tmp:
-        bases.append(os.path.join(tmp, 'MarkEase', 'webview2'))
-
-    return bases
-
-
-def _prepare_webview_user_data_dir():
-    """创建本次启动专用的 WebView2 目录，并清理已退出进程的残留目录。"""
-    base = None
-    for candidate in _webview_profile_bases():
-        if _is_writable_dir(candidate):
-            base = candidate
-            break
-    if base is None:
-        print('[MarkEase] no writable webview2 profile dir found')
-        return None
-
-    # 清理历史残留（仍被其它存活实例占用的目录会删除失败，忽略即可）
-    try:
-        for name in os.listdir(base):
-            m = re.match(r'^run-(\d+)$', name)
-            if not m:
-                continue
-            pid = int(m.group(1))
-            if pid == os.getpid() or _pid_alive(pid):
-                continue
-            try:
-                import shutil
-                shutil.rmtree(os.path.join(base, name), ignore_errors=True)
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    run_dir = os.path.join(base, 'run-%d' % os.getpid())
-    if not _is_writable_dir(run_dir):
-        print(f'[MarkEase] cannot create webview2 run dir: {run_dir}')
-        return None
-    return run_dir
-
-
-_USER_DATA_DIR = _prepare_webview_user_data_dir()
-try:
-    if _USER_DATA_DIR:
-        os.environ['WEBVIEW2_USER_DATA_FOLDER'] = _USER_DATA_DIR
-        print(f'[MarkEase] webview2 user data: {_USER_DATA_DIR}')
-        _log_event('webview2_user_data_set', 'WEBVIEW2_USER_DATA_FOLDER set',
-                   path=_USER_DATA_DIR)
-    else:
-        _log_error('webview2_user_data_unavailable',
-                   'No writable WebView2 profile dir; relying on defaults')
-except Exception as e:
-    print(f'[MarkEase] cannot set user data dir: {e}')
-    _log_error('webview2_user_data_failed',
-               'Failed to set webview2 user data dir',
-               exception=e, path=_USER_DATA_DIR)
-
-# ------------------------------------------------------------------
-# 2) 反 360 / VPN 绕过参数
-# ------------------------------------------------------------------
-_existing = os.environ.get('WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS', '')
-
-_EXTRA_ARGS = [
-    '--proxy-bypass-list="127.0.0.1;localhost;<local>"',
-    '--disable-background-networking',
-    '--disable-component-update',
-    '--disable-sync',
-    '--disable-default-apps',
-    '--disable-client-side-phishing-detection',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-features=Translate,OptimizationHints,MediaRouter,msEdgeUpdateCheck',
-    # ★ 关键：关闭 HTTP 磁盘缓存（开发期必开；发布后可去掉以加快启动）
-    #   若你希望保留缓存（加快启动），注释掉下面这一行即可
-    '--disk-cache-size=1',
-]
-
-for _arg in _EXTRA_ARGS:
-    _flag = _arg.split('=')[0]
-    if _flag not in _existing:
-        _existing = (_existing + ' ' if _existing else '') + _arg
-
-os.environ['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS'] = _existing
-_log_event('webview2_args_set',
-           'WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS configured',
-           args=_existing)
+_USER_DATA_DIR = platform.prepare_webview_env()
+if _USER_DATA_DIR:
+    print(f'[MarkEase] webview storage: {_USER_DATA_DIR}')
 
 
 try:
@@ -329,13 +174,8 @@ def get_web_dir():
 
 
 def get_icon_path():
-    path = os.path.join(get_base_dir(), 'resources', 'icons', '图标.ico')
-    if os.path.exists(path):
-        return path
-    fallback = os.path.join(get_base_dir(), 'resources', 'icons', 'icon.ico')
-    if os.path.exists(fallback):
-        return fallback
-    return None
+    """按平台返回图标：Windows .ico / macOS .icns / Linux .png。"""
+    return platform.get_icon_path(get_base_dir())
 
 
 def _bg_for_theme(theme):
@@ -345,143 +185,8 @@ def _bg_for_theme(theme):
 
 
 def _parse_startup_file():
-    """
-    从命令行参数中提取待打开的文件路径。
-
-    场景：
-      - 双击 .md 文件 → Windows 调用 MarkEase.exe "D:\\path\\file.md"
-      - 用户命令行手输 → python main.py "D:\\path\\file.md"
-
-    规则：
-      - 跳过以 -- 开头的参数（pywebview 内部参数等）
-      - 只取第一个存在的文件
-      - 支持的扩展名：.md / .markdown / .txt / .pdf（其他也接受，交由前端判断）
-    """
-    if len(sys.argv) < 2:
-        return ''
-
-    for arg in sys.argv[1:]:
-        if not arg or arg.startswith('--'):
-            continue
-        try:
-            p = os.path.abspath(arg)
-        except Exception:
-            continue
-        if os.path.isfile(p):
-            return p
-    return ''
-
-
-# ============================================================
-#  看门狗：监控主窗口是否"未响应"
-#  连续 timeout_sec 秒未响应 → 强制退出进程，让用户可以重启
-# ============================================================
-def _start_hang_watchdog(window, timeout_sec=10, check_interval=2):
-    if sys.platform != 'win32':
-        _log_event('watchdog_skipped',
-                   'Watchdog only runs on win32',
-                   platform=sys.platform)
-        return
-
-    def _resolve_hwnd():
-        try:
-            native = window.native
-            if native is not None and hasattr(native, 'Handle'):
-                return int(native.Handle)
-        except Exception:
-            pass
-        try:
-            user32 = ctypes.windll.user32
-            hwnd = user32.FindWindowW(None, 'MarkEase')
-            return int(hwnd) if hwnd else 0
-        except Exception:
-            return 0
-
-    def _watch():
-        try:
-            user32 = ctypes.windll.user32
-        except Exception as e:
-            _log_error('watchdog_user32_failed',
-                       'Failed to load user32',
-                       exception=e)
-            return
-
-        hwnd = 0
-        for _ in range(30):
-            hwnd = _resolve_hwnd()
-            if hwnd:
-                break
-            time.sleep(1)
-
-        if not hwnd:
-            print('[MarkEase][watchdog] 未找到主窗口，看门狗退出')
-            _log_event('watchdog_no_window',
-                       'Watchdog could not find main window; exiting thread')
-            return
-
-        print('[MarkEase][watchdog] 开始监控 hwnd=%s timeout=%ss interval=%ss'
-              % (hwnd, timeout_sec, check_interval))
-        _log_event('watchdog_started',
-                   'Watchdog monitoring started',
-                   hwnd=hwnd,
-                   timeout_sec=timeout_sec,
-                   check_interval=check_interval)
-
-        hung_since = None
-        while True:
-            time.sleep(check_interval)
-            try:
-                is_hung = bool(user32.IsHungAppWindow(hwnd))
-            except Exception as e:
-                _log_error('watchdog_is_hung_check_failed',
-                           'IsHungAppWindow raised',
-                           exception=e, hwnd=hwnd)
-                is_hung = False
-
-            if is_hung:
-                if hung_since is None:
-                    hung_since = time.time()
-                    print('[MarkEase][watchdog] 检测到窗口未响应，开始计时')
-                    _log_event('watchdog_hung_detected',
-                               'Window is not responding; starting timer',
-                               hwnd=hwnd)
-                elif time.time() - hung_since >= timeout_sec:
-                    elapsed = time.time() - hung_since
-                    print('[MarkEase][watchdog] 窗口未响应超过 %ss，强制退出'
-                          % timeout_sec)
-
-                    # ★ v2.1.2：强制退出前写 CRITICAL 日志
-                    _log_critical(
-                        'watchdog_timeout_force_exit',
-                        'Main window did not respond within timeout; '
-                        'forcing process exit.',
-                        hwnd=hwnd,
-                        timeout_sec=timeout_sec,
-                        check_interval=check_interval,
-                        hung_duration_sec=round(elapsed, 3),
-                        action='os._exit(1)',
-                    )
-
-                    try:
-                        sys.stdout.flush()
-                        sys.stderr.flush()
-                    except Exception:
-                        pass
-                    os._exit(1)
-            else:
-                if hung_since is not None:
-                    print('[MarkEase][watchdog] 窗口已恢复响应')
-                    _log_event('watchdog_recovered',
-                               'Window recovered; resetting hung timer',
-                               hwnd=hwnd)
-                hung_since = None
-
-    t = threading.Thread(target=_watch, daemon=True, name='MarkEaseWatchdog')
-    t.start()
-    print('[MarkEase][watchdog] 看门狗线程已启动')
-    _log_event('watchdog_thread_started',
-               'Watchdog daemon thread started',
-               thread_name='MarkEaseWatchdog')
+    """从命令行 / 系统打开事件中取待打开文件（平台相关）。"""
+    return platform.parse_startup_file(sys.argv)
 
 
 # 应用正在关闭时，忽略 WebView2 的进程退出事件（避免退出时误 reload / 误报错误）
@@ -1101,6 +806,49 @@ def _install_webview2_process_failed_recovery(window, api):
                      name='MarkEaseWebView2Recovery').start()
 
 
+def _run_self_test():
+    """无窗口自检：验证平台层、资源与业务模块可导入。
+
+    供 CI 在三平台上执行 ``MarkEase --self-test``；不创建窗口、不启动服务。
+    """
+    import json
+
+    result = {
+        'ok': False,
+        'platform': platform.name,
+        'python': sys.version.split()[0],
+        'version': _read_version_from_version_info(),
+        'gui': platform.webview_gui(),
+        'frozen': bool(getattr(sys, 'frozen', False)),
+    }
+    try:
+        result['web_dir'] = get_web_dir()
+        result['web_index'] = os.path.isfile(
+            os.path.join(get_web_dir(), 'index.html'))
+        result['icon'] = get_icon_path() or ''
+        result['pdf_export'] = bool(platform.supports_pdf_export())
+
+        # 业务模块导入检查（不构造 Api，避免启动 HTTP 服务）
+        import app.api  # noqa: F401
+        import app.asset_server  # noqa: F401
+        import app.image_picker  # noqa: F401
+        import converters.html_exporter  # noqa: F401
+        import converters.html_importer  # noqa: F401
+        import converters.pdf_importer  # noqa: F401
+        import webview  # noqa: F401
+        try:
+            from importlib.metadata import version as _pkg_version
+            result['webview_version'] = _pkg_version('pywebview')
+        except Exception:
+            result['webview_version'] = ''
+        result['ok'] = bool(result['web_index'])
+    except Exception as e:
+        result['error'] = '%s: %s' % (type(e).__name__, e)
+
+    print('[MarkEase][self-test] ' + json.dumps(result, ensure_ascii=False))
+    return bool(result['ok'])
+
+
 def main():
     _log_event('main_enter', 'main() started',
                argv_count=len(sys.argv))
@@ -1135,7 +883,7 @@ def main():
         raise
 
     # 解析命令行传入的文件（双击 .md 场景）
-    startup_file = _parse_startup_file()
+    startup_file = platform.parse_startup_file(sys.argv)
     if startup_file:
         print(f'[MarkEase] startup file: {startup_file}')
         _log_event('startup_file_detected',
@@ -1161,6 +909,8 @@ def main():
     url = f'http://127.0.0.1:{api._asset_port}/web/index.html'
     _log_event('asset_url_ready', 'asset server URL ready',
                url=url, port=api._asset_port)
+
+    platform.init_app_integration()
 
     kwargs = dict(
         title='MarkEase',
@@ -1237,6 +987,10 @@ def main():
     def on_closed():
         global _APP_SHUTTING_DOWN
         _APP_SHUTTING_DOWN = True
+        try:
+            platform.set_shutting_down(True)
+        except Exception:
+            pass
         _log_event('window_closed', 'Window closed event received')
         try:
             api.close_all_pickers()
@@ -1252,12 +1006,21 @@ def main():
                        exception=e)
 
     def on_loaded():
+        # Windows：WebView2 进程崩溃自恢复（macOS / Linux 无此机制）
+        if platform.is_windows:
+            try:
+                _install_webview2_process_failed_recovery(window, api)
+            except Exception as e:
+                print(f'[MarkEase][webview2] recovery hook failed: {e}')
+                _log_error('webview2_recovery_hook_failed',
+                           'on_loaded recovery hook raised',
+                           exception=e)
+        # macOS：把 open-file Apple Event 转交前端
         try:
-            _install_webview2_process_failed_recovery(window, api)
+            platform.start_open_file_watcher(window, api)
         except Exception as e:
-            print(f'[MarkEase][webview2] recovery hook failed: {e}')
-            _log_error('webview2_recovery_hook_failed',
-                       'on_loaded recovery hook raised',
+            _log_error('open_file_watcher_failed',
+                       'start_open_file_watcher raised',
                        exception=e)
 
     window.events.loaded += on_loaded
@@ -1266,7 +1029,7 @@ def main():
 
     # ★ 启动看门狗：窗口未响应超时 → 强制退出
     try:
-        _start_hang_watchdog(window, timeout_sec=10, check_interval=2)
+        platform.start_hang_watchdog(window)
     except Exception as e:
         print('[MarkEase][watchdog] 启动失败: %s' % e)
         _log_error('watchdog_start_failed',
@@ -1279,12 +1042,12 @@ def main():
     print(f'[MarkEase] url: {url}')
 
     _log_event('webview_start_called', 'Calling webview.start()',
-               gui='edgechromium', debug=False,
+               gui=platform.webview_gui(), debug=False,
                has_icon=bool(icon_path))
 
     try:
         webview.start(
-            gui='edgechromium',
+            gui=platform.webview_gui(),
             debug=False,
             icon=icon_path if icon_path else None,
             # ★ 显式指定本次启动的 WebView2 目录：避免 pywebview 使用临时目录
@@ -1310,6 +1073,8 @@ def main():
 
 
 if __name__ == '__main__':
+    if '--self-test' in sys.argv:
+        sys.exit(0 if _run_self_test() else 1)
     try:
         main()
     except SystemExit:

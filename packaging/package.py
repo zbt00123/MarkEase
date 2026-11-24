@@ -1,0 +1,260 @@
+# -*- coding: utf-8 -*-
+"""
+MarkEase Linux / macOS 产物打包脚本（在对应系统的 runner 上执行）。
+
+用法：
+    python packaging/package.py --target linux-x64  --dist dist --out out
+    python packaging/package.py --target macos-x64  --dist dist --out out
+    python packaging/package.py --target macos-arm64 --dist dist --out out
+
+产物：
+    Linux : MarkEase_v<版本>_Linux_x64.tar.gz + .deb
+    macOS : MarkEase_v<版本>_macOS_<arch>.dmg
+
+可选环境变量（macOS 签名 / 公证）：
+    MK_CODESIGN_IDENTITY   Developer ID Application 证书名；缺省为 ad-hoc "-"
+    MK_NOTARIZE=1          对 dmg 执行 notarytool 公证并 staple
+    APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
+"""
+
+import argparse
+import hashlib
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+def log(msg):
+    print(f'[package] {msg}', flush=True)
+
+
+def run(cmd, **kwargs):
+    log('+ ' + ' '.join(str(c) for c in cmd))
+    subprocess.run(cmd, check=True, **kwargs)
+
+
+def read_version(root):
+    import re
+    path = os.path.join(root, 'version_info.txt')
+    with open(path, 'r', encoding='utf-8') as f:
+        m = re.search(r"StringStruct\(u'FileVersion',\s*u'([^']+)'\)",
+                      f.read())
+    if not m:
+        raise SystemExit('cannot read FileVersion from version_info.txt')
+    return m.group(1)
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def ensure_icon_png(root, work_dir):
+    """生成 Linux .desktop 用的 256px PNG。"""
+    os.makedirs(work_dir, exist_ok=True)
+    target = os.path.join(work_dir, 'markease.png')
+    if os.path.isfile(target):
+        return target
+    try:
+        from PIL import Image
+        src = os.path.join(root, 'resources', 'icons', '图标.ico')
+        if not os.path.isfile(src):
+            src = os.path.join(root, 'resources', 'icons', 'icon.ico')
+        img = Image.open(src).convert('RGBA')
+        img.resize((256, 256), Image.LANCZOS).save(target, format='PNG')
+        return target
+    except Exception as e:
+        log(f'WARNING: cannot generate icon: {e}')
+        return ''
+
+
+# ============================================================
+#  Linux
+# ============================================================
+DEB_CONTROL = """Package: markease
+Version: {version}
+Section: editors
+Priority: optional
+Architecture: {arch}
+Depends: libgtk-3-0, libwebkit2gtk-4.0-37 | libwebkit2gtk-4.1-0, gir1.2-gtk-3.0, gir1.2-webkit2-4.0 | gir1.2-webkit2-4.1, libglib2.0-0, libcairo2, libpango-1.0-0
+Installed-Size: {installed_size}
+Maintainer: ZBT Studio <zbt00123@users.noreply.github.com>
+Homepage: https://github.com/zbt00123/MarkEase
+Description: MarkEase - Markdown editor with live preview
+ MarkEase is a lightweight Markdown editor with a live preview,
+ KaTeX math, Mermaid-free architecture, PDF/HTML import and export.
+"""
+
+DESKTOP_ENTRY = """[Desktop Entry]
+Type=Application
+Name=MarkEase
+GenericName=Markdown Editor
+Comment=Markdown editor with live preview
+Exec=/opt/markease/MarkEase %f
+Icon=markease
+Terminal=false
+Categories=Office;TextEditor;
+MimeType=text/markdown;text/x-markdown;
+Keywords=markdown;editor;notes;
+StartupWMClass=MarkEase
+"""
+
+
+def package_linux(root, dist, out, version):
+    app_dir = os.path.join(dist, 'MarkEase')
+    if not os.path.isdir(app_dir):
+        raise SystemExit(f'missing build output: {app_dir}')
+
+    os.makedirs(out, exist_ok=True)
+    artifacts = []
+
+    tar_name = f'MarkEase_v{version}_Linux_x64.tar.gz'
+    tar_path = os.path.join(out, tar_name)
+    run(['tar', '-czf', tar_path, '-C', dist, 'MarkEase'])
+    artifacts.append(tar_path)
+
+    # ---- .deb ----
+    stage = tempfile.mkdtemp(prefix='markease_deb_')
+    try:
+        opt = os.path.join(stage, 'opt', 'markease')
+        shutil.copytree(app_dir, opt, symlinks=True)
+
+        bin_dir = os.path.join(stage, 'usr', 'bin')
+        os.makedirs(bin_dir, exist_ok=True)
+        os.symlink('../opt/markease/MarkEase',
+                   os.path.join(bin_dir, 'markease'))
+
+        apps_dir = os.path.join(stage, 'usr', 'share', 'applications')
+        os.makedirs(apps_dir, exist_ok=True)
+        with open(os.path.join(apps_dir, 'markease.desktop'), 'w',
+                  encoding='utf-8') as f:
+            f.write(DESKTOP_ENTRY)
+
+        icon = ensure_icon_png(root, os.path.join(out, '_icons'))
+        if icon:
+            icon_dir = os.path.join(stage, 'usr', 'share', 'icons',
+                                    'hicolor', '256x256', 'apps')
+            os.makedirs(icon_dir, exist_ok=True)
+            shutil.copyfile(icon, os.path.join(icon_dir, 'markease.png'))
+
+        installed_kb = 0
+        for base, _dirs, files in os.walk(opt):
+            for name in files:
+                try:
+                    installed_kb += os.path.getsize(os.path.join(base, name))
+                except OSError:
+                    pass
+        installed_kb = max(1, installed_kb // 1024)
+
+        control_dir = os.path.join(stage, 'DEBIAN')
+        os.makedirs(control_dir, exist_ok=True)
+        with open(os.path.join(control_dir, 'control'), 'w',
+                  encoding='utf-8') as f:
+            f.write(DEB_CONTROL.format(version=version, arch='amd64',
+                                       installed_size=installed_kb))
+
+        deb_name = f'MarkEase_v{version}_Linux_x64.deb'
+        deb_path = os.path.join(out, deb_name)
+        run(['dpkg-deb', '--build', '--root-owner-group', stage, deb_path])
+        artifacts.append(deb_path)
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+    return artifacts
+
+
+# ============================================================
+#  macOS
+# ============================================================
+def codesign_app(app_path):
+    identity = os.environ.get('MK_CODESIGN_IDENTITY') or '-'
+    log(f'codesign identity: {identity}')
+    cmd = ['codesign', '--force', '--deep', '--sign', identity]
+    if identity == '-':
+        cmd += ['--timestamp=none']
+    else:
+        cmd += ['--options', 'runtime', '--timestamp']
+    run(cmd, app_path)
+    run(['codesign', '--verify', '--deep', '--strict', '--verbose=2',
+         app_path])
+
+
+def package_macos(root, dist, out, version, arch):
+    app_path = os.path.join(dist, 'MarkEase.app')
+    if not os.path.isdir(app_path):
+        raise SystemExit(f'missing build output: {app_path}')
+
+    os.makedirs(out, exist_ok=True)
+    codesign_app(app_path)
+
+    stage = tempfile.mkdtemp(prefix='markease_dmg_')
+    try:
+        shutil.copytree(app_path, os.path.join(stage, 'MarkEase.app'),
+                        symlinks=True)
+        os.symlink('/Applications', os.path.join(stage, 'Applications'))
+
+        dmg_name = f'MarkEase_v{version}_macOS_{arch}.dmg'
+        dmg_path = os.path.join(out, dmg_name)
+        run(['hdiutil', 'create', '-volname', 'MarkEase',
+             '-srcfolder', stage, '-ov', '-format', 'UDZO', dmg_path])
+        run(['hdiutil', 'verify', dmg_path])
+
+        if os.environ.get('MK_NOTARIZE') == '1':
+            apple_id = os.environ.get('APPLE_ID', '')
+            password = os.environ.get('APPLE_APP_SPECIFIC_PASSWORD', '')
+            team_id = os.environ.get('APPLE_TEAM_ID', '')
+            if not (apple_id and password and team_id):
+                raise SystemExit('MK_NOTARIZE=1 but Apple credentials missing')
+            run(['xcrun', 'notarytool', 'submit', dmg_path,
+                 '--apple-id', apple_id, '--password', password,
+                 '--team-id', team_id, '--wait'])
+            run(['xcrun', 'stapler', 'staple', dmg_path])
+
+        return [dmg_path]
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--target', required=True,
+                        choices=['linux-x64', 'macos-x64', 'macos-arm64'])
+    parser.add_argument('--dist', default='dist')
+    parser.add_argument('--out', default='out')
+    args = parser.parse_args()
+
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+    version = read_version(root)
+    dist = os.path.abspath(args.dist)
+    out = os.path.abspath(args.out)
+    os.makedirs(out, exist_ok=True)
+
+    log(f'version={version} target={args.target}')
+    if args.target == 'linux-x64':
+        artifacts = package_linux(root, dist, out, version)
+    elif args.target == 'macos-x64':
+        artifacts = package_macos(root, dist, out, version, 'x64')
+    else:
+        artifacts = package_macos(root, dist, out, version, 'arm64')
+
+    lines = []
+    for path in artifacts:
+        size = os.path.getsize(path)
+        digest = sha256(path)
+        log(f'artifact: {path} ({size / 1024 / 1024:.1f} MB) sha256={digest}')
+        lines.append(f'{digest}  {os.path.basename(path)}')
+
+    sums = os.path.join(out, 'SHA256SUMS.txt')
+    with open(sums, 'a', encoding='utf-8') as f:
+        f.write('\n'.join(lines) + '\n')
+    log(f'checksums: {sums}')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
