@@ -948,7 +948,7 @@ def _start_ui_test(window):
         data = {}
         while True:
             try:
-                raw = window.evaluate_js(script)
+                raw = window.run_js(script)
                 if isinstance(raw, str):
                     data = _json.loads(raw)
                 elif isinstance(raw, dict):
@@ -968,7 +968,7 @@ def _start_ui_test(window):
 
         # 诊断：走真实 FindBar UI 路径，确认模糊搜索计数
         try:
-            window.evaluate_js(r"""(function () {
+            window.run_js(r"""(function () {
                 try {
                     window.MKTestLoad('foo **bar**');
                     if (window.FindBar) window.FindBar.open(false);
@@ -982,7 +982,7 @@ def _start_ui_test(window):
                 } catch (e) { return String(e); }
             })()""")
             time.sleep(0.6)
-            raw2 = window.evaluate_js(
+            raw2 = window.run_js(
                 "JSON.stringify({count:(document.getElementById('find-count')||{}).textContent||'',"
                 "hint:(document.getElementById('find-hint')||{}).textContent||''})")
             data['findUi'] = _json.loads(raw2) if isinstance(raw2, str) else raw2
@@ -1023,7 +1023,7 @@ def _start_pdf_test(window, api, out_path):
         deadline = time.time() + 20.0
         while time.time() < deadline:
             try:
-                stage = window.evaluate_js(
+                stage = window.run_js(
                     'window.__mkInitStage || "none"')
             except Exception:
                 stage = 'none'
@@ -1036,7 +1036,7 @@ def _start_pdf_test(window, api, out_path):
               '- one\n- two\n\n'
               '> quote line\n')
         try:
-            window.evaluate_js(
+            window.run_js(
                 'window.MKTestLoad && window.MKTestLoad(%s)'
                 % _json.dumps(md))
         except Exception as e:
