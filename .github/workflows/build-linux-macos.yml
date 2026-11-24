@@ -7,17 +7,16 @@ name: Build Linux & macOS
 #            各产出一个 dmg，从而同时兼容 Intel 与 M 系列芯片
 # - 所有平台共用同一份业务代码（app/platform 负责系统差异），无需维护三份分支
 #
-# 触发：手动 workflow_dispatch、PR（验证构建）、或推送 v* 标签。
-# 说明：Windows 仍由 build-windows.yml 构建，两个 workflow 互不重复。
+# 触发：手动 workflow_dispatch、PR（验证构建），
+#       或被 build-all-platforms.yml 统一调用（发版时）。
+# 说明：Windows 由 build-windows.yml 构建；需要“一次打全平台”时用统一入口。
 
 on:
   workflow_dispatch:
+  workflow_call:
   pull_request:
     branches:
       - main
-  push:
-    tags:
-      - 'v*'
 
 permissions:
   contents: read

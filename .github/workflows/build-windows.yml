@@ -1,18 +1,17 @@
 name: Build Windows portable
 
 # 说明：
-#   - 这是 MarkEase 的 Windows 便携版 CI 构建入口：在 GitHub 托管的
+#   - 这是 MarkEase 的 Windows 便携版构建入口：在 GitHub 托管的
 #     windows-latest 上从源码构建，并产出可分发的 zip。
-#   - 触发：手动 workflow_dispatch，或推送 v* 标签。
+#   - 触发：手动 workflow_dispatch；或被 build-all-platforms.yml 统一调用。
+#   - 单个平台单独构建仍可手动运行本工作流。
 #   - 所有 action 均使用 Node 24 运行时（v7 系列），避免 Node 20 弃用警告。
 #   - 如后续接入代码签名（SignPath / Azure Trusted Signing）或 Microsoft Store
 #     打包，在 Upload 之后追加对应步骤即可。
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
 
 permissions:
   contents: read

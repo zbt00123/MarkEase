@@ -13,19 +13,26 @@ Business code calls `platform.<method>()` only. Front-end shortcut labels use
 
 ## GitHub Actions (recommended)
 
-Workflow: `.github/workflows/build-linux-macos.yml`
+**One-click entry point:** `.github/workflows/build-all-platforms.yml`
+
+One run builds every platform in parallel:
 
 | Job | Runner | Output |
 |---|---|---|
+| `windows-x64` | `windows-latest` | `MarkEase_v<ver>_Windows_x64_portable.zip` |
 | `linux-x64` | `ubuntu-22.04` | `MarkEase_v<ver>_Linux_x64.tar.gz`, `.deb` |
 | `macos-x64` | `macos-26-intel` | `MarkEase_v<ver>_macOS_x64.dmg` |
 | `macos-arm64` | `macos-26` | `MarkEase_v<ver>_macOS_arm64.dmg` |
 
 How to run:
 
-1. Open **Actions → Build Linux & macOS → Run workflow** (branch `main`).
-2. Wait for all three jobs; download `markease-<name>` artifacts.
-3. Pushing a `v*` tag builds Windows and these three targets in parallel.
+1. Open **Actions → Build all platforms → Run workflow** (branch `main`).
+2. Wait for the four jobs; download all artifacts from the same run.
+3. Pushing a `v*` tag triggers the same workflow and produces all four files.
+
+The entry point reuses `build-windows.yml` and `build-linux-macos.yml` via
+`workflow_call`. Both can still be run on their own when only one platform
+needs to be checked.
 
 PyInstaller cannot cross-compile, so each target is built on its native runner.
 Intel and Apple Silicon each get their own dmg; a universal2 build is possible
