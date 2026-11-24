@@ -1,4 +1,4 @@
-// MarkEase 查找与替换（阶段 12 修订 4：内联样式兜底）
+// MarkEase 查找与替换（v2.1.6：预览高亮 / 分屏同步 / 预览替换 / 模糊搜索）
 (function () {
     'use strict';
 
@@ -19,6 +19,18 @@
     let _replaceAllBtn = null;
     let _toastEl = null;
     let _toastTimer = null;
+
+    // ★ v2.1.6：预览查找 / 模式感知
+    let _returnFocusEl = null;
+    let _returnFocusPanel = 'editor';
+    let _unsupportedToastShown = false;
+    let _refreshTimer = null;
+    let _modeTimer = null;
+
+    // ★ 模糊搜索 / 精确-模糊分类
+    let _fuzzyCheckbox = null;
+    let _breakdownEl = null;
+    let _hintEl = null;
 
     // ============================================================
     //  动态注入样式（不依赖 find.css 是否被正确引入）
@@ -42,7 +54,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    min-width: 420px;
+    min-width: 460px;
 }
 #findbar.hidden { display: none !important; }
 
@@ -74,6 +86,33 @@
     text-align: center;
     font-variant-numeric: tabular-nums;
     user-select: none;
+}
+.find-count.fuzzy { color: #cf222e; font-weight: 600; }
+
+.find-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+    line-height: 1.45;
+    min-height: 0;
+}
+.find-breakdown {
+    color: #6e7781;
+    user-select: none;
+}
+.find-hint {
+    color: #9a6700;
+    user-select: none;
+}
+.find-hint:empty { display: none; }
+.find-hint.warn { color: #9a6700; }
+.find-hint.flash {
+    animation: findHintFlash 0.9s ease-out;
+}
+@keyframes findHintFlash {
+    0%, 25% { background: rgba(255, 152, 0, 0.22); }
+    100% { background: transparent; }
 }
 
 .find-opt {
@@ -142,7 +181,10 @@
     color: #fff;
     font-size: 12px;
     border-radius: 4px;
-    white-space: nowrap;
+    max-width: 460px;
+    white-space: normal;
+    line-height: 1.5;
+    text-align: left;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
     pointer-events: none;
     opacity: 1;
@@ -189,6 +231,10 @@ body.dark #replace-input:focus {
     box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
 }
 body.dark .find-count { color: #888; }
+body.dark .find-count.fuzzy { color: #ff7b72; }
+body.dark .find-breakdown { color: #888; }
+body.dark .find-hint { color: #d29922; }
+body.dark .find-hint.warn { color: #d29922; }
 
 body.dark .find-opt {
     background: #353535;
@@ -238,9 +284,242 @@ body.dark .cm-search-match-current {
         document.head.appendChild(style);
     }
 
+    // ============================================================
+    //  模式 / 预览 / i18n 辅助
+    // ============================================================
+    function getMode() {
+        const main = document.getElementById('main');
+        return (main && main.getAttribute('data-mode')) || 'edit';
+    }
+
+    function T(key, fallback, vars) {
+        let s = null;
+        try {
+            if (window.I18N && typeof window.I18N.t === 'function') {
+                const v = window.I18N.t(key, vars);
+                if (v && v !== key) s = v;
+            }
+        } catch (e) { /* ignore */ }
+
+        if (s == null) s = (fallback != null) ? fallback : key;
+        if (vars && typeof s === 'string') {
+            Object.keys(vars).forEach(k => {
+                s = s.split('{' + k + '}').join(String(vars[k]));
+            });
+        }
+        return s;
+    }
+
+    function previewContainer() {
+        const p = document.getElementById('preview');
+        return p ? p.parentElement : null;
+    }
+
+    function commitPreviewEdit() {
+        try {
+            if (window.MKPreviewEdit &&
+                typeof window.MKPreviewEdit.commit === 'function') {
+                window.MKPreviewEdit.commit();
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    function notifyUnsupportedOnce() {
+        if (_unsupportedToastShown) return;
+        _unsupportedToastShown = true;
+        showToast(T('find_preview_unsupported',
+            '当前环境不支持预览高亮，请更新 WebView 运行时'));
+    }
+
+    function previewSearchSupported() {
+        return !!(window.PreviewSearch &&
+            typeof window.PreviewSearch.isSupported === 'function' &&
+            window.PreviewSearch.isSupported());
+    }
+
+    function isFuzzyEnabled() {
+        return !!(_fuzzyCheckbox && _fuzzyCheckbox.checked);
+    }
+
+    function countKinds() {
+        let exact = 0;
+        let fuzzy = 0;
+        for (let i = 0; i < _matches.length; i++) {
+            if (_matches[i].kind === 'fuzzy') fuzzy++;
+            else exact++;
+        }
+        return { exact: exact, fuzzy: fuzzy };
+    }
+
+    function inspectDangerous(slice) {
+        const reasons = [];
+        const s = String(slice || '');
+        if (/!\[[^\]]*\]\(/.test(s)) reasons.push('image');
+        if (/\[[^\]]*\]\(/.test(s)) reasons.push('link');
+        if (/<\/?[A-Za-z][^>]*>/.test(s)) reasons.push('html');
+        if (/\$[^$]*\$|\\\(|\\\[/.test(s)) reasons.push('math');
+        return reasons;
+    }
+
+    function sourceSnippet(slice, maxLen) {
+        const s = String(slice == null ? '' : slice);
+        const max = maxLen || 180;
+        if (s.length <= max) return s;
+        return s.slice(0, max) + '…';
+    }
+
+    function showFuzzyReplaceConfirm(match, replacement) {
+        const sourceText = view ? view.state.doc.toString() : '';
+        const slice = sourceText.slice(match.from, match.to);
+        const snippet = sourceSnippet(slice);
+        const reasons = inspectDangerous(slice);
+
+        let msg = T('find_fuzzy_replace_message',
+            '将替换源码片段：\n{source}\n\n替换为：\n{replacement}\n\n格式标记会一并替换。',
+            { source: snippet, replacement: replacement });
+        if (reasons.length > 0) {
+            msg += '\n\n' + T('find_fuzzy_danger_warning',
+                '警告：该片段包含链接地址、图片、HTML 标签或公式，替换会删除这些结构。');
+        }
+
+        if (!window.MKConfirm) return Promise.resolve(false);
+        return window.MKConfirm(
+            T('find_fuzzy_replace_title', '替换跨格式匹配'),
+            msg,
+            {
+                okText: T('replace_btn', '替换'),
+                cancelText: T('cancel', '取消')
+            }
+        );
+    }
+
+    function showPreviewFuzzyBlocked() {
+        if (!window.MKConfirm) {
+            showToast(T('find_fuzzy_need_checkbox',
+                '跨格式匹配需要勾选「模糊」后才能替换'));
+            return;
+        }
+        window.MKConfirm(
+            T('find_preview_fuzzy_blocked_title', '无法在预览中替换'),
+            T('find_preview_fuzzy_blocked_message',
+                '这是跨格式的模糊匹配，当前未勾选「模糊」。请勾选「模糊」后替换，或切换到分屏手动修改。'),
+            {
+                okText: T('find_switch_to_split', '切换到分屏'),
+                cancelText: T('cancel', '取消')
+            }
+        ).then((ok) => {
+            if (ok && typeof window.MKSetMode === 'function') {
+                window.MKSetMode('split');
+            }
+        });
+    }
+
+    function flashFuzzyHint() {
+        if (!_hintEl) return;
+        _hintEl.classList.remove('flash');
+        void _hintEl.offsetWidth;
+        _hintEl.classList.add('flash');
+        setTimeout(() => {
+            if (_hintEl) _hintEl.classList.remove('flash');
+        }, 900);
+    }
+
+    function updateHint() {
+        if (!_hintEl) return;
+        const counts = countKinds();
+        _hintEl.textContent = '';
+        _hintEl.classList.remove('warn');
+        if (_matches.length === 0) return;
+
+        if (counts.fuzzy > 0 && !isFuzzyEnabled()) {
+            _hintEl.textContent = T('find_fuzzy_hint',
+                '检测到 {count} 处跨格式匹配；勾选「模糊」后可替换，或在编辑区手动修改。',
+                { count: counts.fuzzy });
+            _hintEl.classList.add('warn');
+        } else if (counts.fuzzy > 0 && isFuzzyEnabled()) {
+            _hintEl.textContent = T('find_fuzzy_replace_note',
+                '模糊匹配替换时会连同格式标记一起替换。');
+        }
+    }
+
+    function rememberFocusPanel() {
+        const ae = document.activeElement;
+        _returnFocusEl = ae;
+        _returnFocusPanel = (ae && ae.closest &&
+            ae.closest('#preview-container')) ? 'preview' : 'editor';
+    }
+
+    function isElementVisible(el) {
+        if (!el || !el.isConnected) return false;
+        try {
+            const r = el.getBoundingClientRect();
+            return !!(r.width || r.height);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function restoreFocus() {
+        let el = _returnFocusEl;
+        _returnFocusEl = null;
+
+        if (el === document.body || el === document.documentElement) el = null;
+
+        if (el && el.isConnected && !el.closest('#findbar') &&
+            isElementVisible(el) && typeof el.focus === 'function') {
+            try {
+                el.focus({ preventScroll: true });
+                return;
+            } catch (e) { /* fallback */ }
+        }
+
+        const mode = getMode();
+        if (mode === 'preview' || _returnFocusPanel === 'preview') {
+            const pc = previewContainer();
+            if (pc && mode !== 'edit' && typeof pc.focus === 'function') {
+                try {
+                    pc.focus({ preventScroll: true });
+                    return;
+                } catch (e) { /* fallback */ }
+            }
+        }
+
+        if (view) {
+            try { view.focus(); } catch (e) { /* ignore */ }
+        }
+    }
+
+    // 预览重渲染后，等 DOM/布局稳定再重新搜索并恢复高亮
+    function refreshAfterRender() {
+        if (!isOpen()) return;
+        if (_refreshTimer) clearTimeout(_refreshTimer);
+        _refreshTimer = setTimeout(() => {
+            _refreshTimer = null;
+            if (!isOpen()) return;
+            runSearch(false);
+        }, 30);
+    }
+
+    function onModeChanged(mode) {
+        if (!isOpen()) return;
+        if (_modeTimer) clearTimeout(_modeTimer);
+        _modeTimer = setTimeout(() => {
+            _modeTimer = null;
+            if (!isOpen() || !_input.value) return;
+            // ★ 模式切换会改变搜索面（编辑=源码 / 分屏+预览=渲染文字），必须重算
+            runSearch(false);
+        }, 100);
+    }
+
     // ---------------- 初始化 ----------------
     function initFindBar(editorView) {
         view = editorView;
+
+        const pc = previewContainer();
+        if (pc) {
+            if (!pc.hasAttribute('tabindex')) pc.setAttribute('tabindex', '-1');
+            pc.style.outline = 'none';
+        }
 
         injectStyles();   // ★ 关键：注入样式
 
@@ -255,6 +534,9 @@ body.dark .cm-search-match-current {
         _replaceOneBtn = document.getElementById('replace-one');
         _replaceAllBtn = document.getElementById('replace-all');
         _toastEl = document.getElementById('find-toast');
+        _fuzzyCheckbox = document.getElementById('find-fuzzy');
+        _breakdownEl = document.getElementById('find-breakdown');
+        _hintEl = document.getElementById('find-hint');
 
         if (!_bar) {
             console.warn('[find] #findbar not found');
@@ -271,6 +553,11 @@ body.dark .cm-search-match-current {
 
         if (_caseCheckbox) {
             _caseCheckbox.addEventListener('change', () => {
+                runSearch(true);
+            });
+        }
+        if (_fuzzyCheckbox) {
+            _fuzzyCheckbox.addEventListener('change', () => {
                 runSearch(true);
             });
         }
@@ -298,6 +585,11 @@ body.dark .cm-search-match-current {
     // ---------------- 打开 / 关闭 ----------------
     function openFindBar(focusReplace) {
         if (!_bar) return;
+
+        // ★ v2.1.6：预览编辑态先提交，保证搜索基于最新 Markdown
+        rememberFocusPanel();
+        commitPreviewEdit();
+
         _bar.classList.remove('hidden');
         _bar.style.display = 'flex';
         setTimeout(() => {
@@ -314,13 +606,22 @@ body.dark .cm-search-match-current {
 
     function closeFindBar() {
         if (!_bar) return;
+        if (_refreshTimer) {
+            clearTimeout(_refreshTimer);
+            _refreshTimer = null;
+        }
+        if (_modeTimer) {
+            clearTimeout(_modeTimer);
+            _modeTimer = null;
+        }
         _bar.classList.add('hidden');
         _bar.style.display = 'none';
         _matches = [];
         _currentIdx = -1;
         if (_countEl) _countEl.textContent = '0/0';
         if (window.SearchHighlight) window.SearchHighlight.clear();
-        if (view) view.focus();
+        if (window.PreviewSearch) window.PreviewSearch.clear();
+        restoreFocus();
     }
 
     function isOpen() {
@@ -328,19 +629,20 @@ body.dark .cm-search-match-current {
     }
 
     // ---------------- 搜索核心 ----------------
-    function runSearch(resetIndex) {
+    function runSearch(resetIndex, forcedIndex) {
         if (!view) return;
         const q = _input.value;
         if (!q) {
             _matches = [];
             _currentIdx = -1;
-            if (_countEl) _countEl.textContent = '0/0';
+            updateCount();
             if (window.SearchHighlight) window.SearchHighlight.clear();
+            if (window.PreviewSearch) window.PreviewSearch.clear();
             return;
         }
 
         const text = view.state.doc.toString();
-        const matches = [];
+        const exactMatches = [];
         const caseSensitive = _caseCheckbox && _caseCheckbox.checked;
 
         if (caseSensitive) {
@@ -348,9 +650,9 @@ body.dark .cm-search-match-current {
             while (from <= text.length) {
                 const idx = text.indexOf(q, from);
                 if (idx < 0) break;
-                matches.push({ from: idx, to: idx + q.length });
+                exactMatches.push({ from: idx, to: idx + q.length, kind: 'exact' });
                 from = idx + q.length;
-                if (matches.length > 10000) break;
+                if (exactMatches.length > 10000) break;
             }
         } else {
             const lowerText = text.toLowerCase();
@@ -359,24 +661,76 @@ body.dark .cm-search-match-current {
             while (from <= lowerText.length) {
                 const idx = lowerText.indexOf(lowerQ, from);
                 if (idx < 0) break;
-                matches.push({ from: idx, to: idx + q.length });
+                exactMatches.push({ from: idx, to: idx + q.length, kind: 'exact' });
                 from = idx + q.length;
-                if (matches.length > 10000) break;
+                if (exactMatches.length > 10000) break;
             }
         }
+
+        if (window.PreviewSearch) {
+            window.PreviewSearch.setSource(text);
+        }
+
+        const mode = getMode();
+        const needFuzzy = isFuzzyEnabled() || mode !== 'edit';
+        let fuzzyMatches = [];
+        if (needFuzzy && window.PreviewSearch &&
+            typeof window.PreviewSearch.findFuzzyMatches === 'function') {
+            try {
+                fuzzyMatches = window.PreviewSearch.findFuzzyMatches(
+                    text, q, !!caseSensitive);
+            } catch (e) {
+                console.warn('[find] fuzzy search failed', e);
+                fuzzyMatches = [];
+            }
+        }
+
+        let matches = exactMatches.concat(fuzzyMatches);
+
+        // 纯预览只保留“渲染后确实可见”的命中
+        if (mode === 'preview' && window.PreviewSearch &&
+            typeof window.PreviewSearch.isSourceSpanVisible === 'function') {
+            matches = matches.filter((m) =>
+                window.PreviewSearch.isSourceSpanVisible(m.from, m.to));
+        }
+
+        // 精确命中优先；同跨度的模糊项去重
+        matches.sort((a, b) =>
+            a.from - b.from || a.to - b.to ||
+            (a.kind === 'exact' ? -1 : 1));
+        const dedup = [];
+        for (let i = 0; i < matches.length; i++) {
+            const m = matches[i];
+            const last = dedup[dedup.length - 1];
+            if (last && last.from === m.from && last.to === m.to) {
+                if (last.kind !== 'exact' && m.kind === 'exact') {
+                    dedup[dedup.length - 1] = m;
+                }
+                continue;
+            }
+            dedup.push(m);
+        }
+        matches = dedup;
 
         _matches = matches;
 
         if (matches.length === 0) {
             _currentIdx = -1;
+        } else if (typeof forcedIndex === 'number' && isFinite(forcedIndex)) {
+            _currentIdx = Math.max(0, Math.min(forcedIndex, matches.length - 1));
         } else if (resetIndex || _currentIdx < 0 || _currentIdx >= matches.length) {
-            const cursor = view.state.selection.main.head;
-            let best = 0;
-            for (let i = 0; i < matches.length; i++) {
-                if (matches[i].from >= cursor) { best = i; break; }
-                best = i;
+            if (getMode() === 'preview' && window.PreviewSearch &&
+                typeof window.PreviewSearch.getStartIndex === 'function') {
+                _currentIdx = window.PreviewSearch.getStartIndex(matches);
+            } else {
+                const cursor = view.state.selection.main.head;
+                let best = 0;
+                for (let i = 0; i < matches.length; i++) {
+                    if (matches[i].from >= cursor) { best = i; break; }
+                    best = i;
+                }
+                _currentIdx = best;
             }
-            _currentIdx = best;
         }
 
         updateCount();
@@ -386,22 +740,95 @@ body.dark .cm-search-match-current {
 
     function updateCount() {
         if (!_countEl) return;
+
+        const counts = countKinds();
+        const current = (_currentIdx >= 0 && _currentIdx < _matches.length)
+            ? _matches[_currentIdx] : null;
+
         if (_matches.length === 0) {
             _countEl.textContent = '0/0';
         } else {
             _countEl.textContent = (_currentIdx + 1) + '/' + _matches.length;
         }
+        _countEl.classList.toggle('fuzzy',
+            !!(current && current.kind === 'fuzzy'));
+
+        if (_breakdownEl) {
+            if (_matches.length === 0) {
+                _breakdownEl.textContent = '';
+            } else if (counts.fuzzy > 0) {
+                _breakdownEl.textContent =
+                    T('find_exact_count', '精确 {count}', { count: counts.exact }) +
+                    ' · ' +
+                    T('find_fuzzy_count', '模糊 {count}', { count: counts.fuzzy });
+            } else {
+                _breakdownEl.textContent =
+                    T('find_exact_count', '精确 {count}', { count: counts.exact });
+            }
+        }
+
+        updateHint();
     }
 
     function updateHighlight() {
         if (window.SearchHighlight) {
             window.SearchHighlight.update(_matches, _currentIdx);
         }
+
+        const mode = getMode();
+        if (window.PreviewSearch) {
+            if (mode === 'edit') {
+                window.PreviewSearch.clearHighlights();
+            } else {
+                window.PreviewSearch.update(_matches, _currentIdx);
+                if (!previewSearchSupported()) notifyUnsupportedOnce();
+            }
+        }
     }
 
     function scrollToMatch(idx) {
         if (!view || idx < 0 || idx >= _matches.length) return;
         const m = _matches[idx];
+        const mode = getMode();
+
+        if (mode === 'preview') {
+            view.dispatch({
+                selection: { anchor: m.from, head: m.to },
+                scrollIntoView: false
+            });
+            let r = null;
+            if (window.PreviewSearch) {
+                r = window.PreviewSearch.scrollToIndex(idx, {
+                    align: 0.35,
+                    flash: true
+                });
+            }
+            if (r && r.visible === false && previewSearchSupported()) {
+                showToast(T('find_preview_invisible', '该处在预览中不可见'));
+            }
+            return;
+        }
+
+        if (mode === 'split') {
+            if (window.MKScrollSync && typeof window.MKScrollSync.lock === 'function') {
+                window.MKScrollSync.lock('find', 600);
+            }
+            view.dispatch({
+                selection: { anchor: m.from, head: m.to },
+                scrollIntoView: true
+            });
+            // 等编辑器滚动与高亮绘制稳定后再定位预览，避免被滚动锚定/同步覆盖
+            setTimeout(() => {
+                if (window.PreviewSearch) {
+                    window.PreviewSearch.scrollToIndex(idx, {
+                        align: 0.35,
+                        flash: true
+                    });
+                }
+            }, 80);
+            return;
+        }
+
         view.dispatch({
             selection: { anchor: m.from, head: m.to },
             scrollIntoView: true
@@ -413,13 +840,13 @@ body.dark .cm-search-match-current {
         if (_matches.length === 0) {
             runSearch(true);
             if (_matches.length === 0) {
-                showToast('无匹配内容');
+                showToast(T('find_no_match', '无匹配内容'));
                 return;
             }
             return;
         }
         if (_currentIdx === _matches.length - 1) {
-            showToast('已经是最后一个');
+            showToast(T('find_last', '已经是最后一个'));
             return;
         }
         _currentIdx++;
@@ -432,13 +859,13 @@ body.dark .cm-search-match-current {
         if (_matches.length === 0) {
             runSearch(true);
             if (_matches.length === 0) {
-                showToast('无匹配内容');
+                showToast(T('find_no_match', '无匹配内容'));
                 return;
             }
             return;
         }
         if (_currentIdx === 0) {
-            showToast('已经是第一个');
+            showToast(T('find_first', '已经是第一个'));
             return;
         }
         _currentIdx--;
@@ -448,36 +875,197 @@ body.dark .cm-search-match-current {
     }
 
     // ---------------- 替换 ----------------
-    function replaceOne() {
-        if (!view || _matches.length === 0 || _currentIdx < 0) return;
-        const replacement = _replaceInput.value;
-        const m = _matches[_currentIdx];
-        if (!m) return;
+    function performReplaceOne(m, replacement, mode) {
+        const wasVisible = (mode === 'edit' || !window.PreviewSearch)
+            ? true
+            : window.PreviewSearch.isVisible(_currentIdx);
+        const replacedFrom = m.from;
+        const replacedIdx = _currentIdx;
+        const isFuzzy = m.kind === 'fuzzy';
 
         view.dispatch({
             changes: { from: m.from, to: m.to, insert: replacement }
         });
 
-        setTimeout(() => { runSearch(true); }, 0);
+        if (isFuzzy) {
+            showToast(T('find_fuzzy_replace_done', '已替换 1 处模糊匹配'));
+        } else if (mode !== 'edit') {
+            showToast(wasVisible
+                ? T('find_replaced_one', '已替换 1 处')
+                : T('find_replaced_one_hidden',
+                    '已替换 1 处（该处在预览中不可见）'));
+        }
+
+        setTimeout(() => {
+            if (mode !== 'edit' && window.PreviewSearch &&
+                typeof window.PreviewSearch.expandAtSource === 'function') {
+                try { window.PreviewSearch.expandAtSource(replacedFrom); }
+                catch (e) { /* ignore */ }
+            }
+            if (mode === 'preview') {
+                runSearch(false, replacedIdx);
+            } else {
+                runSearch(true);
+            }
+        }, 0);
     }
 
-    function replaceAll() {
-        if (!view || _matches.length === 0) {
-            showToast('无匹配内容');
+    async function replaceOne() {
+        const mode = getMode();
+        commitPreviewEdit();
+
+        if (!view || _matches.length === 0 || _currentIdx < 0) return;
+        const replacement = _replaceInput.value;
+        const m = _matches[_currentIdx];
+        if (!m) return;
+
+        if (m.kind === 'fuzzy') {
+            if (!isFuzzyEnabled()) {
+                if (mode === 'preview') {
+                    showPreviewFuzzyBlocked();
+                } else {
+                    showToast(T('find_fuzzy_need_checkbox',
+                        '跨格式匹配需要勾选「模糊」后才能替换'));
+                    flashFuzzyHint();
+                }
+                return;
+            }
+
+            const ok = await showFuzzyReplaceConfirm(m, replacement);
+            if (!ok) return;
+            // 弹窗期间匹配集合可能被外部操作刷新
+            if (_matches[_currentIdx] !== m) return;
+            performReplaceOne(m, replacement, mode);
             return;
         }
-        const replacement = _replaceInput.value;
-        const count = _matches.length;
 
-        const changes = _matches.slice().reverse().map(m => ({
+        performReplaceOne(m, replacement, mode);
+    }
+
+    function showFuzzyReplaceAllConfirm(count, dangerousCount) {
+        let msg = T('find_fuzzy_replace_all_message',
+            '将替换 {count} 处模糊匹配，格式标记会一并替换。',
+            { count: count });
+        if (dangerousCount > 0) {
+            msg += '\n\n' + T('find_fuzzy_danger_warning_all',
+                '其中 {dangerous} 处包含链接地址、图片、HTML 标签或公式，替换会删除这些结构。',
+                { dangerous: dangerousCount });
+        }
+        if (!window.MKConfirm) return Promise.resolve(false);
+        return window.MKConfirm(
+            T('find_fuzzy_replace_all_title', '替换全部跨格式匹配'),
+            msg,
+            {
+                okText: T('replace_all', '全部替换'),
+                cancelText: T('cancel', '取消')
+            }
+        );
+    }
+
+    function performReplaceAll(targets, replacement, mode, meta) {
+        meta = meta || {};
+        const count = targets.length;
+        if (count === 0) {
+            if (meta.skippedFuzzy) {
+                showToast(T('find_fuzzy_need_checkbox',
+                    '跨格式匹配需要勾选「模糊」后才能替换'));
+                flashFuzzyHint();
+            }
+            return;
+        }
+
+        let hidden = 0;
+        if (mode !== 'edit' && window.PreviewSearch &&
+            typeof window.PreviewSearch.isVisible === 'function') {
+            for (let i = 0; i < targets.length; i++) {
+                const idx = _matches.indexOf(targets[i]);
+                if (idx >= 0 && !window.PreviewSearch.isVisible(idx)) hidden++;
+            }
+        }
+
+        const changes = targets.slice().reverse().map(m => ({
             from: m.from, to: m.to, insert: replacement
         }));
 
         view.dispatch({ changes });
         setTimeout(() => {
-            runSearch(true);
-            showToast('已替换 ' + count + ' 处');
+            if (mode === 'preview') {
+                runSearch(false, 0);
+            } else {
+                runSearch(true);
+            }
+
+            let msg;
+            if (meta.skippedFuzzy > 0) {
+                msg = T('find_fuzzy_not_replaced',
+                    '已替换 {exact} 处精确匹配；{fuzzy} 处模糊匹配未替换。',
+                    { exact: count, fuzzy: meta.skippedFuzzy });
+            } else if (meta.fuzzyCount > 0) {
+                msg = T('find_fuzzy_replace_all_done',
+                    '已替换 {count} 处（其中 {fuzzy} 处模糊匹配）。',
+                    { count: count, fuzzy: meta.fuzzyCount });
+            } else {
+                msg = T('replaced_count', '已替换 {count} 处', { count: count });
+            }
+
+            if (hidden > 0) {
+                msg += T('find_replaced_hidden_suffix',
+                    '（其中 {hidden} 处在预览中不可见）', { hidden: hidden });
+            }
+            showToast(msg);
         }, 0);
+    }
+
+    async function replaceAll() {
+        const mode = getMode();
+        commitPreviewEdit();
+
+        if (!view || _matches.length === 0) {
+            showToast(T('find_no_match', '无匹配内容'));
+            return;
+        }
+        const replacement = _replaceInput.value;
+        const exactTargets = [];
+        const fuzzyTargets = [];
+        for (let i = 0; i < _matches.length; i++) {
+            if (_matches[i].kind === 'fuzzy') fuzzyTargets.push(_matches[i]);
+            else exactTargets.push(_matches[i]);
+        }
+
+        if (fuzzyTargets.length > 0 && !isFuzzyEnabled()) {
+            if (exactTargets.length === 0) {
+                if (mode === 'preview') {
+                    showPreviewFuzzyBlocked();
+                } else {
+                    showToast(T('find_fuzzy_need_checkbox',
+                        '跨格式匹配需要勾选「模糊」后才能替换'));
+                    flashFuzzyHint();
+                }
+                return;
+            }
+            performReplaceAll(exactTargets, replacement, mode, {
+                skippedFuzzy: fuzzyTargets.length
+            });
+            return;
+        }
+
+        if (fuzzyTargets.length > 0) {
+            let dangerous = 0;
+            const sourceText = view.state.doc.toString();
+            for (let i = 0; i < fuzzyTargets.length; i++) {
+                const f = fuzzyTargets[i];
+                if (inspectDangerous(sourceText.slice(f.from, f.to)).length > 0) {
+                    dangerous++;
+                }
+            }
+            const ok = await showFuzzyReplaceAllConfirm(
+                fuzzyTargets.length, dangerous);
+            if (!ok) return;
+        }
+
+        performReplaceAll(_matches.slice(), replacement, mode, {
+            fuzzyCount: fuzzyTargets.length
+        });
     }
 
     // ---------------- 外部调用 ----------------
@@ -510,5 +1098,7 @@ body.dark .cm-search-match-current {
         close: closeFindBar,
         isOpen: isOpen,
         refresh: refresh,
+        refreshAfterRender: refreshAfterRender,
+        onModeChanged: onModeChanged,
     };
 })();

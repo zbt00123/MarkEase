@@ -1993,3 +1993,40 @@ body.dark #preview li > ol > li[data-md-editable="1"]:hover {
         box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.4);
     }
 }
+
+/* ============================================================
+   ★ v2.1.6：PDF / 打印时排除查找高亮与查找栏
+   - CSS Custom Highlight 只影响绘制，打印媒体下直接置为透明
+   - 查找栏、toast、目标块闪烁不进入 PDF
+   ============================================================ */
+@media print {
+    #findbar,
+    #find-toast,
+    .find-toast {
+        display: none !important;
+    }
+
+    ::highlight(mk-find-match),
+    ::highlight(mk-find-current),
+    ::highlight(mk-find-fuzzy),
+    ::highlight(mk-find-fuzzy-current) {
+        background-color: transparent !important;
+        text-decoration: none !important;
+    }
+
+    .mk-find-flash {
+        animation: none !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+    }
+
+    /* 兜底：即使打印样式将来允许显示编辑器，也不带查找装饰 */
+    .cm-search-match,
+    .cm-search-match-current,
+    .cm-search-fuzzy,
+    .cm-search-fuzzy-current {
+        background: transparent !important;
+        outline: none !important;
+    }
+}

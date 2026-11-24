@@ -367,9 +367,14 @@ function buildSearchDeco(matches, currentIdx) {
     for (let i = 0; i < matches.length; i++) {
         const m = matches[i];
         const isCurrent = (i === currentIdx);
-        ranges.push(Decoration.mark({
-            class: isCurrent ? 'cm-search-match-current' : 'cm-search-match'
-        }).range(m.from, m.to));
+        const isFuzzy = m.kind === 'fuzzy';
+        let cls;
+        if (isFuzzy) {
+            cls = isCurrent ? 'cm-search-fuzzy-current' : 'cm-search-fuzzy';
+        } else {
+            cls = isCurrent ? 'cm-search-match-current' : 'cm-search-match';
+        }
+        ranges.push(Decoration.mark({ class: cls }).range(m.from, m.to));
     }
     ranges.sort((a, b) => a.from - b.from);
     return Decoration.set(ranges);
@@ -997,6 +1002,10 @@ function onLanguageChanged() {
     if (window.I18N && window.I18N.applyToDOM) {
         window.I18N.applyToDOM(document);
     }
+    if (window.FindBar && typeof window.FindBar.isOpen === 'function' &&
+        window.FindBar.isOpen() && typeof window.FindBar.refresh === 'function') {
+        try { window.FindBar.refresh(); } catch (e) { /* ignore */ }
+    }
     closeContextMenu();
 }
 
@@ -1059,6 +1068,13 @@ function setMode(newMode) {
         if (mode === 'edit') updateTocByEditorScroll();
         else updateActiveTocByScroll();
     }, 80);
+
+    // ★ v2.1.6：查找栏开着时，切模式后把当前匹配重新定位到新模式
+    if (window.FindBar && typeof window.FindBar.onModeChanged === 'function') {
+        setTimeout(() => {
+            try { window.FindBar.onModeChanged(mode); } catch (e) { /* ignore */ }
+        }, 100);
+    }
 }
 
 function toggleToc() {
@@ -1121,8 +1137,21 @@ function updatePreview() {
     updateSyncAnchors();
     updateActiveTocByScroll();
 
+    // ★ v2.1.6：通知预览查找模块重建映射
+    if (window.PreviewSearch) {
+        try { window.PreviewSearch.onPreviewRendered(); }
+        catch (e) { console.warn('[preview-search] render hook', e); }
+    }
+
     if (savedScrollTop != null && previewContainer) {
         previewContainer.scrollTop = savedScrollTop;
+    }
+
+    // ★ v2.1.6：重新渲染后恢复查找高亮（可能在预览编辑提交后触发）
+    if (window.FindBar && typeof window.FindBar.isOpen === 'function' &&
+        window.FindBar.isOpen() &&
+        typeof window.FindBar.refreshAfterRender === 'function') {
+        window.FindBar.refreshAfterRender();
     }
 }
 
@@ -1496,6 +1525,25 @@ function _releaseScrollLockSoon(src) {
     }, SCROLL_LOCK_MS);
 }
 
+// ★ v2.1.6：查找跳转时短暂冻结双向同步，避免程序化滚动被反向覆盖
+function _lockScrollSync(src, ms) {
+    _scrollLock = src;
+    if (_scrollLockTimer) clearTimeout(_scrollLockTimer);
+    _scrollLockTimer = setTimeout(() => {
+        if (_scrollLock === src) _scrollLock = null;
+        _scrollLockTimer = null;
+    }, ms || 500);
+}
+
+window.MKScrollSync = {
+    lock: function (src, ms) { _lockScrollSync(src, ms); },
+    unlock: function () {
+        if (_scrollLockTimer) clearTimeout(_scrollLockTimer);
+        _scrollLockTimer = null;
+        _scrollLock = null;
+    }
+};
+
 function annotatePreviewBlocks() {
     if (!previewEl || !editorView) return;
     const totalLen = editorView.state.doc.length;
@@ -1630,6 +1678,17 @@ function _previewTopToEditorPos(top, anchors) {
     return a.pos + (b.pos - a.pos) * t;
 }
 
+// ★ v2.1.6：供预览查找把视口位置换算成源码位置
+window.MKPreviewPos = {
+    topToSourcePos: function (top) {
+        try {
+            return _previewTopToEditorPos(top, _syncAnchors);
+        } catch (e) {
+            return null;
+        }
+    }
+};
+
 function syncEditorToPreview() {
     if (mode !== 'split' || !editorView || !previewEl) return;
     const editorScroller = document.querySelector('#editor .cm-scroller');
@@ -1710,7 +1769,7 @@ function onEditorScrollEvent() {
     }
 
     if (mode !== 'split') return;
-    if (_scrollLock === 'preview') return;
+    if (_scrollLock === 'preview' || _scrollLock === 'find') return;
 
     _acquireScrollLock('editor');
     if (_editorScrollRaf) return;
@@ -1727,7 +1786,8 @@ function onEditorScrollEvent() {
 
 function onPreviewScrollEvent() {
     if (mode !== 'preview' && mode !== 'split') return;
-    if (mode === 'split' && _scrollLock === 'editor') return;
+    if (mode === 'split' &&
+        (_scrollLock === 'editor' || _scrollLock === 'find')) return;
 
     _acquireScrollLock('preview');
     if (_previewScrollRaf) return;
@@ -3684,6 +3744,7 @@ window.MKPreviewEdit = {
     clearFormat: function () { return previewFormat('clear'); },
     exec: previewExecCommand,
     selectAll: previewSelectAll,
+    commit: commitActivePreviewEdit,
 };
 
 function startTableCellEdit(cell, e) {
@@ -5191,7 +5252,8 @@ function showMessage(title, body) {
     modal.classList.remove('hidden');
 }
 
-function showConfirm(title, message) {
+function showConfirm(title, message, options) {
+    options = options || {};
     return new Promise((resolve) => {
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
@@ -5207,6 +5269,9 @@ function showConfirm(title, message) {
         const p = document.createElement('p');
         p.className = 'message-modal-body';
         p.textContent = message || '';
+        if ((message || '').indexOf('\n') >= 0) {
+            p.style.whiteSpace = 'pre-wrap';
+        }
 
         const actions = document.createElement('div');
         actions.className = 'modal-actions';
@@ -5214,12 +5279,12 @@ function showConfirm(title, message) {
         const cancelBtn = document.createElement('button');
         cancelBtn.type = 'button';
         cancelBtn.className = 'btn-plain';
-        cancelBtn.textContent = T('cancel', '取消');
+        cancelBtn.textContent = options.cancelText || T('cancel', '取消');
 
         const okBtn = document.createElement('button');
         okBtn.type = 'button';
         okBtn.className = 'btn-primary';
-        okBtn.textContent = T('confirm', '确定');
+        okBtn.textContent = options.okText || T('confirm', '确定');
 
         actions.appendChild(cancelBtn);
         actions.appendChild(okBtn);
@@ -5259,6 +5324,10 @@ function showConfirm(title, message) {
         setTimeout(() => okBtn.focus(), 20);
     });
 }
+
+// 查找栏等普通 <script> 模块使用的确认框 / 模式切换入口
+window.MKConfirm = showConfirm;
+window.MKSetMode = setMode;
 
 // ============================================================
 //  关闭未保存文档：取消 / 不保存 / 保存

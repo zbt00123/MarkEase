@@ -18,3 +18,97 @@ body.dark .cm-search-match-current {
     background: rgba(255, 165, 0, 0.55);
     outline: 1px solid rgba(255, 200, 120, 0.9);
 }
+
+/* 跨格式模糊匹配：红色系，和精确匹配区分 */
+.cm-search-fuzzy {
+    background: rgba(255, 99, 99, 0.38);
+    border-radius: 2px;
+}
+.cm-search-fuzzy-current {
+    background: rgba(220, 38, 38, 0.68);
+    outline: 1px solid rgba(180, 20, 20, 0.9);
+    border-radius: 2px;
+}
+body.dark .cm-search-fuzzy {
+    background: rgba(248, 81, 73, 0.28);
+}
+body.dark .cm-search-fuzzy-current {
+    background: rgba(248, 81, 73, 0.55);
+    outline: 1px solid rgba(255, 150, 140, 0.9);
+}
+
+/* ============================================================
+   v2.1.6：预览区查找高亮（CSS Custom Highlight API）
+   - 只绘制，不插入 DOM，不影响预览编辑 / 复制 / 导出
+   ============================================================ */
+::highlight(mk-find-match) {
+    background-color: rgba(255, 235, 59, 0.55);
+}
+
+::highlight(mk-find-current) {
+    background-color: rgba(255, 152, 0, 0.75);
+}
+
+body.dark ::highlight(mk-find-match) {
+    background-color: rgba(187, 128, 9, 0.40);
+}
+
+body.dark ::highlight(mk-find-current) {
+    background-color: rgba(255, 165, 0, 0.55);
+}
+
+::highlight(mk-find-fuzzy) {
+    background-color: rgba(255, 99, 99, 0.38);
+}
+
+::highlight(mk-find-fuzzy-current) {
+    background-color: rgba(220, 38, 38, 0.68);
+}
+
+body.dark ::highlight(mk-find-fuzzy) {
+    background-color: rgba(248, 81, 73, 0.28);
+}
+
+body.dark ::highlight(mk-find-fuzzy-current) {
+    background-color: rgba(248, 81, 73, 0.55);
+}
+
+/* 跳转目标块轻微闪烁（不改变布局） */
+.mk-find-flash {
+    animation: mkFindFlash 0.9s ease-out;
+    border-radius: 3px;
+}
+
+@keyframes mkFindFlash {
+    0%,
+    25% {
+        background-color: rgba(255, 152, 0, 0.20);
+        box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.42);
+    }
+    100% {
+        background-color: transparent;
+        box-shadow: 0 0 0 0 rgba(255, 152, 0, 0);
+    }
+}
+
+body.dark .mk-find-flash {
+    animation-name: mkFindFlashDark;
+}
+
+@keyframes mkFindFlashDark {
+    0%,
+    25% {
+        background-color: rgba(255, 165, 0, 0.18);
+        box-shadow: 0 0 0 3px rgba(255, 165, 0, 0.35);
+    }
+    100% {
+        background-color: transparent;
+        box-shadow: 0 0 0 0 rgba(255, 165, 0, 0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mk-find-flash {
+        animation: none;
+    }
+}
