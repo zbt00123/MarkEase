@@ -456,8 +456,12 @@ class MacPlatform(PlatformBase):
                 info.setVerticalPagination_(AppKit.NSAutoPagination)
                 info.setJobDisposition_(AppKit.NSPrintSaveJob)
                 saving_url = Foundation.NSURL.fileURLWithPath_(pdf_path)
-                info.setJobSavingURL_(saving_url)
-                # 某些 macOS 版本只认 printInfo.dictionary 里的 jobSavingURL
+                # PyObjC 的 NSPrintInfo 不一定暴露 setJobSavingURL_；
+                # 用 printInfo.dictionary 设置同样的键，失败也不要中断打印。
+                try:
+                    info.setJobSavingURL_(saving_url)
+                except Exception:
+                    pass
                 try:
                     info.dictionary().setObject_forKey_(
                         saving_url, AppKit.NSPrintJobSavingURL)
@@ -558,7 +562,7 @@ class MacPlatform(PlatformBase):
                 pass
             time.sleep(0.3)
 
-            width, height = self._wk_content_size(wv)
+            width, height = self._pdf_page_size(window)
             if width <= 0:
                 width = 1200.0
             if height <= 0:
@@ -645,6 +649,19 @@ class MacPlatform(PlatformBase):
             print(f'[MarkEase][mac] content size failed: {holder["error"]}')
             return (1200.0, 1600.0)
         return holder.get('size') or (1200.0, 1600.0)
+
+    def _pdf_page_size(self, window):
+        """用 JS 取打印版式的宽高（CSS 像素），避免依赖 WKWebView.scrollView。"""
+        try:
+            width = float(window.evaluate_js(
+                'window.innerWidth || 1200'))
+            height = float(window.evaluate_js(
+                'Math.max(document.body.scrollHeight, '
+                'document.documentElement.scrollHeight) || 1600'))
+            return max(width, 800.0), max(height, 1000.0)
+        except Exception as e:
+            print(f'[MarkEase][mac] PDF size probe failed: {e}')
+            return (1200.0, 1600.0)
 
     def _wk_create_pdf(self, wv, rect):
         """在主线程调用 WKWebView.createPDF，返回 NSData 或 None。"""

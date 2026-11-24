@@ -17,6 +17,7 @@ import sys
 import time
 import glob
 import shutil
+import subprocess
 import tempfile
 import threading
 
@@ -116,7 +117,98 @@ class LinuxPlatform(PlatformBase):
                 pass
         return wv
 
+    def _find_browser(self):
+        for name in ('google-chrome', 'google-chrome-stable', 'chromium',
+                     'chromium-browser', 'microsoft-edge', 'brave-browser'):
+            path = shutil.which(name)
+            if path:
+                return path
+        return None
+
+    def _export_pdf_chrome(self, window, pdf_path):
+        """用本机 Chrome/Chromium 无头模式把预览 HTML 打成 PDF。
+
+        WebKit2.PrintOperation 不是 Gtk.PrintOperation 子类，没有
+        set_export_file；GTK 的 “Print to File” 虚拟打印机也经常不可用。
+        导出 HTML 再交给 Chrome 打印，分页与打印样式最稳定。
+        """
+        browser = self._find_browser()
+        if not browser:
+            print('[MarkEase][linux] no Chrome/Chromium found for PDF export')
+            return False
+
+        try:
+            html = window.evaluate_js(
+                "(document.getElementById('preview') || {}).innerHTML || ''")
+        except Exception as e:
+            print(f'[MarkEase][linux] read preview HTML failed: {e}')
+            return False
+        if not html:
+            return False
+
+        try:
+            from converters.html_exporter import export_html
+        except Exception as e:
+            print(f'[MarkEase][linux] html exporter unavailable: {e}')
+            return False
+
+        root = getattr(sys, '_MEIPASS', None)
+        if not root:
+            root = os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))))
+
+        work = tempfile.mkdtemp(prefix='markease_pdf_')
+        html_path = os.path.join(work, 'print.html')
+        try:
+            r = export_html(html, '', html_path, title='MarkEase',
+                            doc_dir='', app_root=root)
+            if not (r and r.get('ok')):
+                print(f'[MarkEase][linux] export_html failed: {r}')
+                return False
+
+            profile = os.path.join(work, 'chrome-profile')
+            args = [
+                browser,
+                '--headless=new',
+                '--disable-gpu',
+                '--no-sandbox',
+                '--no-pdf-header-footer',
+                '--user-data-dir=' + profile,
+                '--print-to-pdf=' + pdf_path,
+                'file://' + html_path,
+            ]
+            try:
+                proc = subprocess.run(args, stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, timeout=120)
+            except subprocess.TimeoutExpired:
+                print('[MarkEase][linux] Chrome print timed out')
+                return False
+            if proc.returncode != 0 and b'headless=new' in proc.stderr:
+                # 旧版 Chrome 不支持 --headless=new
+                args[1] = '--headless'
+                try:
+                    proc = subprocess.run(args, stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, timeout=120)
+                except Exception:
+                    return False
+            if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 100:
+                print(f'[MarkEase][linux] Chrome wrote PDF: {pdf_path}')
+                return True
+            print(f'[MarkEase][linux] Chrome did not write PDF '
+                  f'(rc={proc.returncode}): '
+                  f'{proc.stderr.decode("utf-8", "replace")[-300:]}')
+            return False
+        except Exception as e:
+            print(f'[MarkEase][linux] Chrome PDF export failed: {e}')
+            return False
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+
     def export_pdf(self, window, pdf_path):
+        # 首选：本机 Chrome/Chromium 无头打印（分页/打印样式最稳定）
+        if self._export_pdf_chrome(window, pdf_path):
+            return {'ok': True}
+
         try:
             Gtk, GLib, webkit = self._gtk_modules()
         except Exception as e:

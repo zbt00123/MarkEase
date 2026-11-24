@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 
 def log(msg):
@@ -230,7 +231,18 @@ def package_macos(root, dist, out, version, arch):
         dmg_path = os.path.join(out, dmg_name)
         run(['hdiutil', 'create', '-volname', 'MarkEase',
              '-srcfolder', stage, '-ov', '-format', 'UDZO', dmg_path])
-        run(['hdiutil', 'verify', dmg_path])
+        # hdiutil verify 偶尔在 CI 上报 "Resource temporarily unavailable"，重试
+        last_error = None
+        for attempt in range(3):
+            try:
+                run(['hdiutil', 'verify', dmg_path])
+                last_error = None
+                break
+            except subprocess.CalledProcessError as e:
+                last_error = e
+                time.sleep(2)
+        if last_error is not None:
+            raise last_error
 
         if os.environ.get('MK_NOTARIZE') == '1':
             apple_id = os.environ.get('APPLE_ID', '')
