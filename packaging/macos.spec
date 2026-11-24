@@ -125,13 +125,10 @@ info_plist = {
     ],
 }
 
-bundle_kwargs = dict(
+app = BUNDLE(
     coll,
     name='MarkEase.app',
     bundle_identifier='com.zbtstudio.markease',
     info_plist=info_plist,
+    icon=icons.get('icns') or None,
 )
-if icons.get('icns'):
-    bundle_kwargs['icon'] = icons['icns']
-
-app = BUNDLE(**bundle_kwargs)
