@@ -1233,6 +1233,12 @@ def main():
                        'api._asset_server.stop raised',
                        exception=e)
 
+    _pdf_test_out = None
+    if '--pdf-test' in sys.argv:
+        idx = sys.argv.index('--pdf-test')
+        _pdf_test_out = (sys.argv[idx + 1] if len(sys.argv) > idx + 1
+                         else os.path.abspath('markease_pdf_test.pdf'))
+
     def on_loaded():
         # Windows：WebView2 进程崩溃自恢复（macOS / Linux 无此机制）
         if platform.is_windows:
@@ -1251,20 +1257,15 @@ def main():
                        'start_open_file_watcher raised',
                        exception=e)
 
+        # CI 冒烟测试：页面 loaded 之后才能安全 evaluate_js
+        if '--ui-test' in sys.argv:
+            _start_ui_test(window)
+        if _pdf_test_out:
+            _start_pdf_test(window, api, _pdf_test_out)
+
     window.events.loaded += on_loaded
     window.events.closing += on_closing
     window.events.closed += on_closed
-
-    # CI 冒烟测试：启动后抓取前端状态，确认不是"静态骨架"
-    if '--ui-test' in sys.argv:
-        _start_ui_test(window)
-
-    # CI / 本地诊断：实际导出一次 PDF
-    if '--pdf-test' in sys.argv:
-        idx = sys.argv.index('--pdf-test')
-        out_path = (sys.argv[idx + 1] if len(sys.argv) > idx + 1
-                    else os.path.abspath('markease_pdf_test.pdf'))
-        _start_pdf_test(window, api, out_path)
 
     # ★ 启动看门狗：窗口未响应超时 → 强制退出
     try:
