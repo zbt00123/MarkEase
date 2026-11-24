@@ -59,7 +59,7 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
-exe_kwargs = dict(
+exe = EXE(
     pyz,
     a.scripts,
     [],
@@ -72,11 +72,8 @@ exe_kwargs = dict(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
+    icon=icons.get('png') or 'NONE',
 )
-if icons.get('png'):
-    exe_kwargs['icon'] = icons['png']
-
-exe = EXE(**exe_kwargs)
 
 coll = COLLECT(
     exe,
