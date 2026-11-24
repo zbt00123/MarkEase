@@ -54,6 +54,23 @@ def sha256(path):
     return h.hexdigest()
 
 
+def clean_runtime_artifacts(app_dir, is_mac=False):
+    """删除构建/冒烟测试在产物目录里留下的运行期文件。
+
+    CI 会在打包前启动一次应用并执行 --self-test，日志系统会把 `logs/`
+    写进 frozen 目录；这些文件不能进入分发产物。
+    """
+    roots = [app_dir]
+    if is_mac:
+        roots.append(os.path.join(app_dir, 'Contents', 'MacOS'))
+    for root in roots:
+        for name in ('logs', 'webview2'):
+            target = os.path.join(root, name)
+            if os.path.isdir(target):
+                log(f'clean runtime artifact: {target}')
+                shutil.rmtree(target, ignore_errors=True)
+
+
 def ensure_icon_png(root, work_dir):
     """生成 Linux .desktop 用的 256px PNG。"""
     os.makedirs(work_dir, exist_ok=True)
@@ -110,6 +127,8 @@ def package_linux(root, dist, out, version):
     if not os.path.isdir(app_dir):
         raise SystemExit(f'missing build output: {app_dir}')
 
+    clean_runtime_artifacts(app_dir, is_mac=False)
+
     os.makedirs(out, exist_ok=True)
     artifacts = []
 
@@ -164,6 +183,7 @@ def package_linux(root, dist, out, version):
         artifacts.append(deb_path)
     finally:
         shutil.rmtree(stage, ignore_errors=True)
+        shutil.rmtree(os.path.join(out, '_icons'), ignore_errors=True)
 
     return artifacts
 
@@ -188,6 +208,8 @@ def package_macos(root, dist, out, version, arch):
     app_path = os.path.join(dist, 'MarkEase.app')
     if not os.path.isdir(app_path):
         raise SystemExit(f'missing build output: {app_path}')
+
+    clean_runtime_artifacts(app_path, is_mac=True)
 
     os.makedirs(out, exist_ok=True)
     codesign_app(app_path)
