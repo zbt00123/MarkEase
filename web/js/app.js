@@ -405,6 +405,7 @@ async function startMarkEase() {
         return;
     }
     window.__markEaseInitialized = true;
+    window.__mkInitStage = 'start';
 
     try {
         try {
@@ -416,6 +417,7 @@ async function startMarkEase() {
         } catch (e) {
             console.warn('获取 asset server URL 失败', e);
         }
+        window.__mkInitStage = 'asset';
 
         let settings = {};
         try {
@@ -423,6 +425,7 @@ async function startMarkEase() {
         } catch (e) {
             console.warn('加载设置失败', e);
         }
+        window.__mkInitStage = 'settings';
         currentLangChoice = settings.language || 'system';
         try {
             localStorage.setItem('markease_language', currentLangChoice);
@@ -439,9 +442,12 @@ async function startMarkEase() {
             }
         }
 
+        window.__mkInitStage = 'i18n';
         initEditor();
+        window.__mkInitStage = 'editor';
         initMenubarByHandlers();
         initToolbarByHandlers();
+        window.__mkInitStage = 'toolbar';
         if (window.FindBar) window.FindBar.init(editorView);
         setupScrollSync();
         setupPreviewEditing();
@@ -483,6 +489,7 @@ async function startMarkEase() {
             window.MenuBar.refreshI18n();
         }
         setStatus(T('ready', '就绪'));
+        window.__mkInitStage = 'done';
         if (_recoveryNoticePending) {
             _recoveryNoticePending = false;
             setStatus(T('recovered_after_crash', '界面异常后已恢复编辑内容'));
@@ -509,6 +516,12 @@ async function startMarkEase() {
         scheduleSilentUpdateCheck();
     } catch (err) {
         console.error('[MarkEase] 初始化失败', err);
+        window.__mkInitStage = 'failed';
+        window.__mkInitError = {
+            name: (err && err.name) || 'Error',
+            message: (err && err.message) ? String(err.message) : String(err),
+            stack: (err && err.stack) || ''
+        };
         setStatus('Init failed: ' + (err && err.message ? err.message : err));
 
         // ★ v2.1.2：初始化失败也走一次错误上报

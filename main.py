@@ -850,16 +850,15 @@ def _run_self_test():
 
 
 def _start_ui_test(window):
-    """启动 8 秒后抓取前端真实状态并退出（CI 冒烟测试用）。
+    """轮询前端真实状态并退出（CI 冒烟测试用）。
 
-    输出一行 JSON：是否初始化、工具栏按钮数、CodeMirror 是否创建、早期 JS 错误。
+    输出一行 JSON：初始化阶段、工具栏按钮数、CodeMirror 是否创建、JS 错误。
     退出码：0 正常；3 初始化失败。这样 macOS / Linux 的空白窗口问题
     在 CI 日志里可以直接定位。
     """
     import json as _json
 
     def _worker():
-        time.sleep(8.0)
         script = r"""(function () {
           try {
             var errs = window.__mkEarlyErrors || [];
@@ -871,6 +870,8 @@ def _start_ui_test(window):
             }
             return JSON.stringify({
               initialized: !!window.__markEaseInitialized,
+              initStage: window.__mkInitStage || 'none',
+              initError: window.__mkInitError || null,
               hasApi: !!(window.pywebview && window.pywebview.api),
               toolbarButtons: document.querySelectorAll('#toolbar .tb-btn').length,
               editorReady: !!document.querySelector('.cm-editor'),
@@ -886,15 +887,27 @@ def _start_ui_test(window):
           }
         })()"""
 
+        deadline = time.time() + 30.0
         data = {}
-        try:
-            raw = window.evaluate_js(script)
-            if isinstance(raw, str):
-                data = _json.loads(raw)
-            elif isinstance(raw, dict):
-                data = raw
-        except Exception as e:
-            data = {'error': '%s: %s' % (type(e).__name__, e)}
+        while True:
+            try:
+                raw = window.evaluate_js(script)
+                if isinstance(raw, str):
+                    data = _json.loads(raw)
+                elif isinstance(raw, dict):
+                    data = raw
+            except Exception as e:
+                data = {'error': '%s: %s' % (type(e).__name__, e)}
+
+            toolbar = int(data.get('toolbarButtons') or 0)
+            if data.get('initError') or data.get('initStage') == 'failed':
+                break
+            if data.get('initialized') and toolbar > 0 and \
+                    data.get('editorReady'):
+                break
+            if time.time() >= deadline:
+                break
+            time.sleep(0.5)
 
         print('[MarkEase][ui-test] ' + _json.dumps(data, ensure_ascii=False))
         try:
@@ -907,8 +920,10 @@ def _start_ui_test(window):
         except Exception:
             pass
 
-        ok = bool(data.get('initialized')) and \
-            int(data.get('toolbarButtons') or 0) > 0
+        ok = (bool(data.get('initialized')) and
+              int(data.get('toolbarButtons') or 0) > 0 and
+              bool(data.get('editorReady')) and
+              not data.get('initError'))
         os._exit(0 if ok else 3)
 
     threading.Thread(target=_worker, daemon=True,
