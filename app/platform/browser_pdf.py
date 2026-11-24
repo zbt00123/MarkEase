@@ -8,9 +8,11 @@ set_export_file；macOS 的 NSPrintOperation 在部分版本会卡在保存面�
 
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 
 _BROWSER_NAMES = (
@@ -75,28 +77,70 @@ def export_with_browser(window, pdf_path, app_root):
 
         url = 'file://' + html_path.replace('\\', '/')
         profile = os.path.join(work, 'profile')
-        base_args = [
-            browser,
-            '--disable-gpu',
-            '--no-pdf-header-footer',
-            '--user-data-dir=' + profile,
-            '--print-to-pdf=' + pdf_path,
-            url,
-        ]
-        for headless in ('--headless=new', '--headless'):
-            args = [browser, headless] + base_args[1:]
+
+        def _run_headless(headless):
+            args = [
+                browser,
+                headless,
+                '--disable-gpu',
+                '--no-pdf-header-footer',
+                '--user-data-dir=' + profile,
+                '--print-to-pdf=' + pdf_path,
+                url,
+            ]
             try:
-                proc = subprocess.run(args, stdout=subprocess.PIPE,
-                                      stderr=subprocess.PIPE, timeout=90)
-            except subprocess.TimeoutExpired:
-                print(f'[MarkEase][pdf] browser timed out ({headless})')
-                continue
-            if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 100:
-                print(f'[MarkEase][pdf] browser wrote PDF: {pdf_path}')
+                proc = subprocess.Popen(
+                    args, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, start_new_session=True)
+            except Exception as e:
+                print(f'[MarkEase][pdf] browser launch failed: {e}')
+                return False
+
+            deadline = time.time() + 30.0
+            last_size = -1
+            stable = 0
+            try:
+                while time.time() < deadline:
+                    if os.path.exists(pdf_path):
+                        size = os.path.getsize(pdf_path)
+                        if size > 100:
+                            stable = stable + 1 if size == last_size else 0
+                            last_size = size
+                            if stable >= 2:
+                                return True
+                    if proc.poll() is not None:
+                        break
+                    time.sleep(0.2)
+                return (os.path.exists(pdf_path) and
+                        os.path.getsize(pdf_path) > 100)
+            finally:
+                if proc.poll() is None:
+                    try:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    except Exception:
+                        try:
+                            proc.terminate()
+                        except Exception:
+                            pass
+                    try:
+                        proc.wait(timeout=5)
+                    except Exception:
+                        try:
+                            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                        except Exception:
+                            pass
+
+        for headless in ('--headless=new', '--headless'):
+            if _run_headless(headless):
+                print(f'[MarkEase][pdf] browser wrote PDF ({headless}): '
+                      f'{pdf_path}')
                 return True
-            err = proc.stderr.decode('utf-8', 'replace')[-300:]
-            print(f'[MarkEase][pdf] browser did not write PDF '
-                  f'({headless}, rc={proc.returncode}): {err}')
+            if os.path.exists(pdf_path):
+                try:
+                    os.remove(pdf_path)
+                except Exception:
+                    pass
+        print('[MarkEase][pdf] browser did not write PDF')
         return False
     except Exception as e:
         print(f'[MarkEase][pdf] browser export failed: {e}')
