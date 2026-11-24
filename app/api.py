@@ -652,6 +652,11 @@ class Api:
             self.close_all_pickers()
         except Exception:
             pass
+        # macOS：不能从 JS API 线程调用 window.destroy()。
+        # 该线程是非 daemon 线程，会卡在 Cocoa 销毁流程；解释器退出时
+        # wait_for_thread_shutdown 会永久 join，表现为"不保存/保存后卡死"。
+        if platform.is_macos and platform.quit_immediately():
+            return {'ok': True}
         if self._window is not None:
             try:
                 self._window.destroy()
@@ -1268,6 +1273,21 @@ class Api:
         self.close_all_pickers()
         if self._window is None:
             return {'ok': False, 'error': '窗口未就绪'}
+        if platform.is_macos:
+            # 有未保存内容：交给前端「取消/不保存/保存」对话框，
+            # 用户选择后再走 force_close()（macOS 用 os._exit 退出）。
+            if self._is_dirty:
+                try:
+                    self._window.evaluate_js(
+                        'window.onCloseRequested && '
+                        'window.onCloseRequested()')
+                except Exception as e:
+                    _log_error('close_window_prompt_failed',
+                               'onCloseRequested dispatch failed',
+                               exception=e)
+                return {'ok': True}
+            if platform.quit_immediately():
+                return {'ok': True}
         try:
             self._window.destroy()
             return {'ok': True}

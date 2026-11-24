@@ -85,6 +85,10 @@ class PlatformBase:
         """重启应用（macOS 切换语言刷新原生菜单用）。返回是否成功。"""
         return False
 
+    def quit_immediately(self):
+        """立即退出进程（绕过 Python 解释器 finalize / 线程 join）。"""
+        return False
+
     def set_shutting_down(self, value):
         self._shutting_down = bool(value)
 

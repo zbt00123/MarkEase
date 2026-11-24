@@ -186,8 +186,7 @@ class MacPlatform(PlatformBase):
             Menu(_t('settings', '设置'), [
                 item('set_default_program', 'set_default_program',
                      '设为默认打开程序'),
-                item('register_shell_new', 'register_shell_new',
-                     '添加到「新建」菜单'),
+                # macOS 没有 ShellNew，不提供「添加到新建菜单」
             ]),
         ])
 
@@ -220,8 +219,24 @@ class MacPlatform(PlatformBase):
             print(f'[MarkEase][mac] restart failed: {e}')
             return False
 
+    def quit_immediately(self):
+        """直接 os._exit，绕过 Python finalize 对 JS API 线程的 join。
+
+        pywebview 的每个 JS API 调用都在非 daemon 线程里执行；从
+        force_close() 里 window.destroy() 会让该线程停在 Cocoa 销毁流程，
+        解释器退出时 wait_for_thread_shutdown 永久等待，表现为"关闭卡死"。
+        """
+        try:
+            threading.Timer(0.15, lambda: os._exit(0),
+                            ).start()
+            return True
+        except Exception as e:
+            print(f'[MarkEase][mac] quit_immediately failed: {e}')
+            return False
+
     def on_webview_started(self, window=None):
         """GUI 启动后把「文件」菜单移到「编辑」左侧（macOS 标准顺序）。"""
+        self._window = window
         try:
             threading.Thread(target=self._wait_and_reorder_menus,
                              daemon=True,
@@ -255,6 +270,7 @@ class MacPlatform(PlatformBase):
             main = AppKit.NSApplication.sharedApplication().mainMenu()
             if main is None:
                 return
+            self._rewire_about_menu(main)
             wanted = getattr(self, '_file_menu_title', '文件')
             for item in list(main.itemArray()):
                 try:
@@ -268,6 +284,50 @@ class MacPlatform(PlatformBase):
                     continue
         except Exception as e:
             print(f'[MarkEase][mac] reorder menus failed: {e}')
+
+    def _rewire_about_menu(self, main):
+        """把系统 App 菜单的 About 改为打开 MarkEase 自己的关于窗口。"""
+        try:
+            import AppKit
+            if main.numberOfItems() < 1:
+                return
+            sub = main.itemAtIndex_(0).submenu()
+            if sub is None:
+                return
+
+            class _AboutHandler(AppKit.NSObject):
+                def showAbout_(self, sender):
+                    try:
+                        window = getattr(self, '_mk_window', None)
+                        if window is None:
+                            return
+                        threading.Thread(
+                            target=lambda: window.evaluate_js(
+                                "window.MKMenuAction && "
+                                "window.MKMenuAction('about')"),
+                            daemon=True,
+                            name='MarkEaseAboutMenu',
+                        ).start()
+                    except Exception as e:
+                        print(f'[MarkEase][mac] About menu failed: {e}')
+
+            handler = _AboutHandler.alloc().init()
+            handler._mk_window = getattr(self, '_window', None)
+            for item in sub.itemArray():
+                title = str(item.title() or '')
+                try:
+                    action = str(item.action() or '')
+                except Exception:
+                    action = ''
+                if ('About' in title or '关于' in title or
+                        'orderFrontStandardAboutPanel' in action):
+                    item.setTarget_(handler)
+                    item.setAction_(b'showAbout:')
+                    self._about_handler = handler
+                    print('[MarkEase][mac] About menu rewired')
+                    return
+        except Exception as e:
+            print(f'[MarkEase][mac] rewire About menu failed: {e}')
 
     # ---------- 剪贴板 ----------
     def read_clipboard_text(self):
