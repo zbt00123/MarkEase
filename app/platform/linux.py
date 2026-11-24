@@ -134,7 +134,6 @@ class LinuxPlatform(PlatformBase):
         def _do_export():
             try:
                 op = webkit.PrintOperation.new(wv)
-                op.set_export_file(pdf_path)
                 try:
                     op.set_show_progress(False)
                 except Exception:
@@ -150,22 +149,59 @@ class LinuxPlatform(PlatformBase):
                 setup.set_left_margin(0.4, Gtk.Unit.INCH)
                 setup.set_right_margin(0.4, Gtk.Unit.INCH)
                 try:
-                    op.set_default_page_setup(setup)
+                    op.set_page_setup(setup)
+                except Exception:
+                    try:
+                        op.set_default_page_setup(setup)
+                    except Exception:
+                        pass
+
+                # WebKit2.PrintOperation 不是 Gtk.PrintOperation 子类，没有
+                # set_export_file；用 GTK 的 “Print to File” 打印机导出 PDF。
+                from urllib.parse import quote
+                settings = Gtk.PrintSettings()
+                try:
+                    settings.set_printer('Print to File')
+                except Exception:
+                    pass
+                settings.set('output-file-format', 'pdf')
+                settings.set('output-uri', 'file://' + quote(pdf_path))
+                op.set_print_settings(settings)
+
+                def _on_finished(*_args):
+                    done.set()
+
+                def _on_failed(_op, error):
+                    holder['error'] = error
+                    done.set()
+
+                try:
+                    op.connect('finished', _on_finished)
+                    op.connect('failed', _on_failed)
                 except Exception:
                     pass
 
-                result = op.run(Gtk.PrintOperationAction.EXPORT, parent)
-                if result != Gtk.PrintOperationResult.APPLY:
-                    err = ''
-                    try:
-                        err = str(op.get_error() or '')
-                    except Exception:
-                        pass
-                    raise RuntimeError(
-                        f'打印导出未完成（result={result}）{": " + err if err else ""}')
+                op.print_()
+
+                # 某些 GTK 版本不会发 finished 信号，轮询目标文件兜底
+                def _watch_file():
+                    for _ in range(600):
+                        if done.is_set():
+                            return
+                        try:
+                            if (os.path.exists(pdf_path) and
+                                    os.path.getsize(pdf_path) > 100):
+                                done.set()
+                                return
+                        except Exception:
+                            pass
+                        time.sleep(0.1)
+                    done.set()
+
+                threading.Thread(target=_watch_file, daemon=True,
+                                 name='MarkEasePdfWatch').start()
             except Exception as e:
                 holder['error'] = e
-            finally:
                 done.set()
             return False
 
