@@ -50,3 +50,7 @@ _ci_linux/
 _ci_mac_arm/
 _ci_mac_x64/
 
+
+# 本地 PDF 导出测试产物
+_pdf_test.pdf
+

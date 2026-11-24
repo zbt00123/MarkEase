@@ -806,6 +806,21 @@ def _install_webview2_process_failed_recovery(window, api):
                      name='MarkEaseWebView2Recovery').start()
 
 
+def _run_net_test():
+    """无窗口自检：走一次网络图片代理，验证 HTTPS/CA 是否正常。"""
+    url = 'https://www.python.org/static/img/python-logo.png'
+    try:
+        from app.asset_server import _proxy_download
+        data, content_type = _proxy_download(url)
+        print('[MarkEase][net-test] ok bytes=%d type=%s'
+              % (len(data), content_type))
+        return bool(data)
+    except Exception as e:
+        print('[MarkEase][net-test] failed: %s: %s'
+              % (type(e).__name__, e))
+        return False
+
+
 def _run_self_test():
     """无窗口自检：验证平台层、资源与业务模块可导入。
 
@@ -880,6 +895,42 @@ def _start_ui_test(window):
               nativeMenuExpected: document.documentElement.classList.contains('platform-mac'),
               readyState: document.readyState,
               earlyErrors: errs.slice(0, 10),
+              fuzzyProbe: (function () {
+                try {
+                  if (!window.MKTestLoad || !window.PreviewSearch) return null;
+                  var cases = [
+                    'foo **bar**',
+                    '> foo **bar**',
+                    '- foo **bar**',
+                    'foo *bar*',
+                    'foo `bar`',
+                    'foo [bar](https://example.com)'
+                  ];
+                  var out = [];
+                  for (var i = 0; i < cases.length; i++) {
+                    var md = cases[i];
+                    window.MKTestLoad(md);
+                    var fm = window.PreviewSearch.findFuzzyMatches(
+                      md, 'foo bar', false);
+                    out.push({ md: md, count: fm.length,
+                               first: fm.length ? fm[0] : null });
+                  }
+                  // 强制走源码级兜底（模拟预览块不可用）
+                  try {
+                    window.MKTestLoad('foo **bar**');
+                    var pv = document.getElementById('preview');
+                    if (pv) pv.innerHTML = '';
+                    window.PreviewSearch.onPreviewRendered();
+                    var fm2 = window.PreviewSearch.findFuzzyMatches(
+                      'foo **bar**', 'foo bar', false);
+                    out.push({ md: 'source-fallback', count: fm2.length,
+                               first: fm2.length ? fm2[0] : null });
+                  } catch (e2) {
+                    out.push({ md: 'source-fallback', error: String(e2) });
+                  }
+                  return out;
+                } catch (e) { return { error: String(e) }; }
+              })(),
               ua: navigator.userAgent
             });
           } catch (e) {
@@ -909,6 +960,29 @@ def _start_ui_test(window):
                 break
             time.sleep(0.5)
 
+        # 诊断：走真实 FindBar UI 路径，确认模糊搜索计数
+        try:
+            window.evaluate_js(r"""(function () {
+                try {
+                    window.MKTestLoad('foo **bar**');
+                    if (window.FindBar) window.FindBar.open(false);
+                    var inp = document.getElementById('find-input');
+                    var fz = document.getElementById('find-fuzzy');
+                    if (fz) fz.checked = true;
+                    if (inp) {
+                        inp.value = 'foo bar';
+                        inp.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                } catch (e) { return String(e); }
+            })()""")
+            time.sleep(0.6)
+            raw2 = window.evaluate_js(
+                "JSON.stringify({count:(document.getElementById('find-count')||{}).textContent||'',"
+                "hint:(document.getElementById('find-hint')||{}).textContent||''})")
+            data['findUi'] = _json.loads(raw2) if isinstance(raw2, str) else raw2
+        except Exception as e:
+            data['findUi'] = {'error': '%s: %s' % (type(e).__name__, e)}
+
         print('[MarkEase][ui-test] ' + _json.dumps(data, ensure_ascii=False))
         try:
             window.destroy()
@@ -928,6 +1002,58 @@ def _start_ui_test(window):
 
     threading.Thread(target=_worker, daemon=True,
                      name='MarkEaseUITest').start()
+
+
+def _start_pdf_test(window, api, out_path):
+    """CI 用：加载一段样例 Markdown 并实际导出 PDF。"""
+    import json as _json
+
+    def _worker():
+        deadline = time.time() + 20.0
+        while time.time() < deadline:
+            try:
+                stage = window.evaluate_js(
+                    'window.__mkInitStage || "none"')
+            except Exception:
+                stage = 'none'
+            if stage in ('done', 'failed'):
+                break
+            time.sleep(0.5)
+
+        md = ('# PDF Test\n\n'
+              'Hello **MarkEase** 中文测试。\n\n'
+              '- one\n- two\n\n'
+              '> quote line\n')
+        try:
+            window.evaluate_js(
+                'window.MKTestLoad && window.MKTestLoad(%s)'
+                % _json.dumps(md))
+        except Exception as e:
+            print(f'[MarkEase][pdf-test] load content failed: {e}')
+        time.sleep(1.0)
+
+        result = {}
+        try:
+            result = api._export_pdf_to_path(md, out_path)
+        except Exception as e:
+            result = {'ok': False, 'error': '%s: %s'
+                                          % (type(e).__name__, e)}
+
+        print('[MarkEase][pdf-test] '
+              + _json.dumps(result, ensure_ascii=False))
+        try:
+            window.destroy()
+        except Exception:
+            pass
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+        os._exit(0 if result.get('ok') else 3)
+
+    threading.Thread(target=_worker, daemon=True,
+                     name='MarkEasePdfTest').start()
 
 
 def main():
@@ -1122,6 +1248,13 @@ def main():
     if '--ui-test' in sys.argv:
         _start_ui_test(window)
 
+    # CI / 本地诊断：实际导出一次 PDF
+    if '--pdf-test' in sys.argv:
+        idx = sys.argv.index('--pdf-test')
+        out_path = (sys.argv[idx + 1] if len(sys.argv) > idx + 1
+                    else os.path.abspath('markease_pdf_test.pdf'))
+        _start_pdf_test(window, api, out_path)
+
     # ★ 启动看门狗：窗口未响应超时 → 强制退出
     try:
         platform.start_hang_watchdog(window)
@@ -1149,6 +1282,9 @@ def main():
             menu=native_menu or [],
             # macOS 默认「编辑」菜单的中文本地化
             localization=platform.webview_localization(),
+            # GUI 启动后的平台补充动作（macOS 调整菜单顺序）
+            func=platform.on_webview_started,
+            args=(window,),
             # ★ 显式指定本次启动的 WebView2 目录：避免 pywebview 使用临时目录
             #   或上一次崩溃残留的坏档案，导致 0x800700AA 空白窗口。
             storage_path=_USER_DATA_DIR,
@@ -1174,6 +1310,8 @@ def main():
 if __name__ == '__main__':
     if '--self-test' in sys.argv:
         sys.exit(0 if _run_self_test() else 1)
+    if '--net-test' in sys.argv:
+        sys.exit(0 if _run_net_test() else 1)
     try:
         main()
     except SystemExit:

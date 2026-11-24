@@ -687,10 +687,12 @@ body.dark .cm-search-match-current {
 
         let matches = exactMatches.concat(fuzzyMatches);
 
-        // 纯预览只保留“渲染后确实可见”的命中
+        // 纯预览只保留“渲染后确实可见”的精确命中；
+        // 模糊命中天然跨越 Markdown 标记，不能再用源码可见性过滤，否则会全部被丢掉。
         if (mode === 'preview' && window.PreviewSearch &&
             typeof window.PreviewSearch.isSourceSpanVisible === 'function') {
             matches = matches.filter((m) =>
+                m.kind === 'fuzzy' ||
                 window.PreviewSearch.isSourceSpanVisible(m.from, m.to));
         }
 

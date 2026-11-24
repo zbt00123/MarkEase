@@ -57,7 +57,7 @@ def common_hiddenimports():
     datas = []
     binaries = []
 
-    for pkg in ('fitz', 'pymupdf', 'docx', 'PIL'):
+    for pkg in ('fitz', 'pymupdf', 'docx', 'PIL', 'certifi'):
         _collect_pkg(datas, binaries, hiddenimports, pkg)
 
     try:

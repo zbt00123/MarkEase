@@ -16,6 +16,8 @@ import os
 import sys
 import time
 import json
+import shutil
+import tempfile
 import threading
 
 from .base import PlatformBase
@@ -129,7 +131,8 @@ class MacPlatform(PlatformBase):
         def item(action_id, key, fallback):
             return _action(action_id, _t(key, fallback))
 
-        file_menu = Menu(_t('file', '文件'), [
+        self._file_menu_title = _t('file', '文件')
+        file_menu = Menu(self._file_menu_title, [
             item('new', 'new', '新建'),
             item('open', 'open', '打开'),
             item('save', 'save', '保存'),
@@ -193,6 +196,69 @@ class MacPlatform(PlatformBase):
 
     def webview_localization(self):
         return getattr(self, '_webview_localization', {})
+
+    def restart_app(self):
+        """重启当前 .app，让新的语言设置重新构建原生菜单。"""
+        import subprocess
+        try:
+            if getattr(sys, 'frozen', False):
+                args = [sys.executable]
+            else:
+                root = os.path.dirname(os.path.dirname(os.path.dirname(
+                    os.path.abspath(__file__))))
+                args = [sys.executable, os.path.join(root, 'main.py')]
+            subprocess.Popen(args, close_fds=True)
+            threading.Timer(0.6, lambda: os._exit(0)).start()
+            return True
+        except Exception as e:
+            print(f'[MarkEase][mac] restart failed: {e}')
+            return False
+
+    def on_webview_started(self, window=None):
+        """GUI 启动后把「文件」菜单移到「编辑」左侧（macOS 标准顺序）。"""
+        try:
+            threading.Thread(target=self._wait_and_reorder_menus,
+                             daemon=True,
+                             name='MarkEaseMenuOrder').start()
+        except Exception as e:
+            print(f'[MarkEase][mac] menu order thread failed: {e}')
+
+    def _wait_and_reorder_menus(self):
+        try:
+            import AppKit
+            from PyObjCTools import AppHelper
+        except Exception as e:
+            print(f'[MarkEase][mac] PyObjC menu reorder unavailable: {e}')
+            return
+        for _ in range(50):
+            try:
+                if AppKit.NSApplication.sharedApplication().mainMenu() \
+                        is not None:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+        AppHelper.callAfter(self._reorder_menus)
+
+    def _reorder_menus(self):
+        try:
+            import AppKit
+            main = AppKit.NSApplication.sharedApplication().mainMenu()
+            if main is None:
+                return
+            wanted = getattr(self, '_file_menu_title', '文件')
+            for item in list(main.itemArray()):
+                try:
+                    if str(item.title()) == wanted:
+                        main.removeItem_(item)
+                        main.insertItem_atIndex_(item, 1)
+                        print('[MarkEase][mac] menu order fixed: '
+                              'File before Edit')
+                        return
+                except Exception:
+                    continue
+        except Exception as e:
+            print(f'[MarkEase][mac] reorder menus failed: {e}')
 
     # ---------- 剪贴板 ----------
     def read_clipboard_text(self):
@@ -344,8 +410,14 @@ class MacPlatform(PlatformBase):
                 info.setHorizontalPagination_(AppKit.NSFitPagination)
                 info.setVerticalPagination_(AppKit.NSAutoPagination)
                 info.setJobDisposition_(AppKit.NSPrintSaveJob)
-                info.setJobSavingURL_(
-                    Foundation.NSURL.fileURLWithPath_(pdf_path))
+                saving_url = Foundation.NSURL.fileURLWithPath_(pdf_path)
+                info.setJobSavingURL_(saving_url)
+                # 某些 macOS 版本只认 printInfo.dictionary 里的 jobSavingURL
+                try:
+                    info.dictionary().setObject_forKey_(
+                        saving_url, AppKit.NSPrintJobSavingURL)
+                except Exception:
+                    pass
 
                 op = wv.printOperationWithPrintInfo_(info)
                 if op is None:
@@ -371,7 +443,17 @@ class MacPlatform(PlatformBase):
                 return {'ok': False, 'error': '导出 PDF 超时（180 秒）'}
 
         if holder.get('error') is not None:
-            return {'ok': False, 'error': str(holder['error'])}
+            print(f'[MarkEase][mac] print operation failed: {holder["error"]}')
+
+        if not os.path.exists(pdf_path) or os.path.getsize(pdf_path) < 100:
+            # NSPrintSaveJob 在部分 macOS 版本不会真正写文件 / 输出空白。
+            # 兜底：用 WKWebView.createPDF 直接生成 PDF 数据并写盘。
+            print('[MarkEase][mac] print-to-file produced nothing; '
+                  'falling back to WKWebView.createPDF')
+            if not self._fallback_create_pdf(window, wv, pdf_path):
+                if holder.get('error') is not None:
+                    return {'ok': False, 'error': str(holder['error'])}
+                return {'ok': False, 'error': '未生成 PDF 文件'}
 
         if not os.path.exists(pdf_path):
             return {'ok': False, 'error': '未生成 PDF 文件'}
@@ -383,31 +465,181 @@ class MacPlatform(PlatformBase):
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
-        # macOS 11 曾出现 NSPrintSaveJob 输出空白页的问题：
-        # 页面数量正确但没有任何文字 / 图片。这里显式检测，避免"成功导出空白 PDF"。
+        # macOS 11 曾出现 NSPrintSaveJob 输出空白页的问题。
+        # 这里只检查文件有效性与页数，不因为"没有文字/图片"就判失败：
+        # WKWebView 可能把文字转成路径，get_text() 为空但 PDF 是正常的。
         try:
+            size = os.path.getsize(pdf_path)
             import pymupdf
             doc = pymupdf.open(pdf_path)
             try:
-                if doc.page_count == 0:
-                    return {'ok': False, 'error': '导出的 PDF 没有页面'}
-                blank = True
+                pages = doc.page_count
+                text_len = 0
+                image_count = 0
                 for page in doc:
-                    if page.get_text().strip() or page.get_images():
-                        blank = False
-                        break
-                if blank:
+                    text_len += len(page.get_text().strip())
+                    image_count += len(page.get_images())
+                print(f'[MarkEase][mac] pdf: size={size} pages={pages} '
+                      f'text={text_len} images={image_count}')
+                if pages == 0 or size < 100:
                     return {'ok': False,
-                            'error': 'macOS 打印组件输出了空白 PDF，'
-                                     '请改用“导出 HTML”或在真机上反馈该问题'}
+                            'error': 'macOS 打印组件生成的 PDF 为空'}
+                if text_len == 0 and image_count == 0:
+                    print('[MarkEase][mac] WARNING: PDF has no extractable '
+                          'text/images (may still render correctly)')
             finally:
                 doc.close()
         except ImportError:
-            pass
+            if os.path.getsize(pdf_path) < 100:
+                return {'ok': False, 'error': '生成的 PDF 文件过小'}
         except Exception as e:
             print(f'[MarkEase][mac] PDF validation failed: {e}')
 
         return {'ok': True}
+
+    def _fallback_create_pdf(self, window, wv, pdf_path):
+        """NSPrintSaveJob 不写文件时的兜底：WKWebView.createPDF。"""
+        try:
+            import Foundation
+        except Exception as e:
+            print(f'[MarkEase][mac] fallback createPDF unavailable: {e}')
+            return False
+
+        try:
+            try:
+                window.evaluate_js(
+                    'window.MKSetPdfMode && window.MKSetPdfMode(true)')
+            except Exception:
+                pass
+            time.sleep(0.3)
+
+            width, height = self._wk_content_size(wv)
+            if width <= 0:
+                width = 1200.0
+            if height <= 0:
+                height = 1600.0
+
+            # PDF 单页最大 200in；超长文档分块捕获后用 PyMuPDF 合并
+            if height <= 18000.0:
+                rects = [Foundation.NSMakeRect(0.0, 0.0, width, height)]
+            else:
+                rects = []
+                y = 0.0
+                while y < height:
+                    h = min(8000.0, height - y)
+                    rects.append(Foundation.NSMakeRect(0.0, y, width, h))
+                    y += h
+
+            parts = []
+            for rect in rects:
+                data = self._wk_create_pdf(wv, rect)
+                if data is None:
+                    return False
+                fd, tmp = tempfile.mkstemp(suffix='.pdf')
+                os.close(fd)
+                if not bool(data.writeToFile_atomically_(tmp, True)):
+                    return False
+                parts.append(tmp)
+
+            if len(parts) == 1:
+                shutil.move(parts[0], pdf_path)
+            else:
+                import pymupdf
+                out = pymupdf.open()
+                try:
+                    for part in parts:
+                        src = pymupdf.open(part)
+                        out.insert_pdf(src)
+                        src.close()
+                    out.save(pdf_path)
+                finally:
+                    out.close()
+                    for part in parts:
+                        try:
+                            os.remove(part)
+                        except Exception:
+                            pass
+            print(f'[MarkEase][mac] fallback createPDF wrote {pdf_path}')
+            return True
+        except Exception as e:
+            print(f'[MarkEase][mac] fallback createPDF failed: {e}')
+            return False
+        finally:
+            try:
+                window.evaluate_js(
+                    'window.MKSetPdfMode && window.MKSetPdfMode(false)')
+            except Exception:
+                pass
+
+    def _wk_content_size(self, wv):
+        """在主线程获取 WKWebView 可视宽度 / 全文高度。"""
+        try:
+            import AppKit
+        except Exception:
+            return (1200.0, 1600.0)
+
+        holder = {}
+        done = threading.Event()
+
+        def _do():
+            try:
+                frame = wv.frame().size
+                scroll = wv.scrollView()
+                doc_view = scroll.documentView() if scroll is not None else None
+                height = (doc_view.frame().size.height
+                          if doc_view is not None else frame.height)
+                holder['size'] = (frame.width, height)
+            except Exception as e:
+                holder['error'] = e
+            finally:
+                done.set()
+
+        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(_do)
+        done.wait(10)
+        if holder.get('error') is not None:
+            print(f'[MarkEase][mac] content size failed: {holder["error"]}')
+            return (1200.0, 1600.0)
+        return holder.get('size') or (1200.0, 1600.0)
+
+    def _wk_create_pdf(self, wv, rect):
+        """在主线程调用 WKWebView.createPDF，返回 NSData 或 None。"""
+        try:
+            import AppKit
+            import WebKit
+        except Exception as e:
+            print(f'[MarkEase][mac] WebKit createPDF unavailable: {e}')
+            return None
+
+        holder = {}
+        done = threading.Event()
+
+        def _do():
+            try:
+                cfg = WebKit.WKPDFConfiguration.alloc().init()
+                cfg.setRect_(rect)
+
+                def handler(data, error):
+                    try:
+                        if error is not None:
+                            holder['error'] = error
+                        else:
+                            holder['data'] = data
+                    finally:
+                        done.set()
+
+                wv.createPDFWithConfiguration_completionHandler_(cfg, handler)
+            except Exception as e:
+                holder['error'] = e
+                done.set()
+
+        AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(_do)
+        if not done.wait(120):
+            print('[MarkEase][mac] createPDF timed out')
+            return None
+        if holder.get('error') is not None:
+            print(f'[MarkEase][mac] createPDF failed: {holder["error"]}')
+            return None
+        return holder.get('data')
 
     @staticmethod
     def _is_main_thread():

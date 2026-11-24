@@ -77,6 +77,14 @@ class PlatformBase:
         """pywebview 内置菜单（如 macOS 编辑菜单）的本地化文案。"""
         return {}
 
+    def on_webview_started(self, window=None):
+        """GUI 启动后的平台补充动作（macOS 用于调整菜单顺序）。"""
+        return None
+
+    def restart_app(self):
+        """重启应用（macOS 切换语言刷新原生菜单用）。返回是否成功。"""
+        return False
+
     def set_shutting_down(self, value):
         self._shutting_down = bool(value)
 

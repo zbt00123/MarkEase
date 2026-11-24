@@ -441,8 +441,12 @@ class WindowsPlatform(PlatformBase):
 
     # ---------- PDF ----------
     def supports_pdf_export(self):
-        # ★ 不 import clr：真正的 .NET 初始化只在导出 PDF 时发生。
-        #   在受限环境里 import clr 可能直接让进程崩溃，不能用于能力探测。
+        # ★ 不主动 import clr：真正的 .NET 初始化只在导出 PDF 时发生。
+        #   但 pywebview 的 WebView2 后端启动时已经 import 过 clr；
+        #   此时 find_spec('clr') 会因动态模块没有 __spec__ 而抛 ValueError，
+        #   所以先看 sys.modules。
+        if 'clr' in sys.modules:
+            return True
         import importlib.util
         try:
             return (importlib.util.find_spec('pythonnet') is not None and

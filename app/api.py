@@ -59,6 +59,7 @@ except Exception:
 
 # ★ 平台层：剪贴板 / PDF / 文件关联 / 文件管理器全部走这里
 from app.platform import platform
+from app import net_utils
 
 
 def _log_event(event, message=None, **context):
@@ -977,6 +978,20 @@ class Api:
         self._settings.set('language', language)
         return True
 
+    def restart_app(self):
+        """macOS 切换语言后重启应用（重新构建原生菜单）。"""
+        try:
+            self._settings.save()
+        except Exception:
+            pass
+        try:
+            ok = platform.restart_app()
+            if ok:
+                return {'ok': True}
+            return {'ok': False, 'error': '当前平台不支持自动重启'}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
     # ---------- 文件关联 ----------
     def set_as_default_program(self):
         try:
@@ -1049,9 +1064,7 @@ class Api:
             },
         )
 
-        opener = urllib.request.build_opener(
-            urllib.request.ProxyHandler({})
-        )
+        opener = net_utils.build_opener()
         with opener.open(req, timeout=15) as resp:
             raw = resp.read(1024 * 1024)
             data = json.loads(raw.decode('utf-8', errors='ignore'))
@@ -1141,7 +1154,7 @@ class Api:
                     ),
                 },
             )
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with net_utils.urlopen(req, timeout=15) as resp:
                 data = resp.read(10 * 1024 * 1024)
                 content_type = resp.headers.get('Content-Type', '')
 
@@ -1887,12 +1900,24 @@ class Api:
                        exception=e)
 
         # 平台实现：Windows CoreWebView2 / macOS WKWebView / Linux WebKit2
+        # ★ 导出前把界面缩放归一到 100%，避免把当前 zoom 打进 PDF
+        try:
+            self._window.evaluate_js(
+                'window.MKSetPdfZoom && window.MKSetPdfZoom(true)')
+        except Exception as e:
+            print(f'[MarkEase] reset zoom for PDF failed: {e}')
         try:
             result = platform.export_pdf(self._window, pdf_path)
         except Exception as e:
             _log_error('pdf_export_failed', 'platform.export_pdf raised',
                        exception=e)
             return {'ok': False, 'error': str(e)}
+        finally:
+            try:
+                self._window.evaluate_js(
+                    'window.MKSetPdfZoom && window.MKSetPdfZoom(false)')
+            except Exception:
+                pass
 
         if not (result or {}).get('ok'):
             return {'ok': False,
@@ -2224,7 +2249,7 @@ class Api:
                     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
                 },
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with net_utils.urlopen(req, timeout=10) as resp:
                 raw = resp.read(200 * 1024)
                 charset = resp.headers.get_content_charset() or 'utf-8'
                 try:
@@ -2283,7 +2308,7 @@ class Api:
                         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
                     },
                 )
-                with urllib.request.urlopen(req, timeout=8) as resp:
+                with net_utils.urlopen(req, timeout=8) as resp:
                     raw = resp.read(300 * 1024)
                     charset = resp.headers.get_content_charset() or 'utf-8'
                     try:

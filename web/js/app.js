@@ -874,7 +874,77 @@ window.MKMenuAction = function (action) {
     return false;
 };
 
-// ---------------- 文件关联 handlers ----------------
+// 自动化自检用：载入一段 Markdown 并立即刷新预览
+window.MKTestLoad = function (md) {
+    try {
+        setContent(String(md == null ? '' : md));
+        updatePreview();
+        updateStats();
+        return true;
+    } catch (e) {
+        console.warn('[MKTestLoad] failed:', e);
+        return false;
+    }
+};
+
+// 导出 PDF 前后临时把界面缩放归一到 100%，避免把当前 zoom 一起打进 PDF
+window.MKSetPdfZoom = function (enable) {
+    try {
+        const main = document.getElementById('main');
+        if (!main) return;
+        if (enable) {
+            window.__mkPdfSavedZoom = main.style.zoom || '';
+            main.style.zoom = '1';
+            const toc = document.getElementById('toc');
+            if (toc) {
+                window.__mkPdfSavedTocZoom = toc.style.zoom || '';
+                toc.style.zoom = '1';
+            }
+        } else {
+            main.style.zoom = window.__mkPdfSavedZoom || '';
+            window.__mkPdfSavedZoom = null;
+            const toc = document.getElementById('toc');
+            if (toc) {
+                toc.style.zoom = window.__mkPdfSavedTocZoom || '';
+                window.__mkPdfSavedTocZoom = null;
+            }
+        }
+    } catch (e) { /* ignore */ }
+};
+
+// createPDF 兜底导出时使用：把界面切换成"打印版式"（隐藏工具栏/菜单/状态栏）
+window.MKSetPdfMode = function (enable) {
+    try {
+        let style = document.getElementById('mk-pdf-mode-style');
+        if (!style) {
+            style = document.createElement('style');
+            style.id = 'mk-pdf-mode-style';
+            style.textContent = [
+                'html.mk-pdf-mode #menubar,',
+                'html.mk-pdf-mode #toolbar,',
+                'html.mk-pdf-mode #statusbar,',
+                'html.mk-pdf-mode #toc,',
+                'html.mk-pdf-mode #toc-resizer,',
+                'html.mk-pdf-mode #editor-container,',
+                'html.mk-pdf-mode #splash { display: none !important; }',
+                'html.mk-pdf-mode #main { display: block !important;',
+                '  overflow: visible !important; zoom: 1 !important; }',
+                'html.mk-pdf-mode #preview-container { display: block !important;',
+                '  overflow: visible !important; width: 100% !important;',
+                '  height: auto !important; }',
+                'html.mk-pdf-mode #preview { max-width: none !important;',
+                '  padding: 0 !important; }',
+                'html.mk-pdf-mode body, html.mk-pdf-mode #app {',
+                '  background: #fff !important; color: #000 !important;',
+                '  overflow: visible !important; height: auto !important; }',
+                'html.mk-pdf-mode .markdown-body {',
+                '  background: #fff !important; color: #000 !important; }'
+            ].join('\n');
+            document.head.appendChild(style);
+        }
+        document.documentElement.classList.toggle('mk-pdf-mode', !!enable);
+    } catch (e) { /* ignore */ }
+};
 async function onSetDefaultProgram() {
     if (!(window.pywebview && window.pywebview.api &&
           window.pywebview.api.set_as_default_program)) {
@@ -1037,6 +1107,7 @@ function onAbout() {
 
 // ---------------- 语言切换 ----------------
 async function onSetLanguage(lang) {
+    const previousLang = currentLangChoice;
     currentLangChoice = lang || 'system';
     try {
         localStorage.setItem('markease_language', currentLangChoice);
@@ -1063,6 +1134,51 @@ async function onSetLanguage(lang) {
             window.pywebview.api.notify_about_refresh().catch(() => {});
         }
     } catch (e) { /* ignore */ }
+
+    // macOS 原生菜单在创建后无法改标题：切换语言后重启应用
+    if (window.MKPlatform && MKPlatform.isMac &&
+        previousLang !== currentLangChoice) {
+        await maybeRestartForLanguage();
+    }
+}
+
+// 切换语言后重启（仅 macOS）：未保存内容先走「取消/不保存/保存」
+async function maybeRestartForLanguage() {
+    try {
+        commitActivePreviewEdit();
+    } catch (e) { /* ignore */ }
+
+    if (isDirty) {
+        let choice = 'cancel';
+        try {
+            choice = await showUnsavedCloseDialog();
+        } catch (e) {
+            choice = 'cancel';
+        }
+        if (choice === 'cancel') return;
+        if (choice === 'save') {
+            let saved = false;
+            try {
+                saved = await onSave();
+            } catch (e) {
+                setStatus('保存失败: ' + (e && e.message ? e.message : e));
+                saved = false;
+            }
+            if (!saved) return;
+        }
+    }
+
+    try {
+        if (window.pywebview && window.pywebview.api &&
+            window.pywebview.api.restart_app) {
+            const r = await window.pywebview.api.restart_app();
+            if (r && !r.ok) {
+                setStatus('重启失败: ' + (r.error || ''));
+            }
+        }
+    } catch (e) {
+        setStatus('重启失败: ' + (e && e.message ? e.message : e));
+    }
 }
 
 function onLanguageChanged() {

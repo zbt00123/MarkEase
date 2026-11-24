@@ -477,7 +477,11 @@
     //  - 每个字符都带源码位置，便于替换时只替换对应源码跨度
     // ============================================================
     function normalizeQuery(q) {
-        return String(q == null ? '' : q).replace(/\s+/g, ' ').trim();
+        // 忽略零宽字符（输入法/粘贴常见），并折叠空白
+        return String(q == null ? '' : q)
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 
     function expandFuzzySpan(source, from, to) {
@@ -746,6 +750,8 @@
             for (var t = 0; t < unit.text.length; t++) {
                 var ch = unit.text.charAt(t);
                 var srcIdx = textToSource[t];
+                // 零宽字符不参与模糊匹配，也不产生空格
+                if (/[\u200B-\u200D\uFEFF]/.test(ch)) continue;
                 if (/\s/.test(ch)) {
                     pendingSpace = true;
                     continue;
@@ -791,6 +797,48 @@
         return filtered;
     }
 
+    // 源码级兜底：预览块缺失/未渲染时，直接在 Markdown 源码上匹配。
+    // 允许跳过强调、链接、代码等语法标记，从而支持 "foo bar" 命中
+    // "foo **bar**" / "foo [bar](url)" 这类跨格式文本。
+    function isSkippableMarkup(ch) {
+        return /[*_~`\[\]()<>#|\\]/.test(ch);
+    }
+
+    function findFuzzyInSource(source, query, caseSensitive) {
+        var src = String(source == null ? '' : source);
+        var q = normalizeQuery(query);
+        if (!src || !q) return [];
+        var hay = caseSensitive ? src : src.toLowerCase();
+        var needle = caseSensitive ? q : q.toLowerCase();
+        var out = [];
+        var i = 0;
+        while (i < hay.length) {
+            if (hay.charAt(i) !== needle.charAt(0)) { i++; continue; }
+            var si = i;
+            var qi = 0;
+            var last = i;
+            while (si < hay.length && qi < needle.length) {
+                var qc = needle.charAt(qi);
+                var sc = hay.charAt(si);
+                if (qc === ' ') {
+                    if (/\s/.test(sc)) { si++; qi++; continue; }
+                    if (isSkippableMarkup(sc)) { si++; continue; }
+                    break;
+                }
+                if (sc === qc) { last = si; si++; qi++; continue; }
+                if (isSkippableMarkup(sc)) { si++; continue; }
+                break;
+            }
+            if (qi >= needle.length) {
+                out.push({ from: i, to: last + 1, kind: 'fuzzy' });
+                i = last + 1;
+            } else {
+                i++;
+            }
+        }
+        return out;
+    }
+
     function findFuzzyMatches(sourceText, query, caseSensitive) {
         if (sourceText != null) setSource(sourceText);
         var q = normalizeQuery(query);
@@ -834,6 +882,10 @@
         }
 
         found.sort(function (a, b) { return a.from - b.from || a.to - b.to; });
+        // 预览块不可用 / 没有命中时，退回源码级匹配，保证跨格式搜索可用
+        if (!found.length && _source) {
+            found = findFuzzyInSource(_source, q, caseSensitive);
+        }
         return found;
     }
 

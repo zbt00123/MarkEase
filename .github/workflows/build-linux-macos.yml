@@ -116,6 +116,8 @@ jobs:
           test -f dist/MarkEase/_internal/web/index.html
           echo '--- self-test ---'
           xvfb-run -a dist/MarkEase/MarkEase --self-test
+          echo '--- net-test ---'
+          dist/MarkEase/MarkEase --net-test
 
       - name: Verify build output (macOS)
         if: runner.os == 'macOS'
@@ -130,6 +132,8 @@ jobs:
             "$APP/Contents/Info.plist"
           echo '--- self-test ---'
           "$APP/Contents/MacOS/MarkEase" --self-test
+          echo '--- net-test ---'
+          "$APP/Contents/MacOS/MarkEase" --net-test
 
       # 真实启动一次窗口，并由 --ui-test 检查前端是否真正初始化：
       # initialized=True + 工具栏按钮 > 0 才算通过，能直接抓出"空白窗口"。
@@ -169,6 +173,37 @@ jobs:
             echo "::error::toolbar did not initialize"
             exit 1
           fi
+
+      # 实际导出一次 PDF，验证打印管线 + 100% 缩放
+      - name: PDF smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set +e
+          timeout 90s xvfb-run -a dist/MarkEase/MarkEase \
+            --pdf-test /tmp/markease-test.pdf 2>&1 | tee /tmp/markease-pdf.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-pdf.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--pdf-test failed with code $code"
+            exit 1
+          fi
+          test -s /tmp/markease-test.pdf
+
+      - name: PDF smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set +e
+          dist/MarkEase.app/Contents/MacOS/MarkEase \
+            --pdf-test /tmp/markease-test.pdf 2>&1 | tee /tmp/markease-pdf.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-pdf.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--pdf-test failed with code $code"
+            exit 1
+          fi
+          test -s /tmp/markease-test.pdf
 
       - name: Package
         env:

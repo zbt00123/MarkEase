@@ -104,11 +104,9 @@ def _proxy_download(url):
         'Accept-Encoding': 'identity',
     })
 
-    # 显式禁用系统代理，避免 VPN 干扰
-    opener = urllib.request.build_opener(
-        urllib.request.ProxyHandler({})
-    )
-    with opener.open(req, timeout=_PROXY_TIMEOUT) as resp:
+    # 显式禁用系统代理，避免 VPN 干扰；CA 使用 certifi（macOS 必需）
+    from app import net_utils
+    with net_utils.build_opener().open(req, timeout=_PROXY_TIMEOUT) as resp:
         # 分块读取，限制最大字节数
         chunks = []
         total = 0
@@ -218,6 +216,15 @@ class AssetServer:
                 try:
                     data, ct = _proxy_download(url)
                 except Exception as e:
+                    try:
+                        from app import logging_setup
+                        logging_setup.log_error(
+                            'proxy_download_failed',
+                            'Network image proxy failed',
+                            url=url,
+                            error='%s: %s' % (type(e).__name__, e))
+                    except Exception:
+                        pass
                     try:
                         self.send_error(502, 'Proxy failed: ' + str(e)[:200])
                     except Exception:
