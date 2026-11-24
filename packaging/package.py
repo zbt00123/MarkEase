@@ -194,6 +194,12 @@ def package_linux(root, dist, out, version):
 def codesign_app(app_path):
     identity = os.environ.get('MK_CODESIGN_IDENTITY') or '-'
     log(f'codesign identity: {identity}')
+    # 清掉构建过程可能带上的扩展属性，避免 codesign 报 detritus 错误
+    try:
+        subprocess.run(['xattr', '-cr', app_path], check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
     cmd = ['codesign', '--force', '--deep', '--sign', identity]
     if identity == '-':
         cmd += ['--timestamp=none']
