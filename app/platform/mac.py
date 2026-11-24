@@ -440,6 +440,17 @@ class MacPlatform(PlatformBase):
         if wv is None:
             return {'ok': False, 'error': '无法获取 WKWebView'}
 
+        # 首选 Chrome/Chromium 无头打印（分页最好）；没有再退回 createPDF
+        try:
+            from .browser_pdf import export_with_browser, app_root
+            if export_with_browser(window, pdf_path, app_root()):
+                return {'ok': True}
+        except Exception as e:
+            print(f'[MarkEase][mac] browser PDF export failed: {e}')
+        if self._fallback_create_pdf(window, wv, pdf_path):
+            return {'ok': True}
+        return {'ok': False, 'error': 'PDF 导出失败（无可用打印引擎）'}
+
         holder = {}
         done = threading.Event()
 
