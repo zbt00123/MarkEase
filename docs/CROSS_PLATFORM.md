@@ -76,6 +76,13 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
 
 ## macOS notes
 
+- The app uses the **native macOS menu bar**. `app/platform/mac.py` builds
+  File / View / Help menus through pywebview's `Menu` API; the native Edit menu
+  is kept (so `⌘C / ⌘V / ⌘X / ⌘A` use system shortcuts) with localized titles.
+  The in-page HTML menubar is hidden via
+  `html.platform-mac #menubar { display:none }`. Custom items call
+  `window.MKMenuAction(action)`, reusing the same handlers as the HTML toolbar
+  and menus. View includes a native full-screen toggle.
 - Builds are **ad-hoc signed and not notarized** by default. On first launch
   Gatekeeper asks the user to right-click → Open, or run
   `xattr -dr com.apple.quarantine /Applications/MarkEase.app`.
@@ -90,6 +97,10 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
 - PDF export uses `WKWebView` print output (Letter, 0.4 in margins, matching
   Windows). A blank-page check protects against the old macOS
   `NSPrintSaveJob` bug.
+- Startup is race-proof: on WKWebView `pywebviewready` can fire before the ES
+  module graph (`app.js`) finishes loading, so the front-end also starts
+  immediately when `window.pywebview.api` already exists, with a 10-second
+  polling fallback.
 
 ## Linux notes
 
@@ -106,12 +117,64 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
 Every platform supports:
 
 ```bash
-MarkEase --self-test
+MarkEase --self-test   # no window: imports, bundled assets, PDF capability
+MarkEase --ui-test     # opens a window, waits for init, prints one JSON line
 ```
 
-It prints one JSON line with the platform, GUI backend, bundled web assets,
-icon, PDF capability and whether all business modules import. CI runs it after
-every build.
+`--ui-test` reports `initialized`, `initStage`, `initError`, `toolbarButtons`,
+`editorReady`, `menubarVisible` and early JS errors, then exits `0` (ok) or
+`3` (front-end did not initialize). CI runs it on Linux (`xvfb-run`) and macOS
+after every build, so a blank window fails the build instead of shipping.
+
+## Testing the Linux build on Windows
+
+The Linux binary is built on Ubuntu 22.04 (glibc 2.35, WebKit2GTK 4.0).
+The closer your test environment is to that, the more meaningful the result.
+
+### Option A — WSL2 + WSLg (Windows 11 22H2 or newer)
+
+WSLg provides a Wayland/X display, so the real GTK window can be tested.
+
+```powershell
+wsl --install -d Ubuntu-22.04
+wsl
+```
+
+Inside Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y libgtk-3-0 libwebkit2gtk-4.0-37 \
+  gir1.2-gtk-3.0 gir1.2-webkit2-4.0 libglib2.0-0 libcairo2 libpango-1.0-0
+
+tar -xzf /mnt/c/path/to/MarkEase_v2.1.6_Linux_x64.tar.gz
+cd MarkEase
+./MarkEase
+```
+
+- If the window is blank, keep `WEBKIT_DISABLE_DMABUF_RENDERER=1` (the app sets
+  it by default) and try `LIBGL_ALWAYS_SOFTWARE=1 ./MarkEase`.
+- Test the `.deb` too: `sudo apt install ./MarkEase_v2.1.6_Linux_x64.deb`,
+  then run `markease`.
+- On Windows 10 (no WSLg), install VcXsrv/X410, then
+  `export DISPLAY=$(ip route | awk '/default/ {print $3}'):0` before running.
+
+### Option B — Ubuntu 22.04 virtual machine (most faithful)
+
+VirtualBox / VMware / Hyper-V with an Ubuntu 22.04 desktop image gives the
+closest result to a real Linux desktop (GPU, fonts, WebKit helper processes).
+Install the `.deb` inside the VM and test the full UI.
+
+### Option C — Docker + X server
+
+Possible with `x11docker`, but WebKitGTK inside containers needs extra
+sandbox/DBus flags. Use it only if WSLg/VM are unavailable.
+
+### Headless checks
+
+`--self-test` works without a display and verifies bundled modules/assets.
+`--ui-test` needs a display (WSLg, Xvfb or a VM) and is the check that catches
+blank-window regressions.
 
 ## Remaining differences
 

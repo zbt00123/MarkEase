@@ -73,6 +73,10 @@ class PlatformBase:
         """返回 pywebview 原生菜单列表；None 表示沿用应用内 HTML 菜单。"""
         return None
 
+    def webview_localization(self):
+        """pywebview 内置菜单（如 macOS 编辑菜单）的本地化文案。"""
+        return {}
+
     def set_shutting_down(self, value):
         self._shutting_down = bool(value)
 

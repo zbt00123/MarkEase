@@ -72,12 +72,17 @@ class MacPlatform(PlatformBase):
             print(f'[MarkEase][mac] native menu unavailable: {e}')
             return None
 
-        # 关闭 pywebview 默认 View/Edit 菜单，避免与 MarkEase 自己的菜单重复。
-        # （settings 是 UserDict，只允许修改已有键）
+        # 保留 pywebview 默认「编辑」菜单：macOS 的 Cmd+C/V/X/A 快捷键依赖它。
+        # 只禁用默认「视图」菜单（里面只有全屏），改用 MarkEase 自己的「查看」。
         try:
-            _webview.settings['SHOW_DEFAULT_MENUS'] = False
+            from webview.platforms import cocoa as _cocoa
+            if not getattr(_cocoa.BrowserView,
+                           '_mk_default_view_disabled', False):
+                _cocoa.BrowserView._add_view_menu = \
+                    lambda self, main_menu: None
+                _cocoa.BrowserView._mk_default_view_disabled = True
         except Exception as e:
-            print(f'[MarkEase][mac] cannot disable default menus: {e}')
+            print(f'[MarkEase][mac] cannot disable default view menu: {e}')
 
         labels = {}
         try:
@@ -90,6 +95,23 @@ class MacPlatform(PlatformBase):
         def _t(key, fallback):
             value = labels.get(key)
             return str(value) if value else fallback
+
+        # 默认「编辑」菜单的本地化（pywebview 自带 cut/copy/paste/selectAll）
+        self._webview_localization = {
+            'cocoa.menu.edit': _t('edit', '编辑'),
+            'cocoa.menu.cut': _t('cut', '剪切'),
+            'cocoa.menu.copy': _t('copy', '复制'),
+            'cocoa.menu.paste': _t('paste', '粘贴'),
+            'cocoa.menu.selectAll': _t('select_all', '全选'),
+        }
+
+        def _fullscreen():
+            try:
+                window.toggle_fullscreen()
+            except Exception as exc:
+                print(f'[MarkEase][mac] toggle_fullscreen failed: {exc}')
+
+        _fullscreen.__name__ = 'mk_menu_toggle_fullscreen'
 
         def _action(action_id, title):
             def _run():
@@ -127,18 +149,6 @@ class MacPlatform(PlatformBase):
             item('exit', 'exit', '退出'),
         ])
 
-        edit_menu = Menu(_t('edit', '编辑'), [
-            item('undo', 'undo', '撤销'),
-            item('redo', 'redo', '重做'),
-            MenuSeparator(),
-            item('cut', 'cut', '剪切'),
-            item('copy', 'copy', '复制'),
-            item('paste', 'paste', '粘贴'),
-            MenuSeparator(),
-            item('select_all', 'select_all', '全选'),
-            item('find', 'find', '查找'),
-        ])
-
         view_menu = Menu(_t('view', '查看'), [
             item('mode_edit', 'edit_mode', '编辑模式'),
             item('mode_split', 'split_mode', '分屏模式'),
@@ -151,6 +161,8 @@ class MacPlatform(PlatformBase):
             item('zoom_reset', 'reset_zoom', '重置缩放'),
             MenuSeparator(),
             item('toggle_theme', 'toggle_theme', '切换主题'),
+            MenuSeparator(),
+            MenuAction(_t('toggle_fullscreen', '切换全屏'), _fullscreen),
             MenuSeparator(),
             Menu(_t('language', '语言'), [
                 item('lang_system', 'system', '跟随系统'),
@@ -177,7 +189,10 @@ class MacPlatform(PlatformBase):
         ])
 
         print('[MarkEase][mac] native menu installed')
-        return [file_menu, edit_menu, view_menu, help_menu]
+        return [file_menu, view_menu, help_menu]
+
+    def webview_localization(self):
+        return getattr(self, '_webview_localization', {})
 
     # ---------- 剪贴板 ----------
     def read_clipboard_text(self):

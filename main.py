@@ -1147,6 +1147,8 @@ def main():
             icon=icon_path if icon_path else None,
             # macOS 原生菜单（Windows / Linux 为 None，传 [] 不生效）
             menu=native_menu or [],
+            # macOS 默认「编辑」菜单的中文本地化
+            localization=platform.webview_localization(),
             # ★ 显式指定本次启动的 WebView2 目录：避免 pywebview 使用临时目录
             #   或上一次崩溃残留的坏档案，导致 0x800700AA 空白窗口。
             storage_path=_USER_DATA_DIR,
