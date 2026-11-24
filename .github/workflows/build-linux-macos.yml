@@ -35,7 +35,7 @@ jobs:
             target: linux-x64
             arch: ''
           - name: macos-x64
-            os: macos-26-intel
+            os: macos-15-intel
             target: macos-x64
             arch: x86_64
           - name: macos-arm64
