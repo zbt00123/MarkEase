@@ -37,6 +37,8 @@ hiddenimports += [
     'WebKit',
     'Quartz',
     'UniformTypeIdentifiers',
+    'PyObjCTools',
+    'PyObjCTools.AppHelper',
 ]
 
 icons = build_icons(ROOT, os.path.join(workpath, 'icons'))

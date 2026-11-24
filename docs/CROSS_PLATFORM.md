@@ -76,13 +76,16 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
 
 ## macOS notes
 
-- The app uses the **native macOS menu bar**. `app/platform/mac.py` builds
-  File / View / Help menus through pywebview's `Menu` API; the native Edit menu
-  is kept (so `⌘C / ⌘V / ⌘X / ⌘A` use system shortcuts) with localized titles.
-  The in-page HTML menubar is hidden via
-  `html.platform-mac #menubar { display:none }`. Custom items call
-  `window.MKMenuAction(action)`, reusing the same handlers as the HTML toolbar
-  and menus. View includes a native full-screen toggle.
+- The app uses the **native macOS menu bar** with the standard order
+  (MarkEase, File, Edit, View, Help). `app/platform/mac.py` builds File / View /
+  Help through pywebview's `Menu` API; the native Edit menu is kept (so
+  `⌘C / ⌘V / ⌘X / ⌘A` use system shortcuts) with localized titles. The in-page
+  HTML menubar is hidden via `html.platform-mac #menubar { display:none }`.
+  Custom items call `window.MKMenuAction(action)`, reusing the same handlers as
+  the HTML toolbar and menus. View includes a native full-screen toggle.
+- Because AppKit cannot rebuild menu titles after creation, changing the
+  language on macOS prompts to save unsaved work and then restarts the app.
+  Windows / Linux update the in-page menu immediately without restarting.
 - Builds are **ad-hoc signed and not notarized** by default. On first launch
   Gatekeeper asks the user to right-click → Open, or run
   `xattr -dr com.apple.quarantine /Applications/MarkEase.app`.
@@ -94,9 +97,13 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
 - `Info.plist` declares `.md` / `.markdown` documents and a PDF viewer type.
   Opening a file while the app is running is handled through the `open-file`
   Apple Event and forwarded to the front-end.
-- PDF export uses `WKWebView` print output (Letter, 0.4 in margins, matching
-  Windows). A blank-page check protects against the old macOS
-  `NSPrintSaveJob` bug.
+- PDF export first uses `WKWebView printOperationWithPrintInfo:`. If macOS does
+  not write the file (some versions ignore `NSPrintSaveJob`), the platform
+  layer falls back to `WKWebView.createPDF`, hides the app chrome, writes the
+  data itself and merges long output with PyMuPDF. Export always uses 100%
+  zoom regardless of the on-screen zoom level.
+- HTTPS requests (network images, update checks) use a bundled `certifi` CA so
+  they work on Python.org macOS builds without system CA configuration.
 - Startup is race-proof: on WKWebView `pywebviewready` can fire before the ES
   module graph (`app.js`) finishes loading, so the front-end also starts
   immediately when `window.pywebview.api` already exists, with a 10-second
@@ -118,7 +125,9 @@ Every platform supports:
 
 ```bash
 MarkEase --self-test   # no window: imports, bundled assets, PDF capability
+MarkEase --net-test    # no window: fetch one HTTPS image through /proxy
 MarkEase --ui-test     # opens a window, waits for init, prints one JSON line
+MarkEase --pdf-test /tmp/out.pdf  # opens a window and exports a sample PDF
 ```
 
 `--ui-test` reports `initialized`, `initStage`, `initError`, `toolbarButtons`,

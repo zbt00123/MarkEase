@@ -202,7 +202,13 @@ class MacPlatform(PlatformBase):
         import subprocess
         try:
             if getattr(sys, 'frozen', False):
-                args = [sys.executable]
+                exe = sys.executable
+                marker = os.sep + 'Contents' + os.sep + 'MacOS' + os.sep
+                if marker in exe:
+                    bundle = exe.split(marker)[0]
+                    args = ['open', '-n', bundle]
+                else:
+                    args = [exe]
             else:
                 root = os.path.dirname(os.path.dirname(os.path.dirname(
                     os.path.abspath(__file__))))
@@ -230,11 +236,14 @@ class MacPlatform(PlatformBase):
         except Exception as e:
             print(f'[MarkEase][mac] PyObjC menu reorder unavailable: {e}')
             return
-        for _ in range(50):
+        wanted = getattr(self, '_file_menu_title', '文件')
+        for _ in range(100):
             try:
-                if AppKit.NSApplication.sharedApplication().mainMenu() \
-                        is not None:
-                    break
+                main = AppKit.NSApplication.sharedApplication().mainMenu()
+                if main is not None:
+                    titles = [str(i.title()) for i in main.itemArray()]
+                    if wanted in titles:
+                        break
             except Exception:
                 pass
             time.sleep(0.1)
@@ -378,11 +387,47 @@ class MacPlatform(PlatformBase):
 
     @staticmethod
     def _wkwebview(window):
-        gui = getattr(window, 'gui', None)
-        wv = getattr(gui, 'webview', None)
-        if wv is None:
-            wv = getattr(getattr(window, 'native', None), 'webview', None)
-        return wv
+        # pywebview 的 Window.gui 是 GUI 模块，不是 BrowserView；
+        # 真正的 WKWebView 在 cocoa.BrowserView.instances[uid].webview
+        try:
+            from webview.platforms import cocoa
+            browser = cocoa.BrowserView.instances.get(
+                getattr(window, 'uid', None))
+            if browser is not None:
+                wv = getattr(browser, 'webview', None)
+                if wv is not None:
+                    return wv
+        except Exception:
+            pass
+
+        native = getattr(window, 'native', None)
+        wv = getattr(native, 'webview', None)
+        if wv is not None:
+            return wv
+
+        # 最后兜底：从 NSWindow.contentView 向下找 WKWebView
+        try:
+            root = native.contentView() if native is not None else None
+
+            def _walk(view, depth=0):
+                if view is None or depth > 6:
+                    return None
+                if hasattr(view,
+                           'createPDFWithConfiguration_completionHandler_'):
+                    return view
+                try:
+                    subs = view.subviews()
+                except Exception:
+                    subs = []
+                for sub in subs:
+                    found = _walk(sub, depth + 1)
+                    if found is not None:
+                        return found
+                return None
+
+            return _walk(root)
+        except Exception:
+            return None
 
     def export_pdf(self, window, pdf_path):
         try:

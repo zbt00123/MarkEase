@@ -874,6 +874,12 @@ def _start_ui_test(window):
     import json as _json
 
     def _worker():
+        # 等页面真正加载完成再 evaluate，避免在 WebKit 加载期间反复调用
+        try:
+            window.events.loaded.wait(30)
+        except Exception:
+            time.sleep(2)
+
         script = r"""(function () {
           try {
             var errs = window.__mkEarlyErrors || [];
@@ -1009,6 +1015,11 @@ def _start_pdf_test(window, api, out_path):
     import json as _json
 
     def _worker():
+        try:
+            window.events.loaded.wait(30)
+        except Exception:
+            time.sleep(2)
+
         deadline = time.time() + 20.0
         while time.time() < deadline:
             try:
