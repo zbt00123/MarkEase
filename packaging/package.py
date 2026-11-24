@@ -205,7 +205,7 @@ def codesign_app(app_path):
         cmd += ['--timestamp=none']
     else:
         cmd += ['--options', 'runtime', '--timestamp']
-    run(cmd, app_path)
+    run(cmd + [app_path])
     run(['codesign', '--verify', '--deep', '--strict', '--verbose=2',
          app_path])
 
