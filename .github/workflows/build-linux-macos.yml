@@ -155,7 +155,8 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           set +e
-          timeout 45s dist/MarkEase.app/Contents/MacOS/MarkEase --ui-test \
+          # macOS runner 没有 GNU timeout；--ui-test 会在 8 秒后自行退出
+          dist/MarkEase.app/Contents/MacOS/MarkEase --ui-test \
             2>&1 | tee /tmp/markease-ui-test.log
           code=${PIPESTATUS[0]}
           set -e
