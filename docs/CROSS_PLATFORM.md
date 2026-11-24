@@ -21,7 +21,7 @@ One run builds every platform in parallel:
 |---|---|---|
 | `windows-x64` | `windows-latest` | `MarkEase_v<ver>_Windows_x64_portable.zip` |
 | `linux-x64` | `ubuntu-22.04` | `MarkEase_v<ver>_Linux_x64.tar.gz`, `.deb` |
-| `macos-x64` | `macos-26-intel` | `MarkEase_v<ver>_macOS_x64.dmg` |
+| `macos-x64` | `macos-15-intel` | `MarkEase_v<ver>_macOS_x64.dmg` |
 | `macos-arm64` | `macos-26` | `MarkEase_v<ver>_macOS_arm64.dmg` |
 
 How to run:
@@ -65,7 +65,7 @@ python3 -m pip install -r requirements.txt pyinstaller
 MK_TARGET_ARCH=arm64 python -m PyInstaller --clean --noconfirm packaging/macos.spec
 python packaging/package.py --target macos-arm64 --dist dist --out out
 
-# Intel (on an Intel Mac or macos-26-intel runner)
+# Intel (on an Intel Mac or macos-15-intel runner)
 MK_TARGET_ARCH=x86_64 python -m PyInstaller --clean --noconfirm packaging/macos.spec
 python packaging/package.py --target macos-x64 --dist dist --out out
 ```
