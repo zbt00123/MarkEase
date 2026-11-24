@@ -982,6 +982,30 @@ def _start_pdf_test(window, api, out_path):
                      name='MarkEasePdfTest').start()
 
 
+def _start_close_test(window):
+    """macOS 专用：模拟「不保存/保存后关闭」，验证 force_close 能正常退出。"""
+    def _worker():
+        try:
+            window.events.loaded.wait(20)
+        except Exception:
+            pass
+        time.sleep(2)
+        try:
+            window.run_js(
+                "window.pywebview && window.pywebview.api && "
+                "window.pywebview.api.force_close()")
+        except Exception as e:
+            print(f'[MarkEase][close-test] force_close dispatch failed: {e}')
+            os._exit(4)
+        # force_close 内部 0.15s 后 os._exit(0)；这里超时则判定失败
+        time.sleep(10)
+        print('[MarkEase][close-test] TIMEOUT: process did not exit')
+        os._exit(3)
+
+    threading.Thread(target=_worker, daemon=True,
+                     name='MarkEaseCloseTest').start()
+
+
 def main():
     _log_event('main_enter', 'main() started',
                argv_count=len(sys.argv))
@@ -1182,6 +1206,8 @@ def main():
                 _start_ui_test(window)
             if _pdf_test_out:
                 _start_pdf_test(window, api, _pdf_test_out)
+            if '--close-test' in sys.argv:
+                _start_close_test(window)
 
     window.events.loaded += on_loaded
     window.events.closing += on_closing

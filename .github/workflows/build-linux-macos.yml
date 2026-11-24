@@ -205,6 +205,21 @@ jobs:
           fi
           test -s /tmp/markease-test.pdf
 
+      # macOS 关闭流程：模拟 force_close，进程必须在 10 秒内以 0 退出
+      - name: Close/quit smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set +e
+          dist/MarkEase.app/Contents/MacOS/MarkEase --close-test \
+            2>&1 | tee /tmp/markease-close.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-close.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--close-test failed with code $code"
+            exit 1
+          fi
+
       - name: Package
         env:
           MK_CODESIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_IDENTITY }}
