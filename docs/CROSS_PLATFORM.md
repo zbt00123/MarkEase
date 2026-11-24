@@ -86,6 +86,14 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
 - Because AppKit cannot rebuild menu titles after creation, changing the
   language on macOS prompts to save unsaved work and then restarts the app.
   Windows / Linux update the in-page menu immediately without restarting.
+- The app menu's **About MarkEase** item is rewired to the same custom About
+  window as Help → About (not the generic AppKit panel).
+- The macOS Help → Settings submenu does not offer “add to New menu”; macOS has
+  no ShellNew equivalent. This option remains on Windows only.
+- Closing with unsaved changes: Discard or Save uses a macOS-specific
+  force-close that terminates with `os._exit(0)` after the UI is done. This
+  avoids Python finalization waiting forever on pywebview's non-daemon JS API
+  thread. The `--close-test` CI step verifies the process exits within 10s.
 - Builds are **ad-hoc signed and not notarized** by default. On first launch
   Gatekeeper asks the user to right-click → Open, or run
   `xattr -dr com.apple.quarantine /Applications/MarkEase.app`.
