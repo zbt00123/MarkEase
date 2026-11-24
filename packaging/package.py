@@ -229,8 +229,24 @@ def package_macos(root, dist, out, version, arch):
 
         dmg_name = f'MarkEase_v{version}_macOS_{arch}.dmg'
         dmg_path = os.path.join(out, dmg_name)
-        run(['hdiutil', 'create', '-volname', 'MarkEase',
-             '-srcfolder', stage, '-ov', '-format', 'UDZO', dmg_path])
+        last_error = None
+        for attempt in range(3):
+            try:
+                run(['hdiutil', 'create', '-volname', 'MarkEase',
+                     '-srcfolder', stage, '-ov', '-format', 'UDZO', dmg_path])
+                last_error = None
+                break
+            except subprocess.CalledProcessError as e:
+                last_error = e
+                log(f'hdiutil create failed (attempt {attempt + 1}): {e}')
+                try:
+                    if os.path.exists(dmg_path):
+                        os.remove(dmg_path)
+                except Exception:
+                    pass
+                time.sleep(3)
+        if last_error is not None:
+            raise last_error
         # hdiutil verify 偶尔在 CI 上报 "Resource temporarily unavailable"，重试
         last_error = None
         for attempt in range(3):

@@ -1154,6 +1154,8 @@ def main():
         _pdf_test_out = (sys.argv[idx + 1] if len(sys.argv) > idx + 1
                          else os.path.abspath('markease_pdf_test.pdf'))
 
+    _test_started = {'done': False}
+
     def on_loaded():
         # Windows：WebView2 进程崩溃自恢复（macOS / Linux 无此机制）
         if platform.is_windows:
@@ -1173,10 +1175,13 @@ def main():
                        exception=e)
 
         # CI 冒烟测试：页面 loaded 之后才能安全 evaluate_js
-        if '--ui-test' in sys.argv:
-            _start_ui_test(window)
-        if _pdf_test_out:
-            _start_pdf_test(window, api, _pdf_test_out)
+        # on_loaded 可能触发多次（reload / 重建），只跑一次
+        if not _test_started['done']:
+            _test_started['done'] = True
+            if '--ui-test' in sys.argv:
+                _start_ui_test(window)
+            if _pdf_test_out:
+                _start_pdf_test(window, api, _pdf_test_out)
 
     window.events.loaded += on_loaded
     window.events.closing += on_closing
