@@ -7,7 +7,7 @@
 # ★ PyInstaller 不参与 requirements，由 CI / 打包脚本单独安装。
 
 pywebview>=4.0
-PyMuPDF>=1.23
+PyMuPDF>=1.23,<1.29
 Pillow>=10.0
 
 # ---------- Windows ----------

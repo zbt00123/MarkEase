@@ -43,3 +43,6 @@ scripts/*
 debug.log
 
 tree.txt
+# CI 下载的临时产物
+_ci_linux/
+

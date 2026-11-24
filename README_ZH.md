@@ -1,8 +1,8 @@
 # 📝 MarkEase
 
-> 一款运行于 Windows 平台、**完全离线**、GitHub 风格的 Markdown 编辑器
+> 一款运行于 Windows / macOS / Linux 平台、**完全离线**、GitHub 风格的 Markdown 编辑器
 
-[![Release](https://img.shields.io/github/v/release/zbt00123/MarkEase)](https://github.com/zbt00123/MarkEase/releases) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
+[![Release](https://img.shields.io/github/v/release/zbt00123/MarkEase)](https://github.com/zbt00123/MarkEase/releases) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
 
 中文 | [English](README.md)
 
@@ -10,6 +10,11 @@
 > 发布包目前**尚未进行代码签名**，首次运行时可能看到「Windows 已保护你的电脑」：
 > 点击「更多信息 → 仍要运行」即可。
 > 本程序使用 WebView2 渲染，启动时已禁用其后台网络与组件更新；如杀毒软件误报，请将 `MarkEase.exe` 添加信任。
+
+> ⚠️ **macOS / Linux 提示**
+> macOS 版为 `.dmg`（Intel / Apple Silicon 各一个），当前**未签名/未公证**，首次打开请右键 App →「打开」，或执行 `xattr -dr com.apple.quarantine /Applications/MarkEase.app`。
+> Linux 版提供 `.deb` 与 `tar.gz`，需要系统已安装 GTK3 / WebKit2GTK；推荐安装 `.deb`。
+> 三平台共用同一份业务代码，构建方法见 [docs/CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md)。
 
 ---
 
@@ -137,11 +142,18 @@
 ### 📦 下载使用
 
 1. 前往 [Releases](https://github.com/zbt00123/MarkEase/releases) 下载
-2. 解压发布包（`.7z` / `.zip`，以 Releases 页实际文件为准）
-3. 双击 `MarkEase.exe`
+2. 按平台选择：
 
-> 首次启动会自动添加右键「新建 → Markdown 文件」项。
-> 如需设为 `.md` 默认程序：**帮助 → 设置 → 设为默认打开程序**。
+   | 平台 | 文件 |
+   |---|---|
+   | Windows x64 | `MarkEase_v*_Windows_x64_portable.zip` → 解压后双击 `MarkEase.exe` |
+   | macOS Intel | `MarkEase_v*_macOS_x64.dmg` |
+   | macOS Apple Silicon | `MarkEase_v*_macOS_arm64.dmg` |
+   | Linux x64 | `MarkEase_v*_Linux_x64.deb`（推荐）或 `..._Linux_x64.tar.gz` |
+
+3. Windows 首次启动会自动添加右键「新建 → Markdown 文件」项。
+   如需设为 `.md` 默认程序：**帮助 → 设置 → 设为默认打开程序**。
+4. macOS 首次打开需右键 →「打开」（未签名）；Linux 安装 deb 后直接运行 `markease`。
 
 ### 🧑‍💻 从源码运行
 
@@ -166,6 +178,8 @@ python main.py
 | 插入图片 | `Ctrl+Shift+I` |
 | 查找 / 替换 | `Ctrl+F` / `Ctrl+H` |
 | **跳转脚注定义 / 回到引用** | **`Ctrl + 点击 [^N]`** |
+
+> macOS 上 `Ctrl` 对应 `⌘`（Command），界面会按平台自动显示。
 
 ---
 

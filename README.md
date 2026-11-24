@@ -1,8 +1,8 @@
 # 📝 MarkEase
 
-> A **fully offline**, GitHub-style Markdown editor for Windows
+> A **fully offline**, GitHub-style Markdown editor for Windows, macOS and Linux
 
-[![Release](https://img.shields.io/github/v/release/zbt00123/MarkEase)](https://github.com/zbt00123/MarkEase/releases) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
+[![Release](https://img.shields.io/github/v/release/zbt00123/MarkEase)](https://github.com/zbt00123/MarkEase/releases) [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-0078d7.svg)](https://github.com/zbt00123/MarkEase/releases)
 
 English | [中文](README_ZH.md)
 
@@ -10,6 +10,11 @@ English | [中文](README_ZH.md)
 > Release packages are currently **not code-signed**. On first run you may see "Windows protected your PC":
 > Click "More info → Run anyway".
 > This program uses WebView2 for rendering and has disabled its background network and component updates at startup. If your antivirus flags it as a false positive, please add `MarkEase.exe` to your trust list.
+
+> ⚠️ **macOS / Linux notes**
+> macOS builds are `.dmg` files (Intel and Apple Silicon), currently **unsigned / not notarized**. On first launch, right-click the app → Open, or run `xattr -dr com.apple.quarantine /Applications/MarkEase.app`.
+> Linux builds ship `.deb` and `tar.gz`; GTK3 / WebKit2GTK must be installed. The `.deb` is recommended.
+> All three platforms share one codebase; see [docs/CROSS_PLATFORM.md](docs/CROSS_PLATFORM.md).
 
 ---
 
@@ -137,11 +142,18 @@ Even with content having **drastically different line spacing** such as code blo
 ### 📦 Download & Use
 
 1. Go to [Releases](https://github.com/zbt00123/MarkEase/releases) to download
-2. Extract the release package (`.7z` / `.zip`, refer to actual files on the Releases page)
-3. Double-click `MarkEase.exe`
+2. Pick your platform:
 
-> On first launch, the right-click "New → Markdown File" item is automatically added.
-> To set as default `.md` program: **Help → Settings → Set as default program**.
+   | Platform | File |
+   |---|---|
+   | Windows x64 | `MarkEase_v*_Windows_x64_portable.zip` → unzip and run `MarkEase.exe` |
+   | macOS Intel | `MarkEase_v*_macOS_x64.dmg` |
+   | macOS Apple Silicon | `MarkEase_v*_macOS_arm64.dmg` |
+   | Linux x64 | `MarkEase_v*_Linux_x64.deb` (recommended) or `..._Linux_x64.tar.gz` |
+
+3. On Windows, the right-click "New → Markdown File" item is added on first launch.
+   To set as default `.md` program: **Help → Settings → Set as default program**.
+4. On macOS, right-click → Open the first time (unsigned); on Linux, install the deb and run `markease`.
 
 ### 🧑‍💻 Run from Source
 
@@ -166,6 +178,8 @@ python main.py
 | Insert image | `Ctrl+Shift+I` |
 | Find / Replace | `Ctrl+F` / `Ctrl+H` |
 | **Jump to footnote definition / Back to reference** | **`Ctrl + click [^N]`** |
+
+> On macOS, `Ctrl` means `⌘` (Command); labels adapt per platform.
 
 ---
 
