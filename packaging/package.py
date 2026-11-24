@@ -100,6 +100,7 @@ Section: editors
 Priority: optional
 Architecture: {arch}
 Depends: libgtk-3-0, libwebkit2gtk-4.0-37 | libwebkit2gtk-4.1-0, gir1.2-gtk-3.0, gir1.2-webkit2-4.0 | gir1.2-webkit2-4.1, libglib2.0-0, libcairo2, libpango-1.0-0
+Recommends: chromium | google-chrome-stable | microsoft-edge-stable
 Installed-Size: {installed_size}
 Maintainer: ZBT Studio <zbt00123@users.noreply.github.com>
 Homepage: https://github.com/zbt00123/MarkEase

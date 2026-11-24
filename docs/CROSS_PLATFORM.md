@@ -97,13 +97,16 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
 - `Info.plist` declares `.md` / `.markdown` documents and a PDF viewer type.
   Opening a file while the app is running is handled through the `open-file`
   Apple Event and forwarded to the front-end.
-- PDF export first uses `WKWebView printOperationWithPrintInfo:`. If macOS does
-  not write the file (some versions ignore `NSPrintSaveJob`), the platform
-  layer falls back to `WKWebView.createPDF`, hides the app chrome, writes the
-  data itself and merges long output with PyMuPDF. Export always uses 100%
-  zoom regardless of the on-screen zoom level.
+- PDF export: Windows uses WebView2 `PrintToPdfAsync`; macOS/Linux export the
+  current preview to a self-contained HTML and print it with a locally installed
+  Chrome/Chromium in headless mode (paginated, 100% zoom). If no browser is
+  available, macOS falls back to `WKWebView.createPDF` (one continuous page).
+  Export always ignores the on-screen zoom level and uses 100%.
 - HTTPS requests (network images, update checks) use a bundled `certifi` CA so
   they work on Python.org macOS builds without system CA configuration.
+- Fuzzy search falls back to a source-level matcher when the preview DOM cannot
+  provide blocks, skipping Markdown markers (`**`, `[]()`, backticks) and
+  zero-width characters, so `foo bar` matches `foo **bar**` in every view mode.
 - Startup is race-proof: on WKWebView `pywebviewready` can fire before the ES
   module graph (`app.js`) finishes loading, so the front-end also starts
   immediately when `window.pywebview.api` already exists, with a 10-second

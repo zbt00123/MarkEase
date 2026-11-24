@@ -430,132 +430,22 @@ class MacPlatform(PlatformBase):
             return None
 
     def export_pdf(self, window, pdf_path):
-        try:
-            import AppKit
-            import Foundation
-        except Exception as e:
-            return {'ok': False, 'error': f'缺少 PyObjC，无法导出 PDF: {e}'}
-
         wv = self._wkwebview(window)
         if wv is None:
             return {'ok': False, 'error': '无法获取 WKWebView'}
 
-        # 首选 Chrome/Chromium 无头打印（分页最好）；没有再退回 createPDF
+        # 首选 Chrome/Chromium 无头打印（分页最好）；没有再退回 createPDF。
+        # 不再使用 NSPrintOperation：部分 macOS 版本会卡在保存面板/不写文件。
         try:
             from .browser_pdf import export_with_browser, app_root
             if export_with_browser(window, pdf_path, app_root()):
                 return {'ok': True}
         except Exception as e:
             print(f'[MarkEase][mac] browser PDF export failed: {e}')
+
         if self._fallback_create_pdf(window, wv, pdf_path):
             return {'ok': True}
         return {'ok': False, 'error': 'PDF 导出失败（无可用打印引擎）'}
-
-        holder = {}
-        done = threading.Event()
-
-        def _do_print():
-            try:
-                info = AppKit.NSPrintInfo.alloc().init()
-                # 与 Windows PrintToPdfAsync 默认一致：Letter + 0.4 inch 页边距
-                info.setPaperSize_(Foundation.NSMakeSize(612.0, 792.0))
-                info.setTopMargin_(28.8)
-                info.setBottomMargin_(28.8)
-                info.setLeftMargin_(28.8)
-                info.setRightMargin_(28.8)
-                info.setHorizontalPagination_(AppKit.NSFitPagination)
-                info.setVerticalPagination_(AppKit.NSAutoPagination)
-                info.setJobDisposition_(AppKit.NSPrintSaveJob)
-                saving_url = Foundation.NSURL.fileURLWithPath_(pdf_path)
-                # PyObjC 的 NSPrintInfo 不一定暴露 setJobSavingURL_；
-                # 用 printInfo.dictionary 设置同样的键，失败也不要中断打印。
-                try:
-                    info.setJobSavingURL_(saving_url)
-                except Exception:
-                    pass
-                try:
-                    info.dictionary().setObject_forKey_(
-                        saving_url, AppKit.NSPrintJobSavingURL)
-                except Exception:
-                    pass
-
-                op = wv.printOperationWithPrintInfo_(info)
-                if op is None:
-                    raise RuntimeError('WKWebView 不支持打印')
-                op.setShowsPrintPanel_(False)
-                op.setShowsProgressPanel_(False)
-                if not bool(op.runOperation()):
-                    raise RuntimeError('打印操作被取消或失败')
-            except Exception as e:
-                holder['error'] = e
-            finally:
-                done.set()
-
-        if self._is_main_thread():
-            _do_print()
-        else:
-            try:
-                AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
-                    _do_print)
-            except Exception as e:
-                return {'ok': False, 'error': f'主线程调度失败: {e}'}
-            if not done.wait(180):
-                return {'ok': False, 'error': '导出 PDF 超时（180 秒）'}
-
-        if holder.get('error') is not None:
-            print(f'[MarkEase][mac] print operation failed: {holder["error"]}')
-
-        if not os.path.exists(pdf_path) or os.path.getsize(pdf_path) < 100:
-            # NSPrintSaveJob 在部分 macOS 版本不会真正写文件 / 输出空白。
-            # 兜底：用 WKWebView.createPDF 直接生成 PDF 数据并写盘。
-            print('[MarkEase][mac] print-to-file produced nothing; '
-                  'falling back to WKWebView.createPDF')
-            if not self._fallback_create_pdf(window, wv, pdf_path):
-                if holder.get('error') is not None:
-                    return {'ok': False, 'error': str(holder['error'])}
-                return {'ok': False, 'error': '未生成 PDF 文件'}
-
-        if not os.path.exists(pdf_path):
-            return {'ok': False, 'error': '未生成 PDF 文件'}
-        try:
-            with open(pdf_path, 'rb') as f:
-                if f.read(5) != b'%PDF-':
-                    return {'ok': False,
-                            'error': 'macOS 打印组件未输出有效 PDF'}
-        except Exception as e:
-            return {'ok': False, 'error': str(e)}
-
-        # macOS 11 曾出现 NSPrintSaveJob 输出空白页的问题。
-        # 这里只检查文件有效性与页数，不因为"没有文字/图片"就判失败：
-        # WKWebView 可能把文字转成路径，get_text() 为空但 PDF 是正常的。
-        try:
-            size = os.path.getsize(pdf_path)
-            import pymupdf
-            doc = pymupdf.open(pdf_path)
-            try:
-                pages = doc.page_count
-                text_len = 0
-                image_count = 0
-                for page in doc:
-                    text_len += len(page.get_text().strip())
-                    image_count += len(page.get_images())
-                print(f'[MarkEase][mac] pdf: size={size} pages={pages} '
-                      f'text={text_len} images={image_count}')
-                if pages == 0 or size < 100:
-                    return {'ok': False,
-                            'error': 'macOS 打印组件生成的 PDF 为空'}
-                if text_len == 0 and image_count == 0:
-                    print('[MarkEase][mac] WARNING: PDF has no extractable '
-                          'text/images (may still render correctly)')
-            finally:
-                doc.close()
-        except ImportError:
-            if os.path.getsize(pdf_path) < 100:
-                return {'ok': False, 'error': '生成的 PDF 文件过小'}
-        except Exception as e:
-            print(f'[MarkEase][mac] PDF validation failed: {e}')
-
-        return {'ok': True}
 
     def _fallback_create_pdf(self, window, wv, pdf_path):
         """NSPrintSaveJob 不写文件时的兜底：WKWebView.createPDF。"""
