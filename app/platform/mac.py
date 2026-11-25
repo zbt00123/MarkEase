@@ -68,6 +68,7 @@ class MacPlatform(PlatformBase):
     def get_native_menu(self, window, api):
         """macOS 只保留系统应用菜单；业务菜单回到窗口内 HTML 菜单栏。"""
         self._window = window
+        self._api = api
         try:
             import webview as _webview
             # 只保留 App 菜单（About/Hide/Quit），不创建 View/Edit 菜单
@@ -182,6 +183,15 @@ class MacPlatform(PlatformBase):
             class _AboutHandler(AppKit.NSObject):
                 def showAbout_(self, sender):
                     try:
+                        api = getattr(self, '_mk_api', None)
+                        if api is not None:
+                            # 直接开自定义关于窗口，不依赖前端是否已初始化
+                            threading.Thread(
+                                target=api.open_about_window,
+                                daemon=True,
+                                name='MarkEaseAboutMenu',
+                            ).start()
+                            return
                         window = getattr(self, '_mk_window', None)
                         if window is None:
                             return
@@ -197,6 +207,7 @@ class MacPlatform(PlatformBase):
 
             handler = _AboutHandler.alloc().init()
             handler._mk_window = getattr(self, '_window', None)
+            handler._mk_api = getattr(self, '_api', None)
             for item in sub.itemArray():
                 title = str(item.title() or '')
                 try:
