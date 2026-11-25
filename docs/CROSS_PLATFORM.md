@@ -98,14 +98,17 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
   `MAC_CODESIGN_IDENTITY`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`,
   `APPLE_TEAM_ID`. The workflow then imports the certificate, signs with the
   hardened runtime, submits to `notarytool` and staples the dmg.
-- `Info.plist` declares `.md` / `.markdown` documents and a PDF viewer type.
-  Opening a file while the app is running is handled through the `open-file`
-  Apple Event and forwarded to the front-end.
-- PDF export: Windows uses WebView2 `PrintToPdfAsync`; macOS uses
-  `WKWebView.createPDF` (no external browser, so no Chrome/PDF privacy prompt;
-  long content is chunked and merged); Linux exports the preview to HTML and
-  prints it with a locally installed Chrome/Chromium. Export always ignores the
-  on-screen zoom level and uses 100%.
+- `Info.plist` exports the `net.daringfireball.markdown` UTI and declares
+  `.md/.markdown/.mdown/.mkd`. `application:openFile:` / `openFiles:` are
+  implemented on the NSApplicationDelegate; received paths are queued and
+  forwarded to the front-end via `open-file` events. Both startup double-click
+  and “open with” while running use this path.
+- PDF export: Windows uses WebView2 `PrintToPdfAsync`; macOS switches to a
+  light print layout, hides the find bar / search highlights / selection, then
+  uses `WKWebView.createPDF` and slices the result into Letter pages (no
+  external browser, no Chrome/PDF privacy prompt). Linux exports the preview to
+  HTML and prints it with a locally installed Chrome/Chromium. Export always
+  ignores the on-screen zoom level and uses 100%.
 - HTTPS requests (network images, update checks) use a bundled `certifi` CA so
   they work on Python.org macOS builds without system CA configuration.
 - Fuzzy search falls back to a source-level matcher when the preview DOM cannot
@@ -196,7 +199,7 @@ blank-window regressions.
 
 | Feature | Windows | macOS | Linux |
 |---|---|---|---|
-| PDF export | WebView2 | WKWebView print | WebKit2 print |
+| PDF export | WebView2 | WKWebView createPDF + Letter pagination | WebKit2 print |
 | Set as default app | registry | manual (Finder) | `xdg-mime` |
 | Hang watchdog / WebView2 crash recovery | yes | n/a | n/a |
 
