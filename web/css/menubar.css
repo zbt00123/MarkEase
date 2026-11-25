@@ -235,8 +235,9 @@ body.dark .submenu .menu-entry:hover:not(.disabled) {
 body.dark .menu-entry .menu-check {
     color: #58a6ff;
 }
-/* macOS: menu bar is native (app/platform/mac.py); hide the in-app HTML menubar. */
-html.platform-mac #menubar {
+/* macOS：业务菜单已回到窗口内；只隐藏「帮助 → 设置」子菜单 */
+html.platform-mac #menu-settings-entry,
+html.platform-mac #menu-settings-sep {
     display: none !important;
 }
 
