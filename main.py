@@ -1006,6 +1006,73 @@ def _start_close_test(window):
                      name='MarkEaseCloseTest').start()
 
 
+def _start_find_test(window):
+    """CI/本地冒烟：打开查找栏，检查默认右上角及拖动边界。"""
+    import json as _json
+
+    probe = (
+        "JSON.stringify((function(){"
+        "var b=document.getElementById('findbar');"
+        "var r=b.getBoundingClientRect();"
+        "var t=document.getElementById('toolbar').getBoundingClientRect();"
+        "var s=document.getElementById('statusbar').getBoundingClientRect();"
+        "return {visible:!b.classList.contains('hidden'),"
+        "top:r.top,left:r.left,right:r.right,bottom:r.bottom,"
+        "toolbarBottom:t.bottom,statusTop:s.top,"
+        "vw:window.innerWidth,vh:window.innerHeight};"
+        "})())"
+    )
+
+    def _worker():
+        try:
+            window.events.loaded.wait(20)
+        except Exception:
+            pass
+        time.sleep(2)
+        try:
+            window.run_js("window.FindBar && window.FindBar.open(false)")
+            time.sleep(0.4)
+            raw = window.run_js(probe)
+            data = _json.loads(raw) if isinstance(raw, str) else raw
+            print(f'[MarkEase][find-test] default: {data}')
+            ok = bool(data.get('visible')) and \
+                data['top'] >= data['toolbarBottom'] - 1 and \
+                data['bottom'] <= data['statusTop'] + 1 and \
+                data['right'] <= data['vw'] + 1 and data['left'] >= -1
+            if not ok:
+                print('[MarkEase][find-test] default position out of bounds')
+                os._exit(3)
+
+            drag = (
+                "JSON.stringify((function(){"
+                "var h=document.getElementById('find-drag-handle');"
+                "function ev(type,x,y){h.dispatchEvent(new PointerEvent(type,{"
+                "bubbles:true,cancelable:true,pointerId:1,pointerType:'mouse',"
+                "button:0,clientX:x,clientY:y}));}"
+                "ev('pointerdown',400,300);"
+                "ev('pointermove',10,10);"
+                "ev('pointerup',10,10);"
+                "var b=document.getElementById('findbar');"
+                "var r=b.getBoundingClientRect();"
+                "var t=document.getElementById('toolbar').getBoundingClientRect();"
+                "return {top:r.top,left:r.left,"
+                "toolbarBottom:t.bottom,vw:window.innerWidth};"
+                "})())"
+            )
+            raw = window.run_js(drag)
+            moved = _json.loads(raw) if isinstance(raw, str) else raw
+            print(f'[MarkEase][find-test] dragged: {moved}')
+            ok = moved['top'] >= moved['toolbarBottom'] - 1 and \
+                moved['left'] >= -1 and moved['left'] <= moved['vw'] + 1
+            os._exit(0 if ok else 3)
+        except Exception as e:
+            print(f'[MarkEase][find-test] failed: {e}')
+            os._exit(4)
+
+    threading.Thread(target=_worker, daemon=True,
+                     name='MarkEaseFindTest').start()
+
+
 def main():
     _log_event('main_enter', 'main() started',
                argv_count=len(sys.argv))
@@ -1208,6 +1275,8 @@ def main():
                 _start_pdf_test(window, api, _pdf_test_out)
             if '--close-test' in sys.argv:
                 _start_close_test(window)
+            if '--find-test' in sys.argv:
+                _start_find_test(window)
 
     window.events.loaded += on_loaded
     window.events.closing += on_closing

@@ -215,6 +215,34 @@ jobs:
           grep -q '"initialized": true' /tmp/markease-ui-test.log
           grep -q '"menubarVisible": true' /tmp/markease-ui-test.log
 
+      - name: Find bar drag/bounds test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set +e
+          timeout 45s xvfb-run -a dist/MarkEase/MarkEase --find-test \
+            2>&1 | tee /tmp/markease-find-test.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-find-test.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--find-test failed with code $code"
+            exit 1
+          fi
+
+      - name: Find bar drag/bounds test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set +e
+          dist/MarkEase.app/Contents/MacOS/MarkEase --find-test \
+            2>&1 | tee /tmp/markease-find-test.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-find-test.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--find-test failed with code $code"
+            exit 1
+          fi
+
       - name: PDF smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
