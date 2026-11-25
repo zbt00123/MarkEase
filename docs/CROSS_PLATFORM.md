@@ -76,20 +76,14 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
 
 ## macOS notes
 
-- The app uses the **native macOS menu bar** with the standard order
-  (MarkEase, File, Edit, View, Help). `app/platform/mac.py` builds File / View /
-  Help through pywebview's `Menu` API; the native Edit menu is kept (so
-  `⌘C / ⌘V / ⌘X / ⌘A` use system shortcuts) with localized titles. The in-page
-  HTML menubar is hidden via `html.platform-mac #menubar { display:none }`.
-  Custom items call `window.MKMenuAction(action)`, reusing the same handlers as
-  the HTML toolbar and menus. View includes a native full-screen toggle.
-- Because AppKit cannot rebuild menu titles after creation, changing the
-  language on macOS prompts to save unsaved work and then restarts the app.
-  Windows / Linux update the in-page menu immediately without restarting.
-- The app menu's **About MarkEase** item is rewired to the same custom About
-  window as Help → About (not the generic AppKit panel).
-- The macOS Help → Settings submenu does not offer “add to New menu”; macOS has
-  no ShellNew equivalent. This option remains on Windows only.
+- The **business menu is inside the window on macOS** too (same
+  File/Edit/View/Help layout as Windows/Linux). The macOS system menu bar keeps
+  only the native `MarkEase` application menu (About/Hide/Quit). The Help →
+  Settings submenu is hidden on macOS because macOS has no ShellNew; it remains
+  on Windows/Linux.
+- The app menu's **About MarkEase** item is rewired to the custom About window
+  while the app menu is created, so it works on the very first click after
+  launch. Changing language updates the in-window menu immediately; no restart.
 - Closing with unsaved changes: Discard or Save uses a macOS-specific
   force-close that terminates with `os._exit(0)` after the UI is done. This
   avoids Python finalization waiting forever on pywebview's non-daemon JS API
@@ -105,11 +99,11 @@ Unchanged: `python -m PyInstaller --clean --noconfirm MarkEase.spec`.
 - `Info.plist` declares `.md` / `.markdown` documents and a PDF viewer type.
   Opening a file while the app is running is handled through the `open-file`
   Apple Event and forwarded to the front-end.
-- PDF export: Windows uses WebView2 `PrintToPdfAsync`; macOS/Linux export the
-  current preview to a self-contained HTML and print it with a locally installed
-  Chrome/Chromium in headless mode (paginated, 100% zoom). If no browser is
-  available, macOS falls back to `WKWebView.createPDF` (one continuous page).
-  Export always ignores the on-screen zoom level and uses 100%.
+- PDF export: Windows uses WebView2 `PrintToPdfAsync`; macOS uses
+  `WKWebView.createPDF` (no external browser, so no Chrome/PDF privacy prompt;
+  long content is chunked and merged); Linux exports the preview to HTML and
+  prints it with a locally installed Chrome/Chromium. Export always ignores the
+  on-screen zoom level and uses 100%.
 - HTTPS requests (network images, update checks) use a bundled `certifi` CA so
   they work on Python.org macOS builds without system CA configuration.
 - Fuzzy search falls back to a source-level matcher when the preview DOM cannot

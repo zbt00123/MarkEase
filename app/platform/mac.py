@@ -66,132 +66,43 @@ class MacPlatform(PlatformBase):
 
     # ---------- 原生菜单（macOS 系统菜单栏） ----------
     def get_native_menu(self, window, api):
-        """构建 macOS 系统菜单栏；菜单项通过 MKMenuAction 调用前端统一动作。"""
+        """macOS 只保留系统应用菜单；业务菜单回到窗口内 HTML 菜单栏。"""
+        self._window = window
+        self._api = api
         try:
             import webview as _webview
-            from webview.menu import Menu, MenuAction, MenuSeparator
+            # 只保留 App 菜单（About/Hide/Quit），不创建 View/Edit 菜单
+            _webview.settings['SHOW_DEFAULT_MENUS'] = False
         except Exception as e:
-            print(f'[MarkEase][mac] native menu unavailable: {e}')
-            return None
+            print(f'[MarkEase][mac] cannot hide default menus: {e}')
 
-        # 保留 pywebview 默认「编辑」菜单：macOS 的 Cmd+C/V/X/A 快捷键依赖它。
-        # 只禁用默认「视图」菜单（里面只有全屏），改用 MarkEase 自己的「查看」。
         try:
-            from webview.platforms import cocoa as _cocoa
-            if not getattr(_cocoa.BrowserView,
-                           '_mk_default_view_disabled', False):
-                _cocoa.BrowserView._add_view_menu = \
-                    lambda self, main_menu: None
-                _cocoa.BrowserView._mk_default_view_disabled = True
+            self._install_early_about_hook()
         except Exception as e:
-            print(f'[MarkEase][mac] cannot disable default view menu: {e}')
+            print(f'[MarkEase][mac] early About hook failed: {e}')
 
-        labels = {}
-        try:
-            r = api.get_translations()
-            if r and r.get('ok'):
-                labels = r.get('dict') or {}
-        except Exception as e:
-            print(f'[MarkEase][mac] menu translations failed: {e}')
+        print('[MarkEase][mac] in-window menubar enabled; app menu only')
+        return None
 
-        def _t(key, fallback):
-            value = labels.get(key)
-            return str(value) if value else fallback
+    def _install_early_about_hook(self):
+        """在 App 菜单创建的那一刻改写 About，保证点得再快也是自定义窗口。"""
+        from webview.platforms import cocoa
 
-        # 默认「编辑」菜单的本地化（pywebview 自带 cut/copy/paste/selectAll）
-        self._webview_localization = {
-            'cocoa.menu.edit': _t('edit', '编辑'),
-            'cocoa.menu.cut': _t('cut', '剪切'),
-            'cocoa.menu.copy': _t('copy', '复制'),
-            'cocoa.menu.paste': _t('paste', '粘贴'),
-            'cocoa.menu.selectAll': _t('select_all', '全选'),
-        }
+        if getattr(cocoa.BrowserView, '_mk_about_hook', False):
+            return
 
-        def _fullscreen():
+        original = cocoa.BrowserView._add_app_menu
+
+        def _patched(self, main_menu, custom_items=None):
+            original(self, main_menu, custom_items)
             try:
-                window.toggle_fullscreen()
-            except Exception as exc:
-                print(f'[MarkEase][mac] toggle_fullscreen failed: {exc}')
+                from app.platform import platform as _platform
+                _platform._rewire_about_menu(main_menu)
+            except Exception as e:
+                print(f'[MarkEase][mac] early About rewire failed: {e}')
 
-        _fullscreen.__name__ = 'mk_menu_toggle_fullscreen'
-
-        def _action(action_id, title):
-            def _run():
-                try:
-                    script = ('window.MKMenuAction && '
-                              'window.MKMenuAction(%s);'
-                              % json.dumps(action_id))
-                    window.evaluate_js(script)
-                except Exception as exc:
-                    print(f'[MarkEase][mac] menu {action_id} failed: {exc}')
-
-            _run.__name__ = 'mk_menu_' + action_id
-            return MenuAction(title, _run)
-
-        def item(action_id, key, fallback):
-            return _action(action_id, _t(key, fallback))
-
-        self._file_menu_title = _t('file', '文件')
-        file_menu = Menu(self._file_menu_title, [
-            item('new', 'new', '新建'),
-            item('open', 'open', '打开'),
-            item('save', 'save', '保存'),
-            item('save_as', 'save_as', '另存为'),
-            MenuSeparator(),
-            item('insert_image', 'insert_image', '插入图片'),
-            MenuSeparator(),
-            Menu(_t('import', '导入'), [
-                item('import_pdf', 'import_pdf', '导入 PDF'),
-                item('import_html', 'import_html', '导入 HTML'),
-            ]),
-            Menu(_t('export', '导出'), [
-                item('export_pdf', 'export_pdf', '导出 PDF'),
-                item('export_html', 'export_html', '导出 HTML'),
-            ]),
-            MenuSeparator(),
-            item('exit', 'exit', '退出'),
-        ])
-
-        view_menu = Menu(_t('view', '查看'), [
-            item('mode_edit', 'edit_mode', '编辑模式'),
-            item('mode_split', 'split_mode', '分屏模式'),
-            item('mode_preview', 'preview_mode', '预览模式'),
-            MenuSeparator(),
-            item('toggle_toc', 'show_toc', '显示/隐藏目录'),
-            MenuSeparator(),
-            item('zoom_in', 'zoom_in', '放大'),
-            item('zoom_out', 'zoom_out', '缩小'),
-            item('zoom_reset', 'reset_zoom', '重置缩放'),
-            MenuSeparator(),
-            item('toggle_theme', 'toggle_theme', '切换主题'),
-            MenuSeparator(),
-            MenuAction(_t('toggle_fullscreen', '切换全屏'), _fullscreen),
-            MenuSeparator(),
-            Menu(_t('language', '语言'), [
-                item('lang_system', 'system', '跟随系统'),
-                item('lang_zh_CN', 'zh_CN', '简体中文'),
-                item('lang_zh_TW', 'zh_TW', '繁体中文'),
-                item('lang_en_US', 'en_US', 'English'),
-                item('lang_ja_JP', 'ja_JP', '日本語'),
-                item('lang_ko_KR', 'ko_KR', '한국어'),
-            ]),
-        ])
-
-        help_menu = Menu(_t('help', '帮助'), [
-            item('about', 'about', '关于 MarkEase'),
-            item('check_update', 'check_update', '检查更新'),
-            MenuSeparator(),
-            item('logs', 'logs', '日志'),
-            MenuSeparator(),
-            Menu(_t('settings', '设置'), [
-                item('set_default_program', 'set_default_program',
-                     '设为默认打开程序'),
-                # macOS 没有 ShellNew，不提供「添加到新建菜单」
-            ]),
-        ])
-
-        print('[MarkEase][mac] native menu installed')
-        return [file_menu, view_menu, help_menu]
+        cocoa.BrowserView._add_app_menu = _patched
+        cocoa.BrowserView._mk_about_hook = True
 
     def webview_localization(self):
         return getattr(self, '_webview_localization', {})
@@ -235,55 +146,29 @@ class MacPlatform(PlatformBase):
             return False
 
     def on_webview_started(self, window=None):
-        """GUI 启动后把「文件」菜单移到「编辑」左侧（macOS 标准顺序）。"""
+        """启动后兜底再改一次 About（正常应由 _add_app_menu hook 提前完成）。"""
         self._window = window
         try:
-            threading.Thread(target=self._wait_and_reorder_menus,
+            threading.Thread(target=self._late_about_fix,
                              daemon=True,
-                             name='MarkEaseMenuOrder').start()
+                             name='MarkEaseAboutFix').start()
         except Exception as e:
-            print(f'[MarkEase][mac] menu order thread failed: {e}')
+            print(f'[MarkEase][mac] About fallback thread failed: {e}')
 
-    def _wait_and_reorder_menus(self):
+    def _late_about_fix(self):
         try:
             import AppKit
-            from PyObjCTools import AppHelper
-        except Exception as e:
-            print(f'[MarkEase][mac] PyObjC menu reorder unavailable: {e}')
+        except Exception:
             return
-        wanted = getattr(self, '_file_menu_title', '文件')
-        for _ in range(100):
+        for _ in range(50):
             try:
                 main = AppKit.NSApplication.sharedApplication().mainMenu()
-                if main is not None:
-                    titles = [str(i.title()) for i in main.itemArray()]
-                    if wanted in titles:
-                        break
+                if main is not None and main.numberOfItems() >= 1:
+                    self._rewire_about_menu(main)
+                    return
             except Exception:
                 pass
             time.sleep(0.1)
-        AppHelper.callAfter(self._reorder_menus)
-
-    def _reorder_menus(self):
-        try:
-            import AppKit
-            main = AppKit.NSApplication.sharedApplication().mainMenu()
-            if main is None:
-                return
-            self._rewire_about_menu(main)
-            wanted = getattr(self, '_file_menu_title', '文件')
-            for item in list(main.itemArray()):
-                try:
-                    if str(item.title()) == wanted:
-                        main.removeItem_(item)
-                        main.insertItem_atIndex_(item, 1)
-                        print('[MarkEase][mac] menu order fixed: '
-                              'File before Edit')
-                        return
-                except Exception:
-                    continue
-        except Exception as e:
-            print(f'[MarkEase][mac] reorder menus failed: {e}')
 
     def _rewire_about_menu(self, main):
         """把系统 App 菜单的 About 改为打开 MarkEase 自己的关于窗口。"""
@@ -298,6 +183,15 @@ class MacPlatform(PlatformBase):
             class _AboutHandler(AppKit.NSObject):
                 def showAbout_(self, sender):
                     try:
+                        api = getattr(self, '_mk_api', None)
+                        if api is not None:
+                            # 直接开自定义关于窗口，不依赖前端是否已初始化
+                            threading.Thread(
+                                target=api.open_about_window,
+                                daemon=True,
+                                name='MarkEaseAboutMenu',
+                            ).start()
+                            return
                         window = getattr(self, '_mk_window', None)
                         if window is None:
                             return
@@ -313,6 +207,7 @@ class MacPlatform(PlatformBase):
 
             handler = _AboutHandler.alloc().init()
             handler._mk_window = getattr(self, '_window', None)
+            handler._mk_api = getattr(self, '_api', None)
             for item in sub.itemArray():
                 title = str(item.title() or '')
                 try:
@@ -494,18 +389,11 @@ class MacPlatform(PlatformBase):
         if wv is None:
             return {'ok': False, 'error': '无法获取 WKWebView'}
 
-        # 首选 Chrome/Chromium 无头打印（分页最好）；没有再退回 createPDF。
-        # 不再使用 NSPrintOperation：部分 macOS 版本会卡在保存面板/不写文件。
-        try:
-            from .browser_pdf import export_with_browser, app_root
-            if export_with_browser(window, pdf_path, app_root()):
-                return {'ok': True}
-        except Exception as e:
-            print(f'[MarkEase][mac] browser PDF export failed: {e}')
-
+        # 只用 WKWebView.createPDF：不启动 Chrome，避免 macOS 的
+        # “允许创建 PDF / 访问文件”隐私提示。长文档会分块生成后合并。
         if self._fallback_create_pdf(window, wv, pdf_path):
             return {'ok': True}
-        return {'ok': False, 'error': 'PDF 导出失败（无可用打印引擎）'}
+        return {'ok': False, 'error': 'PDF 导出失败'}
 
     def _fallback_create_pdf(self, window, wv, pdf_path):
         """NSPrintSaveJob 不写文件时的兜底：WKWebView.createPDF。"""

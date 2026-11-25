@@ -1135,11 +1135,7 @@ async function onSetLanguage(lang) {
         }
     } catch (e) { /* ignore */ }
 
-    // macOS 原生菜单在创建后无法改标题：切换语言后重启应用
-    if (window.MKPlatform && MKPlatform.isMac &&
-        previousLang !== currentLangChoice) {
-        await maybeRestartForLanguage();
-    }
+    // macOS 现在使用窗口内 HTML 菜单，语言切换无需重启
 }
 
 // 切换语言后重启（仅 macOS）：未保存内容先走「取消/不保存/保存」
