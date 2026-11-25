@@ -343,7 +343,12 @@ class MacPlatform(PlatformBase):
                         print(f'[MarkEase][mac] openURLs failed: {exc}')
 
             cocoa.BrowserView.AppDelegate = _MarkEaseAppDelegate
-            cocoa.BrowserView._shared_app_delegate = None
+            # 关键：必须在 NSApplication 开始 run loop 前就成为 delegate。
+            # 双击启动时 odoc 事件可能早于 webview.start()，等 BrowserView.init
+            # 再设置 delegate 已经太晚，系统会弹 "cannot open ... format"。
+            delegate = _MarkEaseAppDelegate.alloc().init()
+            cocoa.BrowserView._shared_app_delegate = delegate
+            cocoa.BrowserView.app.setDelegate_(delegate)
             print('[MarkEase][mac] open-file application delegate installed')
         except Exception as e:
             print(f'[MarkEase][mac] cannot install open-file delegate: {e}')
