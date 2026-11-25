@@ -1092,8 +1092,12 @@ def _start_open_file_test(window, path):
         try:
             import AppKit
             delegate = AppKit.NSApplication.sharedApplication().delegate()
-            if not hasattr(delegate, 'application_openFile_'):
-                print('[MarkEase][open-file-test] delegate method missing')
+            responds = bool(delegate.respondsToSelector_(
+                b'application:openFile:'))
+            if not responds or not hasattr(delegate,
+                                           'application_openFile_'):
+                print('[MarkEase][open-file-test] delegate method missing '
+                      f'(responds={responds})')
                 os._exit(3)
             accepted = bool(delegate.application_openFile_(None, path))
             time.sleep(2.5)
