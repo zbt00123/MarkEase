@@ -912,7 +912,7 @@ window.MKSetPdfZoom = function (enable) {
     } catch (e) { /* ignore */ }
 };
 
-// createPDF 兜底导出时使用：把界面切换成"打印版式"（隐藏工具栏/菜单/状态栏）
+// createPDF / 原生打印导出时使用：浅色、无查找窗口/高亮/选区的打印版式
 window.MKSetPdfMode = function (enable) {
     try {
         let style = document.getElementById('mk-pdf-mode-style');
@@ -926,23 +926,76 @@ window.MKSetPdfMode = function (enable) {
                 'html.mk-pdf-mode #toc,',
                 'html.mk-pdf-mode #toc-resizer,',
                 'html.mk-pdf-mode #editor-container,',
-                'html.mk-pdf-mode #splash { display: none !important; }',
+                'html.mk-pdf-mode #splash,',
+                'html.mk-pdf-mode #findbar,',
+                'html.mk-pdf-mode #find-toast,',
+                'html.mk-pdf-mode .find-toast,',
+                'html.mk-pdf-mode .modal-overlay { display: none !important; }',
                 'html.mk-pdf-mode #main { display: block !important;',
-                '  overflow: visible !important; zoom: 1 !important; }',
+                '  overflow: visible !important; zoom: 1 !important;',
+                '  width: 720px !important; }',
                 'html.mk-pdf-mode #preview-container { display: block !important;',
-                '  overflow: visible !important; width: 100% !important;',
-                '  height: auto !important; }',
-                'html.mk-pdf-mode #preview { max-width: none !important;',
-                '  padding: 0 !important; }',
+                '  overflow: visible !important; width: 720px !important;',
+                '  height: auto !important; background: #fff !important; }',
+                'html.mk-pdf-mode #preview { width: 720px !important;',
+                '  max-width: 720px !important; margin: 0 !important;',
+                '  padding: 0 !important; box-sizing: border-box !important;',
+                '  background: #fff !important; }',
                 'html.mk-pdf-mode body, html.mk-pdf-mode #app {',
-                '  background: #fff !important; color: #000 !important;',
-                '  overflow: visible !important; height: auto !important; }',
+                '  width: 720px !important; background: #fff !important;',
+                '  color: #000 !important; overflow: visible !important;',
+                '  height: auto !important; }',
                 'html.mk-pdf-mode .markdown-body {',
-                '  background: #fff !important; color: #000 !important; }'
+                '  background: #fff !important; color: #000 !important; }',
+                'html.mk-pdf-mode ::selection,',
+                'html.mk-pdf-mode *::selection { background: transparent !important; }',
+                'html.mk-pdf-mode ::highlight(mk-find-match),',
+                'html.mk-pdf-mode ::highlight(mk-find-current),',
+                'html.mk-pdf-mode ::highlight(mk-find-fuzzy),',
+                'html.mk-pdf-mode ::highlight(mk-find-fuzzy-current) {',
+                '  background-color: transparent !important; }'
             ].join('\n');
             document.head.appendChild(style);
         }
-        document.documentElement.classList.toggle('mk-pdf-mode', !!enable);
+
+        if (enable) {
+            window.__mkPdfThemeState = {
+                htmlDark: document.documentElement.classList.contains('dark'),
+                bodyDark: document.body.classList.contains('dark'),
+                colorScheme: document.documentElement.style.colorScheme || ''
+            };
+            // PDF 始终浅色：移除 dark 类，避免 body.dark 的变量/背景进入导出
+            document.documentElement.classList.remove('dark');
+            document.body.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+
+            // 查找窗口、高亮、选区不能进入 PDF
+            try {
+                if (window.FindBar && window.FindBar.close) {
+                    window.FindBar.close();
+                }
+            } catch (e) { /* ignore */ }
+            try {
+                const sel = window.getSelection && window.getSelection();
+                if (sel) sel.removeAllRanges();
+            } catch (e) { /* ignore */ }
+            try {
+                if (document.activeElement && document.activeElement.blur) {
+                    document.activeElement.blur();
+                }
+            } catch (e) { /* ignore */ }
+
+            document.documentElement.classList.add('mk-pdf-mode');
+            // 强制一次布局，让 createPDF/打印拿到浅色版式
+            void document.body.offsetHeight;
+        } else {
+            document.documentElement.classList.remove('mk-pdf-mode');
+            const state = window.__mkPdfThemeState || {};
+            if (state.htmlDark) document.documentElement.classList.add('dark');
+            if (state.bodyDark) document.body.classList.add('dark');
+            document.documentElement.style.colorScheme = state.colorScheme || '';
+            window.__mkPdfThemeState = null;
+        }
     } catch (e) { /* ignore */ }
 };
 async function onSetDefaultProgram() {

@@ -179,6 +179,13 @@ jobs:
           test -f "$APP/Contents/MacOS/MarkEase"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
             "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c \
+            'Print :CFBundleDocumentTypes:0:LSItemContentTypes:0' \
+            "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c \
+            'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' \
+            "$APP/Contents/Info.plist"
+          plutil -lint "$APP/Contents/Info.plist"
           "$APP/Contents/MacOS/MarkEase" --self-test
           "$APP/Contents/MacOS/MarkEase" --net-test
 
@@ -284,6 +291,22 @@ jobs:
           cat /tmp/markease-close.log
           if [ "$code" -ne 0 ]; then
             echo "::error::--close-test failed with code $code"
+            exit 1
+          fi
+
+      - name: Open-file smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set +e
+          printf '# MarkEase open test\n\nhello\n' > /tmp/markease-open-test.md
+          dist/MarkEase.app/Contents/MacOS/MarkEase \
+            --open-file-test /tmp/markease-open-test.md \
+            2>&1 | tee /tmp/markease-open-file.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-open-file.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--open-file-test failed with code $code"
             exit 1
           fi
 

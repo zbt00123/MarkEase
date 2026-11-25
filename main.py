@@ -1072,6 +1072,37 @@ def _start_find_test(window):
                      name='MarkEaseFindTest').start()
 
 
+def _start_open_file_test(window, path):
+    """macOS：验证 open-file delegate -> watcher -> 前端打开链路。"""
+    def _worker():
+        try:
+            window.events.loaded.wait(20)
+        except Exception:
+            pass
+        time.sleep(1.5)
+        try:
+            import AppKit
+            delegate = AppKit.NSApplication.sharedApplication().delegate()
+            if not hasattr(delegate, 'application_openFile_'):
+                print('[MarkEase][open-file-test] delegate method missing')
+                os._exit(3)
+            accepted = bool(delegate.application_openFile_(None, path))
+            time.sleep(2.5)
+            shown = window.run_js(
+                "(document.getElementById('file-path') || {}).textContent "
+                "|| ''")
+            print(f'[MarkEase][open-file-test] accepted={accepted} '
+                  f'path={path} shown={shown}')
+            ok = accepted and os.path.basename(path) in str(shown)
+            os._exit(0 if ok else 3)
+        except Exception as e:
+            print(f'[MarkEase][open-file-test] failed: {e}')
+            os._exit(4)
+
+    threading.Thread(target=_worker, daemon=True,
+                     name='MarkEaseOpenFileTest').start()
+
+
 def main():
     _log_event('main_enter', 'main() started',
                argv_count=len(sys.argv))
@@ -1244,6 +1275,12 @@ def main():
         _pdf_test_out = (sys.argv[idx + 1] if len(sys.argv) > idx + 1
                          else os.path.abspath('markease_pdf_test.pdf'))
 
+    _open_file_test = None
+    if '--open-file-test' in sys.argv:
+        idx = sys.argv.index('--open-file-test')
+        if len(sys.argv) > idx + 1:
+            _open_file_test = sys.argv[idx + 1]
+
     _test_started = {'done': False}
 
     def on_loaded():
@@ -1276,6 +1313,8 @@ def main():
                 _start_close_test(window)
             if '--find-test' in sys.argv:
                 _start_find_test(window)
+            if _open_file_test:
+                _start_open_file_test(window, _open_file_test)
 
     window.events.loaded += on_loaded
     window.events.closing += on_closing
