@@ -16,7 +16,7 @@ pythonnet>=3.0; sys_platform == "win32"
 
 # ---------- Linux ----------
 # PyGObject 只提供源码包，构建需要 libgirepository1.0-dev / libcairo2-dev 等
-# （见 .github/workflows/build-linux-macos.yml 的 apt 安装步骤）。
+# （见 .github/workflows/build.yml 的 apt 安装步骤）。
 # 3.50.x 是最后一个基于 girepository-1.0 的稳定版，可兼容 Ubuntu 22.04 的 GLib。
 PyGObject==3.50.2; sys_platform == "linux"
 

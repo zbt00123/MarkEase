@@ -212,43 +212,109 @@ def codesign_app(app_path):
          app_path])
 
 
+def _load_font(size, cjk=False):
+    from PIL import ImageFont
+    candidates = []
+    if cjk:
+        candidates += [
+            '/System/Library/Fonts/PingFang.ttc',
+            '/System/Library/Fonts/STHeiti Medium.ttc',
+            '/System/Library/Fonts/Hiragino Sans GB.ttc',
+        ]
+    candidates += [
+        '/System/Library/Fonts/Supplemental/Arial.ttf',
+        '/Library/Fonts/Arial.ttf',
+    ]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            try:
+                return ImageFont.truetype(candidate, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
+
+def build_dmg_background(path):
+    """生成 DMG 的 Finder 背景：箭头 + 拖动到 Applications 的提示。"""
+    from PIL import Image, ImageDraw
+
+    width, height = 660, 420
+    image = Image.new('RGB', (width, height), '#f5f5f7')
+    draw = ImageDraw.Draw(image)
+    draw.rounded_rectangle([(1, 1), (width - 2, height - 2)],
+                           radius=18, outline='#d0d0d6', width=2)
+
+    title_font = _load_font(24, cjk=True)
+    text_font = _load_font(17, cjk=True)
+    small_font = _load_font(13)
+
+    draw.text((width / 2, 42), '安装 MarkEase', font=title_font,
+              fill='#1d1d1f', anchor='mm')
+
+    # 箭头：从 MarkEase 图标指向 Applications 快捷方式
+    y = 215
+    x1, x2 = 278, 382
+    draw.line([(x1, y), (x2, y)], fill='#2f6feb', width=6)
+    draw.polygon([(x2, y), (x2 - 18, y - 13), (x2 - 18, y + 13)],
+                 fill='#2f6feb')
+
+    draw.text((width / 2, 322),
+              '拖动 MarkEase 到 Applications 文件夹',
+              font=text_font, fill='#1d1d1f', anchor='mm')
+    draw.text((width / 2, 352),
+              'Drag MarkEase to the Applications folder',
+              font=small_font, fill='#6e6e73', anchor='mm')
+    image.save(path, format='PNG')
+    return path
+
+
 def package_macos(root, dist, out, version, arch):
     app_path = os.path.join(dist, 'MarkEase.app')
     if not os.path.isdir(app_path):
         raise SystemExit(f'missing build output: {app_path}')
 
     clean_runtime_artifacts(app_path, is_mac=True)
-
     os.makedirs(out, exist_ok=True)
     codesign_app(app_path)
 
-    stage = tempfile.mkdtemp(prefix='markease_dmg_')
+    dmg_name = f'MarkEase_v{version}_macOS_{arch}.dmg'
+    dmg_path = os.path.join(out, dmg_name)
+    work = tempfile.mkdtemp(prefix='markease_dmg_')
     try:
-        shutil.copytree(app_path, os.path.join(stage, 'MarkEase.app'),
-                        symlinks=True)
-        os.symlink('/Applications', os.path.join(stage, 'Applications'))
+        background = os.path.join(work, 'background.png')
+        build_dmg_background(background)
 
-        dmg_name = f'MarkEase_v{version}_macOS_{arch}.dmg'
-        dmg_path = os.path.join(out, dmg_name)
-        last_error = None
-        for attempt in range(3):
-            try:
-                run(['hdiutil', 'create', '-volname', 'MarkEase',
-                     '-srcfolder', stage, '-ov', '-format', 'UDZO', dmg_path])
-                last_error = None
-                break
-            except subprocess.CalledProcessError as e:
-                last_error = e
-                log(f'hdiutil create failed (attempt {attempt + 1}): {e}')
-                try:
-                    if os.path.exists(dmg_path):
-                        os.remove(dmg_path)
-                except Exception:
-                    pass
-                time.sleep(3)
-        if last_error is not None:
-            raise last_error
-        # hdiutil verify 偶尔在 CI 上报 "Resource temporarily unavailable"，重试
+        try:
+            from dmgbuild import build_dmg
+        except Exception as e:
+            raise SystemExit(
+                'dmgbuild is required for the styled macOS dmg: %s' % e)
+
+        settings = {
+            'volume_name': 'MarkEase',
+            'format': 'UDZO',
+            'files': [app_path],
+            'symlinks': {'Applications': '/Applications'},
+            'background': background,
+            'window_rect': ((200, 120), (660, 420)),
+            'icon_size': 128,
+            'default_view': 'icon-view',
+            'icon_locations': {
+                'MarkEase.app': (190, 215),
+                'Applications': (470, 215),
+            },
+            'show_status_bar': False,
+            'show_tab_view': False,
+            'show_toolbar': False,
+            'show_pathbar': False,
+            'show_sidebar': False,
+            'arrange_by': None,
+            'grid_spacing': 100,
+            'label_pos': 'bottom',
+        }
+        log('building styled dmg with dmgbuild')
+        build_dmg(dmg_path, 'MarkEase', settings=settings)
+
         last_error = None
         for attempt in range(3):
             try:
@@ -274,7 +340,7 @@ def package_macos(root, dist, out, version, arch):
 
         return [dmg_path]
     finally:
-        shutil.rmtree(stage, ignore_errors=True)
+        shutil.rmtree(work, ignore_errors=True)
 
 
 def main():

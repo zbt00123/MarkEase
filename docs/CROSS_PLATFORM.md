@@ -13,7 +13,7 @@ Business code calls `platform.<method>()` only. Front-end shortcut labels use
 
 ## GitHub Actions (recommended)
 
-**One-click entry point:** `.github/workflows/build-all-platforms.yml`
+**Single workflow:** `.github/workflows/build.yml`
 
 One run builds every platform in parallel:
 
@@ -30,9 +30,11 @@ How to run:
 2. Wait for the four jobs; download all artifacts from the same run.
 3. Pushing a `v*` tag triggers the same workflow and produces all four files.
 
-The entry point reuses `build-windows.yml` and `build-linux-macos.yml` via
-`workflow_call`. Both can still be run on their own when only one platform
-needs to be checked.
+The macOS dmg is built with `dmgbuild`: Finder opens it with a custom
+background showing an arrow from `MarkEase.app` to an `Applications` shortcut
+and the text “拖动 MarkEase 到 Applications 文件夹 / Drag to the Applications
+folder”. CI mounts the dmg and checks `.DS_Store`, the background image and the
+`Applications` symlink.
 
 PyInstaller cannot cross-compile, so each target is built on its native runner.
 Intel and Apple Silicon each get their own dmg; a universal2 build is possible
