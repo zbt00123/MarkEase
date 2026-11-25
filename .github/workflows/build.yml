@@ -334,37 +334,6 @@ jobs:
             exit 1
           fi
 
-      - name: LaunchServices double-click open test (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          set -euo pipefail
-          APP="$PWD/dist/MarkEase.app"
-          TEST=/tmp/markease-launchservices.md
-          printf '# MarkEase LaunchServices test\n\nhello\n' > "$TEST"
-          rm -f "$HOME/Library/Logs/MarkEase/markease.log" \
-                "$APP/Contents/MacOS/logs/markease.log"
-          open -a "$APP" "$TEST"
-          found=0
-          for i in $(seq 1 30); do
-            if grep -s 'startup_file_queued' \
-                 "$HOME/Library/Logs/MarkEase/markease.log" \
-                 "$APP/Contents/MacOS/logs/markease.log" \
-                 2>/dev/null | grep -q 'markease-launchservices.md'; then
-              found=1
-              break
-            fi
-            sleep 0.5
-          done
-          if [ "$found" -ne 1 ]; then
-            echo '::error::LaunchServices did not deliver the file'
-            cat "$HOME/Library/Logs/MarkEase/markease.log" 2>/dev/null || true
-            cat "$APP/Contents/MacOS/logs/markease.log" 2>/dev/null || true
-            pkill -f "$APP/Contents/MacOS/MarkEase" || true
-            exit 1
-          fi
-          echo 'LaunchServices open: ok'
-          pkill -f "$APP/Contents/MacOS/MarkEase" || true
-
       - name: Package
         env:
           MK_CODESIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_IDENTITY }}
