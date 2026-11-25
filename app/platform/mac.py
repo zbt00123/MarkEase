@@ -172,6 +172,8 @@ class MacPlatform(PlatformBase):
 
     def _rewire_about_menu(self, main):
         """把系统 App 菜单的 About 改为打开 MarkEase 自己的关于窗口。"""
+        if getattr(self, '_about_rewired', False):
+            return
         try:
             import AppKit
             if main.numberOfItems() < 1:
@@ -180,32 +182,36 @@ class MacPlatform(PlatformBase):
             if sub is None:
                 return
 
-            class _AboutHandler(AppKit.NSObject):
-                def showAbout_(self, sender):
-                    try:
-                        api = getattr(self, '_mk_api', None)
-                        if api is not None:
-                            # 直接开自定义关于窗口，不依赖前端是否已初始化
+            handler = getattr(self, '_about_handler', None)
+            if handler is None:
+                class _AboutHandler(AppKit.NSObject):
+                    def showAbout_(self, sender):
+                        try:
+                            api = getattr(self, '_mk_api', None)
+                            if api is not None:
+                                # 直接开自定义关于窗口，不依赖前端是否已初始化
+                                threading.Thread(
+                                    target=api.open_about_window,
+                                    daemon=True,
+                                    name='MarkEaseAboutMenu',
+                                ).start()
+                                return
+                            window = getattr(self, '_mk_window', None)
+                            if window is None:
+                                return
                             threading.Thread(
-                                target=api.open_about_window,
+                                target=lambda: window.evaluate_js(
+                                    "window.MKMenuAction && "
+                                    "window.MKMenuAction('about')"),
                                 daemon=True,
                                 name='MarkEaseAboutMenu',
                             ).start()
-                            return
-                        window = getattr(self, '_mk_window', None)
-                        if window is None:
-                            return
-                        threading.Thread(
-                            target=lambda: window.evaluate_js(
-                                "window.MKMenuAction && "
-                                "window.MKMenuAction('about')"),
-                            daemon=True,
-                            name='MarkEaseAboutMenu',
-                        ).start()
-                    except Exception as e:
-                        print(f'[MarkEase][mac] About menu failed: {e}')
+                        except Exception as e:
+                            print(f'[MarkEase][mac] About menu failed: {e}')
 
-            handler = _AboutHandler.alloc().init()
+                handler = _AboutHandler.alloc().init()
+                self._about_handler = handler
+
             handler._mk_window = getattr(self, '_window', None)
             handler._mk_api = getattr(self, '_api', None)
             for item in sub.itemArray():
@@ -218,7 +224,7 @@ class MacPlatform(PlatformBase):
                         'orderFrontStandardAboutPanel' in action):
                     item.setTarget_(handler)
                     item.setAction_(b'showAbout:')
-                    self._about_handler = handler
+                    self._about_rewired = True
                     print('[MarkEase][mac] About menu rewired')
                     return
         except Exception as e:
