@@ -1045,14 +1045,13 @@ def _start_find_test(window):
 
             drag = (
                 "JSON.stringify((function(){"
-                "var h=document.getElementById('find-drag-handle');"
-                "function ev(type,x,y){h.dispatchEvent(new PointerEvent(type,{"
+                "var b=document.getElementById('findbar');"
+                "function ev(type,x,y){b.dispatchEvent(new PointerEvent(type,{"
                 "bubbles:true,cancelable:true,pointerId:1,pointerType:'mouse',"
                 "button:0,clientX:x,clientY:y}));}"
                 "ev('pointerdown',400,300);"
                 "ev('pointermove',10,10);"
                 "ev('pointerup',10,10);"
-                "var b=document.getElementById('findbar');"
                 "var r=b.getBoundingClientRect();"
                 "var t=document.getElementById('toolbar').getBoundingClientRect();"
                 "return {top:r.top,left:r.left,"

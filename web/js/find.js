@@ -19,7 +19,6 @@
     let _replaceAllBtn = null;
     let _toastEl = null;
     let _toastTimer = null;
-    let _dragHandle = null;
     let _dragState = null;
 
     // ★ v2.1.6：预览查找 / 模式感知
@@ -58,30 +57,20 @@
     gap: 6px;
     min-width: min(460px, calc(100vw - 32px));
     max-width: calc(100vw - 32px);
+    cursor: move;
 }
 #findbar.hidden { display: none !important; }
 
-.find-drag-bar {
-    height: 12px;
-    margin: -4px -2px 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: move;
-    touch-action: none;
-    user-select: none;
+/* 输入框/按钮保持原有光标；空白区域显示可拖动 */
+#findbar input,
+#findbar button,
+#findbar label {
+    cursor: auto;
 }
-.find-drag-grip {
-    width: 44px;
-    height: 4px;
-    border-radius: 999px;
-    background: #d0d7de;
-    transition: background 0.15s ease;
-}
-.find-drag-bar:hover .find-drag-grip { background: #8c959f; }
-body.dark .find-drag-grip { background: #484f58; }
-body.dark .find-drag-bar:hover .find-drag-grip { background: #8b949e; }
-#findbar.dragging { user-select: none; }
+#findbar button { cursor: pointer; }
+#findbar label { cursor: pointer; }
+#findbar.dragging,
+#findbar.dragging * { cursor: move !important; user-select: none !important; }
 
 .find-row { display: flex; align-items: center; gap: 6px; }
 
@@ -655,12 +644,19 @@ body.dark .cm-search-match-current {
         applyFindBarPosition(area.right - width - 16, area.top + 12);
     }
 
-    function initDrag() {
-        _dragHandle = document.getElementById('find-drag-handle');
-        if (!_dragHandle || !_bar) return;
+    function isFindBarControl(target) {
+        return !!(target && target.closest && target.closest(
+            'input, button, label, select, textarea, a, ' +
+            '[contenteditable="true"]'));
+    }
 
-        _dragHandle.addEventListener('pointerdown', (e) => {
+    function initDrag() {
+        if (!_bar) return;
+
+        _bar.addEventListener('pointerdown', (e) => {
             if (e.button !== 0) return;
+            // 文本框内拖动 = 选择文本；按钮/复选框/链接保持原行为
+            if (isFindBarControl(e.target)) return;
             e.preventDefault();
             const rect = _bar.getBoundingClientRect();
             _dragState = {
@@ -669,11 +665,11 @@ body.dark .cm-search-match-current {
             };
             _bar.classList.add('dragging');
             try {
-                _dragHandle.setPointerCapture(e.pointerId);
+                _bar.setPointerCapture(e.pointerId);
             } catch (err) { /* ignore */ }
         });
 
-        _dragHandle.addEventListener('pointermove', (e) => {
+        _bar.addEventListener('pointermove', (e) => {
             if (!_dragState) return;
             e.preventDefault();
             applyFindBarPosition(
@@ -687,14 +683,17 @@ body.dark .cm-search-match-current {
             _dragState = null;
             _bar.classList.remove('dragging');
             try {
-                _dragHandle.releasePointerCapture(e.pointerId);
+                _bar.releasePointerCapture(e.pointerId);
             } catch (err) { /* ignore */ }
         };
-        _dragHandle.addEventListener('pointerup', endDrag);
-        _dragHandle.addEventListener('pointercancel', endDrag);
+        _bar.addEventListener('pointerup', endDrag);
+        _bar.addEventListener('pointercancel', endDrag);
 
-        // 双击拖动条复位到右上角
-        _dragHandle.addEventListener('dblclick', resetFindBarPosition);
+        // 双击空白区域复位到右上角；双击输入框仍是选词
+        _bar.addEventListener('dblclick', (e) => {
+            if (isFindBarControl(e.target)) return;
+            resetFindBarPosition();
+        });
 
         window.addEventListener('resize', () => {
             if (!_bar || _bar.classList.contains('hidden')) return;
