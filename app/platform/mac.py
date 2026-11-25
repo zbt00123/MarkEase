@@ -431,100 +431,11 @@ class MacPlatform(PlatformBase):
         if wv is None:
             return {'ok': False, 'error': '无法获取 WKWebView'}
 
-        # 首选原生打印：遵守 @media print，分页、浅色、无查找高亮。
-        if self._try_native_print(window, wv, pdf_path):
-            return {'ok': True}
-
-        # 原生打印失败时兜底：createPDF 后按页切片（允许切断超长块）。
+        # NSPrintOperation 在 macOS 上会卡在保存面板，已弃用。
+        # createPDF 先按浅色打印版式截取，再按 Letter 页切片。
         if self._fallback_create_pdf(window, wv, pdf_path):
             return {'ok': True}
         return {'ok': False, 'error': 'PDF 导出失败'}
-
-    def _try_native_print(self, window, wv, pdf_path):
-        try:
-            import AppKit
-            import Foundation
-        except Exception as e:
-            print(f'[MarkEase][mac] native print unavailable: {e}')
-            return False
-
-        try:
-            window.evaluate_js(
-                'window.MKSetPdfMode && window.MKSetPdfMode(true)')
-        except Exception:
-            pass
-        time.sleep(0.6)
-
-        def _restore():
-            try:
-                window.evaluate_js(
-                    'window.MKSetPdfMode && window.MKSetPdfMode(false)')
-            except Exception:
-                pass
-
-        holder = {}
-        done = threading.Event()
-
-        def _do_print():
-            try:
-                info = AppKit.NSPrintInfo.alloc().init()
-                # 与 Windows / 后续兜底分页保持一致：Letter + 0.4in 边距
-                info.setPaperSize_(Foundation.NSMakeSize(612.0, 792.0))
-                info.setTopMargin_(28.8)
-                info.setBottomMargin_(28.8)
-                info.setLeftMargin_(28.8)
-                info.setRightMargin_(28.8)
-                info.setHorizontallyCentered_(True)
-                info.setVerticallyCentered_(False)
-                info.setJobDisposition_(AppKit.NSPrintSaveJob)
-                url = Foundation.NSURL.fileURLWithPath_(pdf_path)
-                info_dict = info.dictionary()
-                try:
-                    info_dict.setObject_forKey_(
-                        url, AppKit.NSPrintJobSavingURL)
-                except Exception:
-                    info_dict.setObject_forKey_(
-                        url, 'NSPrintJobSavingURL')
-
-                op = wv.printOperationWithPrintInfo_(info)
-                if op is None:
-                    raise RuntimeError('WKWebView 不支持打印')
-                op.setShowsPrintPanel_(False)
-                op.setShowsProgressPanel_(False)
-                holder['ok'] = bool(op.runOperation())
-            except Exception as e:
-                holder['error'] = e
-            finally:
-                done.set()
-
-        try:
-            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
-                _do_print)
-        except Exception as e:
-            print(f'[MarkEase][mac] native print dispatch failed: {e}')
-            _restore()
-            return False
-
-        if not done.wait(120):
-            print('[MarkEase][mac] native print timed out')
-            _restore()
-            return False
-        if holder.get('error') is not None:
-            print(f'[MarkEase][mac] native print failed: '
-                  f'{holder["error"]}')
-        ok = bool(holder.get('ok')) and os.path.exists(pdf_path) and \
-            os.path.getsize(pdf_path) > 100
-        if ok:
-            print(f'[MarkEase][mac] native print wrote {pdf_path}')
-            _restore()
-            return True
-        try:
-            if os.path.exists(pdf_path):
-                os.remove(pdf_path)
-        except Exception:
-            pass
-        _restore()
-        return False
 
     def _fallback_create_pdf(self, window, wv, pdf_path):
         """createPDF 兜底：先截取浅色长图，再按 Letter 页切片。"""

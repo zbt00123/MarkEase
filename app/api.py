@@ -1957,10 +1957,21 @@ class Api:
         embed_ok = embed_markdown_into_pdf(pdf_path, md_to_embed)
 
         size = os.path.getsize(pdf_path)
+        pages = 0
+        try:
+            import pymupdf
+            doc = pymupdf.open(pdf_path)
+            try:
+                pages = doc.page_count
+            finally:
+                doc.close()
+        except Exception:
+            pass
         return {
             'ok': True,
             'path': pdf_path,
             'size': size,
+            'pages': pages,
             'embedded': embed_ok,
         }
 

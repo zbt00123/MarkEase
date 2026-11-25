@@ -949,7 +949,11 @@ def _start_pdf_test(window, api, out_path):
         md = ('# PDF Test\n\n'
               'Hello **MarkEase** 中文测试。\n\n'
               '- one\n- two\n\n'
-              '> quote line\n')
+              '> quote line\n\n')
+        # 足够长，确保触发多页导出（分页是否正确）
+        paragraph = ('这是用于验证 PDF 分页的段落。MarkEase 应该把内容'
+                     '排成多页，而不是一张很长的单页。\n\n')
+        md += paragraph * 40
         try:
             window.run_js(
                 'window.MKTestLoad && window.MKTestLoad(%s)'
@@ -967,6 +971,11 @@ def _start_pdf_test(window, api, out_path):
 
         print('[MarkEase][pdf-test] '
               + _json.dumps(result, ensure_ascii=False))
+        if result.get('ok') and int(result.get('pages') or 0) < 2:
+            result = {'ok': False,
+                      'error': 'PDF did not paginate (pages < 2)',
+                      'pages': result.get('pages')}
+            print('[MarkEase][pdf-test] ' + _json.dumps(result))
         try:
             window.destroy()
         except Exception:
