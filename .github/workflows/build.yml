@@ -294,6 +294,30 @@ jobs:
             exit 1
           fi
 
+      - name: Verify PDF colors/layout (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          python - <<'PY'
+          import pymupdf
+          doc = pymupdf.open('/tmp/markease-test.pdf')
+          assert doc.page_count >= 2, f'only {doc.page_count} page(s)'
+          for index in (0, doc.page_count - 1):
+              page = doc[index]
+              pix = page.get_pixmap(matrix=pymupdf.Matrix(0.5, 0.5),
+                                    alpha=False)
+              points = [(3, 3), (pix.width - 4, 3),
+                        (3, pix.height - 4),
+                        (pix.width - 4, pix.height - 4)]
+              for x, y in points:
+                  rgb = pix.pixel(x, y)[:3]
+                  assert sum(rgb) / 3 > 180, (
+                      f'page {index} corner ({x},{y}) is dark: {rgb}')
+          text = ''.join(p.get_text() for p in doc)
+          assert '替换为' not in text and '查找' not in text, \
+              'find bar text leaked into PDF'
+          print(f'pdf layout ok: {doc.page_count} pages, light background')
+          PY
+
       - name: Open-file smoke test (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -309,6 +333,37 @@ jobs:
             echo "::error::--open-file-test failed with code $code"
             exit 1
           fi
+
+      - name: LaunchServices double-click open test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          APP="$PWD/dist/MarkEase.app"
+          TEST=/tmp/markease-launchservices.md
+          printf '# MarkEase LaunchServices test\n\nhello\n' > "$TEST"
+          rm -f "$HOME/Library/Logs/MarkEase/markease.log" \
+                "$APP/Contents/MacOS/logs/markease.log"
+          open -a "$APP" "$TEST"
+          found=0
+          for i in $(seq 1 30); do
+            if grep -s 'startup_file_queued' \
+                 "$HOME/Library/Logs/MarkEase/markease.log" \
+                 "$APP/Contents/MacOS/logs/markease.log" \
+                 2>/dev/null | grep -q 'markease-launchservices.md'; then
+              found=1
+              break
+            fi
+            sleep 0.5
+          done
+          if [ "$found" -ne 1 ]; then
+            echo '::error::LaunchServices did not deliver the file'
+            cat "$HOME/Library/Logs/MarkEase/markease.log" 2>/dev/null || true
+            cat "$APP/Contents/MacOS/logs/markease.log" 2>/dev/null || true
+            pkill -f "$APP/Contents/MacOS/MarkEase" || true
+            exit 1
+          fi
+          echo 'LaunchServices open: ok'
+          pkill -f "$APP/Contents/MacOS/MarkEase" || true
 
       - name: Package
         env:
