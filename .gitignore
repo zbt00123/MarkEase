@@ -28,6 +28,12 @@ release/
 # 忽略日志
 logs/
 
+# 根目录误存的 CI 运行日志（GitHub Actions runner 输出，含 runner 绝对路径，无保留价值）
+_*.log
+
+# 一次性临时推送脚本（绕过 git 直接调 GitHub API 时产生，不属于项目代码）
+_api_push*.py
+
 # 忽略开发文档
 开发手册/
 
