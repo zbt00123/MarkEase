@@ -111,11 +111,12 @@ info_plist = {
         {
             'CFBundleTypeName': 'Markdown Document',
             'CFBundleTypeRole': 'Editor',
-            'LSHandlerRank': 'Alternate',
+            'LSHandlerRank': 'Owner',
             'LSItemContentTypes': [
                 'net.daringfireball.markdown',
             ],
-            'CFBundleTypeExtensions': ['md', 'markdown'],
+            'CFBundleTypeExtensions': ['md', 'markdown', 'mdown', 'mkd'],
+            'CFBundleTypeMIMETypes': ['text/markdown', 'text/x-markdown'],
         },
         {
             'CFBundleTypeName': 'PDF Document',
@@ -123,6 +124,22 @@ info_plist = {
             'LSHandlerRank': 'Alternate',
             'LSItemContentTypes': ['com.adobe.pdf'],
             'CFBundleTypeExtensions': ['pdf'],
+        },
+    ],
+    # 让 LaunchServices 认识 .md 的 UTI，避免退化成 public.plain-text
+    'UTExportedTypeDeclarations': [
+        {
+            'UTTypeIdentifier': 'net.daringfireball.markdown',
+            'UTTypeDescription': 'Markdown Document',
+            'UTTypeConformsTo': ['public.plain-text'],
+            'UTTypeTagSpecification': {
+                'public.filename-extension': [
+                    'md', 'markdown', 'mdown', 'mkd',
+                ],
+                'public.mime-type': [
+                    'text/markdown', 'text/x-markdown',
+                ],
+            },
         },
     ],
 }

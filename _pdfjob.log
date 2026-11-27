@@ -1,0 +1,1000 @@
+﻿2026-11-25T17:35:10.9236790Z Current runner version: '2.338.2'
+2026-11-25T17:35:10.9279980Z ##[group]Runner Image Provisioner
+2026-11-25T17:35:10.9281560Z Hosted Compute Agent
+2026-11-25T17:35:10.9282630Z Version: 20260819.586
+2026-11-25T17:35:10.9283880Z Commit: 3cc4a88dfa507ef76119ad1bb3eccc6378bb2b76
+2026-11-25T17:35:10.9285320Z Build Date: 2026-08-18T23:20:18Z
+2026-11-25T17:35:10.9286780Z Worker ID: {9ed3ecad-924b-4546-b4eb-f59fe8f34c0b}
+2026-11-25T17:35:10.9288600Z Azure Region: westus
+2026-11-25T17:35:10.9289860Z ##[endgroup]
+2026-11-25T17:35:10.9294480Z ##[group]Operating System
+2026-11-25T17:35:10.9295690Z macOS
+2026-11-25T17:35:10.9296850Z 15.7.9
+2026-11-25T17:35:10.9297900Z 24G830
+2026-11-25T17:35:10.9298820Z ##[endgroup]
+2026-11-25T17:35:10.9299820Z ##[group]Runner Image
+2026-11-25T17:35:10.9300850Z Image: macos-15
+2026-11-25T17:35:10.9301870Z Version: 20260824.0482.1
+2026-11-25T17:35:10.9304670Z Included Software: https://github.com/actions/runner-images/blob/macos-15/20260824.0482/images/macos/macos-15-Readme.md
+2026-11-25T17:35:10.9308130Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-15%2F20260824.0482
+2026-11-25T17:35:10.9310560Z ##[endgroup]
+2026-11-25T17:35:10.9312820Z ##[group]GITHUB_TOKEN Permissions
+2026-11-25T17:35:10.9318320Z Contents: read
+2026-11-25T17:35:10.9319320Z Metadata: read
+2026-11-25T17:35:10.9320300Z ##[endgroup]
+2026-11-25T17:35:10.9325440Z Secret source: Actions
+2026-11-25T17:35:10.9327220Z Cache mode: write
+2026-11-25T17:35:10.9329200Z Prepare workflow directory
+2026-11-25T17:35:11.0408020Z Prepare all required actions
+2026-11-25T17:35:11.0501930Z Getting action download info
+2026-11-25T17:35:11.5226320Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-11-25T17:35:11.7596650Z Download action repository 'actions/setup-python@v7' (SHA:6d4fd22b20465ccc0f7354476588e8df7c9ca0e0)
+2026-11-25T17:35:12.3632540Z Download action repository 'actions/upload-artifact@v7' (SHA:cf430e030ddbb5b0abf93d22962f4752f3646cd9)
+2026-11-25T17:35:13.1201840Z Complete job name: macos-x64
+2026-11-25T17:35:13.2914800Z ##[group]Run actions/checkout@v7
+2026-11-25T17:35:13.2917100Z with:
+2026-11-25T17:35:13.2918270Z   repository: zbt00123/MarkEase
+2026-11-25T17:35:13.2931930Z   token: ***
+2026-11-25T17:35:13.2933110Z   ssh-strict: true
+2026-11-25T17:35:13.2934320Z   ssh-user: git
+2026-11-25T17:35:13.2935540Z   persist-credentials: true
+2026-11-25T17:35:13.2936930Z   clean: true
+2026-11-25T17:35:13.2938160Z   sparse-checkout-cone-mode: true
+2026-11-25T17:35:13.2939820Z   fetch-depth: 1
+2026-11-25T17:35:13.2941190Z   fetch-tags: false
+2026-11-25T17:35:13.2942440Z   show-progress: true
+2026-11-25T17:35:13.2943690Z   lfs: false
+2026-11-25T17:35:13.2944870Z   submodules: false
+2026-11-25T17:35:13.2946150Z   set-safe-directory: true
+2026-11-25T17:35:13.2947590Z   allow-unsafe-pr-checkout: false
+2026-11-25T17:35:13.2950160Z env:
+2026-11-25T17:35:13.2951290Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:35:13.2952610Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:35:13.2953980Z ##[endgroup]
+2026-11-25T17:35:13.7161060Z Syncing repository: zbt00123/MarkEase
+2026-11-25T17:35:13.7165880Z ##[group]Getting Git version info
+2026-11-25T17:35:13.7168100Z Working directory is '/Users/runner/work/MarkEase/MarkEase'
+2026-11-25T17:35:13.7171370Z [command]/usr/local/bin/git version
+2026-11-25T17:35:13.7173250Z git version 2.55.0
+2026-11-25T17:35:13.7271240Z ##[endgroup]
+2026-11-25T17:35:13.7369380Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/a83de7df-e191-4362-afb1-80d1e848d2db/.gitconfig'
+2026-11-25T17:35:13.7376900Z Temporarily overriding HOME='/Users/runner/work/_temp/a83de7df-e191-4362-afb1-80d1e848d2db' before making global git config changes
+2026-11-25T17:35:13.7423840Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-25T17:35:13.7448970Z [command]/usr/local/bin/git config --global --add safe.directory /Users/runner/work/MarkEase/MarkEase
+2026-11-25T17:35:13.7535290Z Deleting the contents of '/Users/runner/work/MarkEase/MarkEase'
+2026-11-25T17:35:13.7610620Z ##[group]Determining repository object format
+2026-11-25T17:35:13.7654790Z ##[endgroup]
+2026-11-25T17:35:13.7689790Z ##[group]Initializing the repository
+2026-11-25T17:35:13.7704610Z [command]/usr/local/bin/git init /Users/runner/work/MarkEase/MarkEase
+2026-11-25T17:35:13.7889270Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-25T17:35:13.7905120Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-25T17:35:13.7937960Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-25T17:35:13.7939910Z hint: call:
+2026-11-25T17:35:13.7968970Z hint:
+2026-11-25T17:35:13.8000010Z hint: 	git config --global init.defaultBranch <name>
+2026-11-25T17:35:13.8032760Z hint:
+2026-11-25T17:35:13.8100100Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-25T17:35:13.8190370Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-25T17:35:13.8234260Z hint:
+2026-11-25T17:35:13.8262900Z hint: 	git branch -m <name>
+2026-11-25T17:35:13.8290700Z hint:
+2026-11-25T17:35:13.8345370Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-25T17:35:13.8397720Z Initialized empty Git repository in /Users/runner/work/MarkEase/MarkEase/.git/
+2026-11-25T17:35:13.8517680Z [command]/usr/local/bin/git remote add origin https://github.com/zbt00123/MarkEase
+2026-11-25T17:35:13.8574270Z ##[endgroup]
+2026-11-25T17:35:13.8618420Z ##[group]Disabling automatic garbage collection
+2026-11-25T17:35:13.8641620Z [command]/usr/local/bin/git config --local gc.auto 0
+2026-11-25T17:35:13.8716340Z ##[endgroup]
+2026-11-25T17:35:13.8753970Z ##[group]Setting up auth
+2026-11-25T17:35:13.8793580Z Removing SSH command configuration
+2026-11-25T17:35:13.8864710Z [command]/usr/local/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-25T17:35:13.8959840Z [command]/usr/local/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-25T17:35:14.0823030Z Removing HTTP extra header
+2026-11-25T17:35:14.0880130Z [command]/usr/local/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-25T17:35:14.1087240Z [command]/usr/local/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-25T17:35:14.3223160Z Removing includeIf entries pointing to credentials config files
+2026-11-25T17:35:14.3325200Z [command]/usr/local/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-25T17:35:14.3437050Z [command]/usr/local/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-25T17:35:14.5394680Z [command]/usr/local/bin/git config --file /Users/runner/work/_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-25T17:35:14.5486500Z [command]/usr/local/bin/git config --local includeIf.gitdir:/Users/runner/work/MarkEase/MarkEase/.git.path /Users/runner/work/_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config
+2026-11-25T17:35:14.5615890Z [command]/usr/local/bin/git config --local includeIf.gitdir:/Users/runner/work/MarkEase/MarkEase/.git/worktrees/*.path /Users/runner/work/_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config
+2026-11-25T17:35:14.5752110Z [command]/usr/local/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config
+2026-11-25T17:35:14.5849330Z [command]/usr/local/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config
+2026-11-25T17:35:14.5963760Z ##[endgroup]
+2026-11-25T17:35:14.5996710Z ##[group]Fetching the repository
+2026-11-25T17:35:14.6038100Z [command]/usr/local/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +df1d3672435650dd66a487f008a40649e4b66f08:refs/remotes/origin/main
+2026-11-25T17:35:15.3494150Z From https://github.com/zbt00123/MarkEase
+2026-11-25T17:35:15.3572070Z  * [new ref]         df1d3672435650dd66a487f008a40649e4b66f08 -> origin/main
+2026-11-25T17:35:15.3729980Z [command]/usr/local/bin/git branch --list --remote origin/main
+2026-11-25T17:35:15.3760600Z   origin/main
+2026-11-25T17:35:15.3862770Z [command]/usr/local/bin/git rev-parse refs/remotes/origin/main
+2026-11-25T17:35:15.3870960Z df1d3672435650dd66a487f008a40649e4b66f08
+2026-11-25T17:35:15.3884250Z ##[endgroup]
+2026-11-25T17:35:15.3886450Z ##[group]Determining the checkout info
+2026-11-25T17:35:15.3889850Z ##[endgroup]
+2026-11-25T17:35:15.3892190Z [command]/usr/local/bin/git sparse-checkout disable
+2026-11-25T17:35:15.4062590Z [command]/usr/local/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-25T17:35:15.4244100Z ##[group]Checking out the ref
+2026-11-25T17:35:15.4278800Z [command]/usr/local/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-11-25T17:35:15.5481260Z Switched to a new branch 'main'
+2026-11-25T17:35:15.5503510Z branch 'main' set up to track 'origin/main'.
+2026-11-25T17:35:15.5581380Z ##[endgroup]
+2026-11-25T17:35:15.5716290Z [command]/usr/local/bin/git log -1 --format=%H
+2026-11-25T17:35:15.5896530Z df1d3672435650dd66a487f008a40649e4b66f08
+2026-11-25T17:35:15.6790100Z ##[group]Run actions/setup-python@v7
+2026-11-25T17:35:15.6791990Z with:
+2026-11-25T17:35:15.6793320Z   python-version: 3.14
+2026-11-25T17:35:15.6794830Z   cache: pip
+2026-11-25T17:35:15.6796190Z   check-latest: false
+2026-11-25T17:35:15.6816290Z   token: ***
+2026-11-25T17:35:15.6820000Z   mirror: https://raw.githubusercontent.com/actions/python-versions/main
+2026-11-25T17:35:15.6824810Z   update-environment: true
+2026-11-25T17:35:15.6827450Z   allow-prereleases: false
+2026-11-25T17:35:15.6829880Z   freethreaded: false
+2026-11-25T17:35:15.6831870Z env:
+2026-11-25T17:35:15.6833190Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:35:15.6834740Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:35:15.6836300Z ##[endgroup]
+2026-11-25T17:35:15.9672040Z ##[group]Installed versions
+2026-11-25T17:35:16.0685050Z Successfully set up CPython (3.14.7)
+2026-11-25T17:35:16.0718430Z ##[endgroup]
+2026-11-25T17:35:16.1073710Z [command]/Users/runner/hostedtoolcache/Python/3.14.7/x64/bin/pip cache dir
+2026-11-25T17:35:17.1316810Z /Users/runner/Library/Caches/pip
+2026-11-25T17:35:17.4868720Z Cache hit for: setup-python-macOS-x64-python-3.14.7-pip-8a4f023d6c37fccfd9af2183a0f944243aaafdb7c296f31949896424e6aa0316
+2026-11-25T17:35:18.7865100Z Received 0 of 53341071 (0.0%), 0.0 MBs/sec
+2026-11-25T17:35:19.7877170Z Received 50331648 of 53341071 (94.4%), 24.0 MBs/sec
+2026-11-25T17:35:19.8808740Z Received 53341071 of 53341071 (100.0%), 24.3 MBs/sec
+2026-11-25T17:35:19.8860320Z Cache Size: ~51 MB (53341071 B)
+2026-11-25T17:35:19.8965160Z [command]/usr/local/bin/gtar -xf /Users/runner/work/_temp/239c159f-dbc8-4228-b880-8f362109e2f7/cache.tzst -P -C /Users/runner/work/MarkEase/MarkEase --delay-directory-restore --use-compress-program unzstd
+2026-11-25T17:35:20.2592600Z Cache restored successfully
+2026-11-25T17:35:20.2636980Z Cache restored from key: setup-python-macOS-x64-python-3.14.7-pip-8a4f023d6c37fccfd9af2183a0f944243aaafdb7c296f31949896424e6aa0316
+2026-11-25T17:35:20.2926710Z ##[group]Run python -m pip install --upgrade pip
+2026-11-25T17:35:20.2927750Z [36;1mpython -m pip install --upgrade pip[0m
+2026-11-25T17:35:20.2928470Z [36;1mpython -m pip install -r requirements.txt[0m
+2026-11-25T17:35:20.2929140Z [36;1mpython -m pip install pyinstaller[0m
+2026-11-25T17:35:20.2929750Z [36;1mif [ "macOS" = "macOS" ]; then[0m
+2026-11-25T17:35:20.2930370Z [36;1m  python -m pip install dmgbuild[0m
+2026-11-25T17:35:20.2930950Z [36;1mfi[0m
+2026-11-25T17:35:20.3009490Z shell: /bin/bash -e {0}
+2026-11-25T17:35:20.3011000Z env:
+2026-11-25T17:35:20.3011390Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:35:20.3011850Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:35:20.3012550Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:35:20.3013530Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:35:20.3014510Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:35:20.3015530Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:35:20.3016440Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:35:20.3017160Z ##[endgroup]
+2026-11-25T17:35:21.6861480Z Requirement already satisfied: pip in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (26.2.1)
+2026-11-25T17:35:21.8285400Z Collecting pip
+2026-11-25T17:35:21.8299360Z   Using cached pip-26.3-py3-none-any.whl.metadata (4.6 kB)
+2026-11-25T17:35:21.9603320Z Using cached pip-26.3-py3-none-any.whl (2.0 MB)
+2026-11-25T17:35:22.1290160Z Installing collected packages: pip
+2026-11-25T17:35:22.1405400Z   Attempting uninstall: pip
+2026-11-25T17:35:22.1485880Z     Found existing installation: pip 26.2.1
+2026-11-25T17:35:22.2188190Z     Uninstalling pip-26.2.1:
+2026-11-25T17:35:22.5455250Z       Successfully uninstalled pip-26.2.1
+2026-11-25T17:35:24.8961780Z Successfully installed pip-26.3
+2026-11-25T17:35:25.6978830Z Ignoring pythonnet: markers 'sys_platform == "win32"' don't match your environment
+2026-11-25T17:35:25.6981030Z Ignoring PyGObject: markers 'sys_platform == "linux"' don't match your environment
+2026-11-25T17:35:25.7967530Z Collecting pywebview>=4.0 (from -r requirements.txt (line 9))
+2026-11-25T17:35:25.7994870Z   Using cached pywebview-6.2.1-py3-none-any.whl.metadata (4.9 kB)
+2026-11-25T17:35:26.0541700Z Collecting PyMuPDF<1.29,>=1.23 (from -r requirements.txt (line 10))
+2026-11-25T17:35:26.0588360Z   Using cached pymupdf-1.28.2-cp310-abi3-macosx_10_15_x86_64.whl.metadata (26 kB)
+2026-11-25T17:35:26.3980080Z Collecting Pillow>=10.0 (from -r requirements.txt (line 11))
+2026-11-25T17:35:26.4008760Z   Using cached pillow-13.0.0-cp314-cp314-macosx_10_15_x86_64.whl.metadata (9.1 kB)
+2026-11-25T17:35:26.4091660Z Requirement already satisfied: certifi>=2024.0 in /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages (from -r requirements.txt (line 12)) (2026.7.22)
+2026-11-25T17:35:26.4575440Z Collecting pyobjc-core>=9.0 (from -r requirements.txt (line 24))
+2026-11-25T17:35:26.4602790Z   Using cached pyobjc_core-13.1-cp314-cp314-macosx_10_15_universal2.whl.metadata (2.8 kB)
+2026-11-25T17:35:26.5183720Z Collecting pyobjc-framework-Cocoa>=9.0 (from -r requirements.txt (line 25))
+2026-11-25T17:35:26.5215240Z   Using cached pyobjc_framework_cocoa-13.1-cp314-cp314-macosx_10_15_universal2.whl.metadata (2.6 kB)
+2026-11-25T17:35:26.5745990Z Collecting pyobjc-framework-Quartz>=9.0 (from -r requirements.txt (line 26))
+2026-11-25T17:35:26.5771830Z   Using cached pyobjc_framework_quartz-13.1-cp314-cp314-macosx_10_15_universal2.whl.metadata (3.6 kB)
+2026-11-25T17:35:26.6237570Z Collecting pyobjc-framework-WebKit>=9.0 (from -r requirements.txt (line 27))
+2026-11-25T17:35:26.6269650Z   Using cached pyobjc_framework_webkit-13.1-cp314-cp314-macosx_10_15_universal2.whl.metadata (2.7 kB)
+2026-11-25T17:35:26.6493480Z Collecting python-docx>=1.1 (from -r requirements.txt (line 30))
+2026-11-25T17:35:26.6521300Z   Using cached python_docx-1.2.0-py3-none-any.whl.metadata (2.0 kB)
+2026-11-25T17:35:27.0425330Z Collecting lxml>=5.0 (from -r requirements.txt (line 31))
+2026-11-25T17:35:27.0453300Z   Using cached lxml-6.1.3-cp314-cp314-macosx_10_15_x86_64.whl.metadata (3.3 kB)
+2026-11-25T17:35:27.1535760Z Collecting psutil>=5.9 (from -r requirements.txt (line 32))
+2026-11-25T17:35:27.1565590Z   Using cached psutil-7.2.2-cp36-abi3-macosx_10_9_x86_64.whl.metadata (22 kB)
+2026-11-25T17:35:27.2093020Z Collecting pyobjc-framework-security>=9.0 (from pywebview>=4.0->-r requirements.txt (line 9))
+2026-11-25T17:35:27.2123350Z   Using cached pyobjc_framework_security-13.1-cp314-cp314-macosx_10_15_universal2.whl.metadata (2.5 kB)
+2026-11-25T17:35:27.2450010Z Collecting pyobjc-framework-UniformTypeIdentifiers>=9.0 (from pywebview>=4.0->-r requirements.txt (line 9))
+2026-11-25T17:35:27.2486400Z   Using cached pyobjc_framework_uniformtypeidentifiers-13.1-py2.py3-none-any.whl.metadata (2.6 kB)
+2026-11-25T17:35:27.2741400Z Collecting proxy_tools (from pywebview>=4.0->-r requirements.txt (line 9))
+2026-11-25T17:35:27.2742840Z   Using cached proxy_tools-0.1.0-py3-none-any.whl
+2026-11-25T17:35:27.3123980Z Collecting bottle (from pywebview>=4.0->-r requirements.txt (line 9))
+2026-11-25T17:35:27.3153910Z   Using cached bottle-0.13.4-py2.py3-none-any.whl.metadata (1.6 kB)
+2026-11-25T17:35:27.3493530Z Collecting typing_extensions (from pywebview>=4.0->-r requirements.txt (line 9))
+2026-11-25T17:35:27.3520150Z   Using cached typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+2026-11-25T17:35:27.3754570Z Using cached pymupdf-1.28.2-cp310-abi3-macosx_10_15_x86_64.whl (24.6 MB)
+2026-11-25T17:35:27.4057130Z Using cached pywebview-6.2.1-py3-none-any.whl (525 kB)
+2026-11-25T17:35:27.4097260Z Using cached pillow-13.0.0-cp314-cp314-macosx_10_15_x86_64.whl (5.6 MB)
+2026-11-25T17:35:27.4192650Z Using cached pyobjc_core-13.1-cp314-cp314-macosx_10_15_universal2.whl (766 kB)
+2026-11-25T17:35:27.4228060Z Using cached pyobjc_framework_cocoa-13.1-cp314-cp314-macosx_10_15_universal2.whl (392 kB)
+2026-11-25T17:35:27.4274980Z Using cached pyobjc_framework_quartz-13.1-cp314-cp314-macosx_10_15_universal2.whl (213 kB)
+2026-11-25T17:35:27.4315540Z Using cached pyobjc_framework_webkit-13.1-cp314-cp314-macosx_10_15_universal2.whl (51 kB)
+2026-11-25T17:35:27.4347900Z Using cached python_docx-1.2.0-py3-none-any.whl (252 kB)
+2026-11-25T17:35:27.4392090Z Using cached lxml-6.1.3-cp314-cp314-macosx_10_15_x86_64.whl (4.6 MB)
+2026-11-25T17:35:27.4454200Z Using cached psutil-7.2.2-cp36-abi3-macosx_10_9_x86_64.whl (129 kB)
+2026-11-25T17:35:27.4495370Z Using cached pyobjc_framework_security-13.1-cp314-cp314-macosx_10_15_universal2.whl (45 kB)
+2026-11-25T17:35:27.4526800Z Using cached pyobjc_framework_uniformtypeidentifiers-13.1-py2.py3-none-any.whl (5.0 kB)
+2026-11-25T17:35:27.4555520Z Using cached typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+2026-11-25T17:35:27.4585240Z Using cached bottle-0.13.4-py2.py3-none-any.whl (103 kB)
+2026-11-25T17:35:27.7472690Z Installing collected packages: proxy_tools, bottle, typing_extensions, pyobjc-core, PyMuPDF, psutil, Pillow, lxml, python-docx, pyobjc-framework-Cocoa, pyobjc-framework-WebKit, pyobjc-framework-UniformTypeIdentifiers, pyobjc-framework-security, pyobjc-framework-Quartz, pywebview
+2026-11-25T17:35:32.0156350Z 
+2026-11-25T17:35:32.0205410Z Successfully installed Pillow-13.0.0 PyMuPDF-1.28.2 bottle-0.13.4 lxml-6.1.3 proxy_tools-0.1.0 psutil-7.2.2 pyobjc-core-13.1 pyobjc-framework-Cocoa-13.1 pyobjc-framework-Quartz-13.1 pyobjc-framework-UniformTypeIdentifiers-13.1 pyobjc-framework-WebKit-13.1 pyobjc-framework-security-13.1 python-docx-1.2.0 pywebview-6.2.1 typing_extensions-4.16.0
+2026-11-25T17:35:32.9849840Z Collecting pyinstaller
+2026-11-25T17:35:32.9890480Z   Using cached pyinstaller-6.22.3-py3-none-macosx_10_13_universal2.whl.metadata (8.5 kB)
+2026-11-25T17:35:33.0199550Z Collecting altgraph (from pyinstaller)
+2026-11-25T17:35:33.0224380Z   Using cached altgraph-0.17.5-py2.py3-none-any.whl.metadata (7.5 kB)
+2026-11-25T17:35:33.0505260Z Collecting macholib>=1.8 (from pyinstaller)
+2026-11-25T17:35:33.0534850Z   Using cached macholib-1.16.4-py2.py3-none-any.whl.metadata (12 kB)
+2026-11-25T17:35:33.0893700Z Collecting packaging>=22.0 (from pyinstaller)
+2026-11-25T17:35:33.0925980Z   Using cached packaging-26.4-py3-none-any.whl.metadata (3.5 kB)
+2026-11-25T17:35:33.1397850Z Collecting pyinstaller-hooks-contrib>=2026.7 (from pyinstaller)
+2026-11-25T17:35:33.1434210Z   Using cached pyinstaller_hooks_contrib-2026.10-py3-none-any.whl.metadata (16 kB)
+2026-11-25T17:35:33.3584540Z Collecting setuptools>=42.0.0 (from pyinstaller)
+2026-11-25T17:35:33.3674790Z   Using cached setuptools-84.2.1-py3-none-any.whl.metadata (6.6 kB)
+2026-11-25T17:35:33.3746920Z Using cached pyinstaller-6.22.3-py3-none-macosx_10_13_universal2.whl (1.1 MB)
+2026-11-25T17:35:33.3792370Z Using cached macholib-1.16.4-py2.py3-none-any.whl (38 kB)
+2026-11-25T17:35:33.3827570Z Using cached altgraph-0.17.5-py2.py3-none-any.whl (21 kB)
+2026-11-25T17:35:33.3858500Z Using cached packaging-26.4-py3-none-any.whl (140 kB)
+2026-11-25T17:35:33.3887150Z Using cached pyinstaller_hooks_contrib-2026.10-py3-none-any.whl (463 kB)
+2026-11-25T17:35:33.3918040Z Using cached setuptools-84.2.1-py3-none-any.whl (876 kB)
+2026-11-25T17:35:33.5279070Z Installing collected packages: altgraph, setuptools, packaging, macholib, pyinstaller-hooks-contrib, pyinstaller
+2026-11-25T17:35:37.1308260Z 
+2026-11-25T17:35:37.1859310Z Successfully installed altgraph-0.17.5 macholib-1.16.4 packaging-26.4 pyinstaller-6.22.3 pyinstaller-hooks-contrib-2026.10 setuptools-84.2.1
+2026-11-25T17:35:38.0557120Z Collecting dmgbuild
+2026-11-25T17:35:38.0593380Z   Using cached dmgbuild-2.0.0-py3-none-any.whl.metadata (2.6 kB)
+2026-11-25T17:35:38.0850360Z Collecting ds_store>=1.1.0 (from dmgbuild)
+2026-11-25T17:35:38.0919480Z   Using cached ds_store-1.3.4-py3-none-any.whl.metadata (2.3 kB)
+2026-11-25T17:35:38.1143380Z Collecting mac_alias>=2.0.1 (from dmgbuild)
+2026-11-25T17:35:38.1193720Z   Using cached mac_alias-2.2.4-py3-none-any.whl.metadata (2.4 kB)
+2026-11-25T17:35:38.1279240Z Using cached dmgbuild-2.0.0-py3-none-any.whl (35 kB)
+2026-11-25T17:35:38.1312280Z Using cached ds_store-1.3.4-py3-none-any.whl (16 kB)
+2026-11-25T17:35:38.1406520Z Using cached mac_alias-2.2.4-py3-none-any.whl (20 kB)
+2026-11-25T17:35:38.2312890Z Installing collected packages: mac_alias, ds_store, dmgbuild
+2026-11-25T17:35:38.3719790Z 
+2026-11-25T17:35:38.3801990Z Successfully installed dmgbuild-2.0.0 ds_store-1.3.4 mac_alias-2.2.4
+2026-11-25T17:35:38.5412430Z ##[group]Run if [ "macos-x64" = "linux-x64" ]; then
+2026-11-25T17:35:38.5413600Z [36;1mif [ "macos-x64" = "linux-x64" ]; then[0m
+2026-11-25T17:35:38.5414700Z [36;1m  python -m PyInstaller --clean --noconfirm packaging/linux.spec[0m
+2026-11-25T17:35:38.5415750Z [36;1melse[0m
+2026-11-25T17:35:38.5416680Z [36;1m  python -m PyInstaller --clean --noconfirm packaging/macos.spec[0m
+2026-11-25T17:35:38.5417630Z [36;1mfi[0m
+2026-11-25T17:35:38.5522070Z shell: /bin/bash -e {0}
+2026-11-25T17:35:38.5523070Z env:
+2026-11-25T17:35:38.5523710Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:35:38.5524300Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:35:38.5525380Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:35:38.5526780Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:35:38.5528090Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:35:38.5530120Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:35:38.5531130Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:35:38.5532180Z   MK_TARGET_ARCH: x86_64
+2026-11-25T17:35:38.5532880Z ##[endgroup]
+2026-11-25T17:35:38.8191320Z 95 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.10
+2026-11-25T17:35:38.8195470Z 95 INFO: Python: 3.14.7
+2026-11-25T17:35:38.8425990Z 118 INFO: Platform: macOS-15.7.9-x86_64-i386-64bit-Mach-O
+2026-11-25T17:35:38.8427380Z 118 INFO: Python environment: /Library/Frameworks/Python.framework/Versions/3.14
+2026-11-25T17:35:38.8483620Z 124 INFO: Removing temporary files and cleaning cache in /Users/runner/Library/Application Support/pyinstaller
+2026-11-25T17:35:39.2348790Z warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+2026-11-25T17:35:39.4744500Z [spec] collect_all(fitz) ok
+2026-11-25T17:35:39.9997730Z [spec] collect_all(pymupdf) ok
+2026-11-25T17:35:40.5746890Z [spec] collect_all(docx) ok
+2026-11-25T17:35:41.0067460Z [spec] collect_all(PIL) ok
+2026-11-25T17:35:41.5036750Z [spec] collect_all(certifi) ok
+2026-11-25T17:35:42.0663760Z [spec] icons: /Users/runner/work/MarkEase/MarkEase/build/macos/icons/markease.png / /Users/runner/work/MarkEase/MarkEase/build/macos/icons/markease.icns
+2026-11-25T17:35:42.0668810Z 3343 INFO: Module search paths (PYTHONPATH):
+2026-11-25T17:35:42.0670570Z ['/Users/runner/work/MarkEase/MarkEase/packaging',
+2026-11-25T17:35:42.0671560Z  '/Users/runner/work/MarkEase/MarkEase',
+2026-11-25T17:35:42.0672620Z  '/Library/Frameworks/Python.framework/Versions/3.14/lib/python314.zip',
+2026-11-25T17:35:42.0673990Z  '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14',
+2026-11-25T17:35:42.0675390Z  '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/lib-dynload',
+2026-11-25T17:35:42.0676970Z  '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages',
+2026-11-25T17:35:42.0678190Z  '/Users/runner/work/MarkEase/MarkEase']
+2026-11-25T17:35:42.4134980Z 3689 INFO: Appending 'binaries' from .spec
+2026-11-25T17:35:42.4144780Z 3690 INFO: Appending 'datas' from .spec
+2026-11-25T17:35:42.4343440Z 3710 INFO: checking Analysis
+2026-11-25T17:35:42.4344510Z 3710 INFO: Building Analysis because Analysis-00.toc is non existent
+2026-11-25T17:35:42.4345580Z 3710 INFO: Looking for Python shared library...
+2026-11-25T17:35:42.4435950Z 3719 INFO: Using Python shared library: /Library/Frameworks/Python.framework/Versions/3.14/Python
+2026-11-25T17:35:42.4437490Z 3719 INFO: Running Analysis Analysis-00.toc
+2026-11-25T17:35:42.4439710Z 3719 INFO: Target bytecode optimization level: 0
+2026-11-25T17:35:42.4440550Z 3720 INFO: Initializing module dependency graph...
+2026-11-25T17:35:42.4458290Z 3722 INFO: Initializing module graph hook caches...
+2026-11-25T17:35:42.4599680Z 3736 INFO: Analyzing modules for base_library.zip ...
+2026-11-25T17:35:44.6903750Z 5966 INFO: Processing standard module hook 'hook-encodings.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:45.2974430Z 6573 INFO: Processing standard module hook 'hook-pickle.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:45.7656420Z 7041 INFO: Processing standard module hook 'hook-math.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:46.0172630Z 7293 INFO: Processing standard module hook 'hook-difflib.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:46.0405060Z 7316 INFO: Processing standard module hook 'hook-heapq.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:50.9386800Z 12214 INFO: Caching module dependency graph...
+2026-11-25T17:35:50.9961110Z 12272 INFO: Analyzing /Users/runner/work/MarkEase/MarkEase/main.py
+2026-11-25T17:35:51.1594880Z 12435 INFO: Processing standard module hook 'hook-sysconfig.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:51.1864750Z 12462 INFO: Processing standard module hook 'hook-_osx_support.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:51.1953420Z 12471 INFO: Processing standard module hook 'hook-_ctypes.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:51.3680190Z 12644 INFO: Processing standard module hook 'hook-psutil.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+2026-11-25T17:35:51.6006510Z 12876 INFO: Processing standard module hook 'hook-webview.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/webview/__pyinstaller'
+2026-11-25T17:35:51.7245830Z 13000 INFO: Processing standard module hook 'hook-platform.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:51.7891900Z 13065 INFO: Processing standard module hook 'hook-xml.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:52.1931410Z 13469 INFO: Processing standard module hook 'hook-webbrowser.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:52.9690270Z 14245 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:35:54.3888610Z 15664 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks/pre_safe_import_module'
+2026-11-25T17:35:54.3897660Z 15665 INFO: SetuptoolsInfo: initializing cached setuptools info...
+2026-11-25T17:35:55.5026250Z 16778 INFO: Processing pre-safe-import-module hook 'hook-gi.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks/pre_safe_import_module'
+2026-11-25T17:35:56.6215500Z 17897 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:36:02.8333290Z 24109 INFO: Processing standard module hook 'hook-pymupdf.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+2026-11-25T17:36:06.9059440Z 28179 INFO: Processing standard module hook 'hook-PIL.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:36:07.2703590Z 28546 INFO: Processing standard module hook 'hook-PIL.Image.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:36:08.4297170Z 29705 INFO: Processing standard module hook 'hook-PIL.ImageFilter.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:36:10.1573840Z 31433 INFO: Processing standard module hook 'hook-certifi.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+2026-11-25T17:36:10.4391130Z 31714 INFO: Analyzing hidden import 'fitz.table'
+2026-11-25T17:36:10.4419850Z 31715 INFO: Analyzing hidden import 'fitz.utils'
+2026-11-25T17:36:10.4443480Z 31716 INFO: Analyzing hidden import 'pymupdf.__main__'
+2026-11-25T17:36:10.5290640Z 31804 INFO: Analyzing hidden import 'pymupdf.libmupdfcpp'
+2026-11-25T17:36:10.5302470Z 31804 INFO: Analyzing hidden import 'docx'
+2026-11-25T17:36:10.5326740Z 31808 INFO: Processing standard module hook 'hook-docx.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+2026-11-25T17:36:10.7158540Z 31954 INFO: Processing standard module hook 'hook-lxml.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+2026-11-25T17:36:10.9702630Z 32246 INFO: Processing standard module hook 'hook-lxml.etree.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+2026-11-25T17:36:12.0918190Z 33364 INFO: Analyzing hidden import 'PIL.AvifImagePlugin'
+2026-11-25T17:36:12.1231220Z 33392 INFO: Analyzing hidden import 'PIL.BdfFontFile'
+2026-11-25T17:36:12.2076810Z 33483 INFO: Analyzing hidden import 'PIL.BlpImagePlugin'
+2026-11-25T17:36:12.2798620Z 33552 INFO: Analyzing hidden import 'PIL.BufrStubImagePlugin'
+2026-11-25T17:36:12.3038550Z 33558 INFO: Analyzing hidden import 'PIL.ContainerIO'
+2026-11-25T17:36:12.3086410Z 33575 INFO: Analyzing hidden import 'PIL.CurImagePlugin'
+2026-11-25T17:36:12.3124580Z 33586 INFO: Analyzing hidden import 'PIL.DcxImagePlugin'
+2026-11-25T17:36:12.3412680Z 33615 INFO: Analyzing hidden import 'PIL.DdsImagePlugin'
+2026-11-25T17:36:12.4194100Z 33674 INFO: Analyzing hidden import 'PIL.EpsImagePlugin'
+2026-11-25T17:36:12.4408210Z 33716 INFO: Analyzing hidden import 'PIL.FitsImagePlugin'
+2026-11-25T17:36:12.4541010Z 33730 INFO: Analyzing hidden import 'PIL.FliImagePlugin'
+2026-11-25T17:36:12.4667090Z 33742 INFO: Analyzing hidden import 'PIL.FpxImagePlugin'
+2026-11-25T17:36:12.4818930Z 33756 INFO: Analyzing hidden import 'PIL.FtexImagePlugin'
+2026-11-25T17:36:12.4868910Z 33762 INFO: Analyzing hidden import 'PIL.GbrImagePlugin'
+2026-11-25T17:36:12.4929480Z 33769 INFO: Analyzing hidden import 'PIL.GdImageFile'
+2026-11-25T17:36:12.4981160Z 33774 INFO: Analyzing hidden import 'PIL.GribStubImagePlugin'
+2026-11-25T17:36:12.5022590Z 33778 INFO: Analyzing hidden import 'PIL.Hdf5StubImagePlugin'
+2026-11-25T17:36:12.5062500Z 33782 INFO: Analyzing hidden import 'PIL.IcnsImagePlugin'
+2026-11-25T17:36:12.5928720Z 33868 INFO: Analyzing hidden import 'PIL.IcoImagePlugin'
+2026-11-25T17:36:12.6215580Z 33897 INFO: Analyzing hidden import 'PIL.ImImagePlugin'
+2026-11-25T17:36:12.6473670Z 33923 INFO: Analyzing hidden import 'PIL.ImageDraw'
+2026-11-25T17:36:12.7598220Z 34036 INFO: Analyzing hidden import 'PIL.ImageEnhance'
+2026-11-25T17:36:12.7771180Z 34053 INFO: Analyzing hidden import 'PIL.ImageGrab'
+2026-11-25T17:36:12.7928170Z 34069 INFO: Analyzing hidden import 'PIL.ImageMath'
+2026-11-25T17:36:12.8190430Z 34095 INFO: Analyzing hidden import 'PIL.ImageMorph'
+2026-11-25T17:36:12.8364210Z 34112 INFO: Analyzing hidden import 'PIL.ImageTk'
+2026-11-25T17:36:12.8496300Z 34125 INFO: Analyzing hidden import 'PIL.ImageTransform'
+2026-11-25T17:36:12.8545840Z 34130 INFO: Analyzing hidden import 'PIL.ImtImagePlugin'
+2026-11-25T17:36:12.8596850Z 34135 INFO: Analyzing hidden import 'PIL.IptcImagePlugin'
+2026-11-25T17:36:12.8749170Z 34151 INFO: Analyzing hidden import 'PIL.McIdasImagePlugin'
+2026-11-25T17:36:12.8793670Z 34155 INFO: Analyzing hidden import 'PIL.MicImagePlugin'
+2026-11-25T17:36:12.8857180Z 34161 INFO: Analyzing hidden import 'PIL.MpegImagePlugin'
+2026-11-25T17:36:12.8921220Z 34168 INFO: Analyzing hidden import 'PIL.MspImagePlugin'
+2026-11-25T17:36:12.9033040Z 34179 INFO: Analyzing hidden import 'PIL.PSDraw'
+2026-11-25T17:36:12.9130510Z 34189 INFO: Analyzing hidden import 'PIL.PalmImagePlugin'
+2026-11-25T17:36:12.9298540Z 34206 INFO: Analyzing hidden import 'PIL.PcdImagePlugin'
+2026-11-25T17:36:12.9341340Z 34210 INFO: Analyzing hidden import 'PIL.PcfFontFile'
+2026-11-25T17:36:12.9550660Z 34231 INFO: Analyzing hidden import 'PIL.PdfImagePlugin'
+2026-11-25T17:36:13.1452880Z 34370 INFO: Analyzing hidden import 'PIL.PixarImagePlugin'
+2026-11-25T17:36:13.1777050Z 34373 INFO: Analyzing hidden import 'PIL.PsdImagePlugin'
+2026-11-25T17:36:13.1782470Z 34401 INFO: Analyzing hidden import 'PIL.QoiImagePlugin'
+2026-11-25T17:36:13.1789020Z 34429 INFO: Analyzing hidden import 'PIL.SgiImagePlugin'
+2026-11-25T17:36:13.1793500Z 34445 INFO: Analyzing hidden import 'PIL.SpiderImagePlugin'
+2026-11-25T17:36:13.2818290Z 34475 INFO: Processing standard module hook 'hook-PIL.SpiderImagePlugin.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks'
+2026-11-25T17:36:13.3649300Z 34476 INFO: Analyzing hidden import 'PIL.SunImagePlugin'
+2026-11-25T17:36:13.4023920Z 34483 INFO: Analyzing hidden import 'PIL.TarIO'
+2026-11-25T17:36:13.4391220Z 34486 INFO: Analyzing hidden import 'PIL.TgaImagePlugin'
+2026-11-25T17:36:13.4392440Z 34509 INFO: Analyzing hidden import 'PIL.WalImageFile'
+2026-11-25T17:36:13.4393540Z 34517 INFO: Analyzing hidden import 'PIL.WebPImagePlugin'
+2026-11-25T17:36:13.4394700Z 34554 INFO: Analyzing hidden import 'PIL.WmfImagePlugin'
+2026-11-25T17:36:13.4395890Z 34568 INFO: Analyzing hidden import 'PIL.XVThumbImagePlugin'
+2026-11-25T17:36:13.4397010Z 34572 INFO: Analyzing hidden import 'PIL.XbmImagePlugin'
+2026-11-25T17:36:13.4398190Z 34584 INFO: Analyzing hidden import 'PIL.XpmImagePlugin'
+2026-11-25T17:36:13.4399390Z 34606 INFO: Analyzing hidden import 'PIL.__main__'
+2026-11-25T17:36:13.4401420Z 34607 INFO: Analyzing hidden import 'PIL._tkinter_finder'
+2026-11-25T17:36:13.4402350Z 34609 INFO: Analyzing hidden import 'PIL.report'
+2026-11-25T17:36:13.4403020Z 34610 INFO: Analyzing hidden import 'certifi.__main__'
+2026-11-25T17:36:13.4403720Z 34614 INFO: Analyzing hidden import 'certifi.tests'
+2026-11-25T17:36:13.4404440Z 34614 INFO: Analyzing hidden import 'certifi.tests.test_certify'
+2026-11-25T17:36:13.4405230Z 34619 INFO: Analyzing hidden import 'lxml.ElementInclude'
+2026-11-25T17:36:13.4405950Z 34630 INFO: Analyzing hidden import 'lxml._elementpath'
+2026-11-25T17:36:13.4406640Z 34649 INFO: Analyzing hidden import 'lxml.builder'
+2026-11-25T17:36:13.4407270Z 34658 INFO: Analyzing hidden import 'lxml.cssselect'
+2026-11-25T17:36:13.4407990Z 34662 INFO: Analyzing hidden import 'lxml.doctestcompare'
+2026-11-25T17:36:13.6547490Z 34930 INFO: Analyzing hidden import 'lxml.html'
+2026-11-25T17:36:13.7782400Z 35054 INFO: Analyzing hidden import 'lxml.html.ElementSoup'
+2026-11-25T17:36:13.7968450Z 35073 INFO: Analyzing hidden import 'lxml.html._diffcommand'
+2026-11-25T17:36:14.0448000Z 35320 INFO: Analyzing hidden import 'lxml.html._html5builder'
+2026-11-25T17:36:14.0530010Z 35329 INFO: Analyzing hidden import 'lxml.html.builder'
+2026-11-25T17:36:14.0633660Z 35339 INFO: Analyzing hidden import 'lxml.html.clean'
+2026-11-25T17:36:14.0646480Z 35340 INFO: Analyzing hidden import 'lxml.html.formfill'
+2026-11-25T17:36:14.1607430Z 35388 INFO: Analyzing hidden import 'lxml.html.html5parser'
+2026-11-25T17:36:14.1685320Z 35408 INFO: Analyzing hidden import 'lxml.html.usedoctest'
+2026-11-25T17:36:14.1693450Z 35409 INFO: Analyzing hidden import 'lxml.includes'
+2026-11-25T17:36:14.2008610Z 35410 INFO: Analyzing hidden import 'lxml.includes.extlibs'
+2026-11-25T17:36:14.2015570Z 35411 INFO: Analyzing hidden import 'lxml.includes.libexslt'
+2026-11-25T17:36:14.2018360Z 35412 INFO: Analyzing hidden import 'lxml.includes.libxml'
+2026-11-25T17:36:14.2369040Z 35412 INFO: Analyzing hidden import 'lxml.includes.libxslt'
+2026-11-25T17:36:14.2555340Z 35413 INFO: Analyzing hidden import 'lxml.isoschematron'
+2026-11-25T17:36:14.2557820Z 35432 INFO: Processing standard module hook 'hook-lxml.isoschematron.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+2026-11-25T17:36:14.2560460Z 35440 INFO: Analyzing hidden import 'lxml.objectify'
+2026-11-25T17:36:14.2564180Z 35440 INFO: Analyzing hidden import 'lxml.pyclasslookup'
+2026-11-25T17:36:14.2577420Z 35441 INFO: Analyzing hidden import 'lxml.sax'
+2026-11-25T17:36:14.4426810Z 35634 INFO: Analyzing hidden import 'lxml.usedoctest'
+2026-11-25T17:36:14.4759390Z 35636 INFO: Analyzing hidden import 'Quartz'
+2026-11-25T17:36:14.9396550Z 36211 INFO: Processing module hooks (post-graph stage)...
+2026-11-25T17:36:14.9432990Z 36211 INFO: Processing standard module hook 'hook-lxml.objectify.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/_pyinstaller_hooks_contrib/stdhooks'
+2026-11-25T17:36:15.0974670Z 36373 INFO: Performing binary vs. data reclassification (590 entries)
+2026-11-25T17:36:15.2418960Z 36518 INFO: Looking for ctypes DLLs
+2026-11-25T17:36:15.4333060Z 36702 INFO: Analyzing run-time hooks ...
+2026-11-25T17:36:15.4343420Z 36707 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks/rthooks'
+2026-11-25T17:36:15.4406150Z 36712 INFO: Including run-time hook 'pyi_rth_inspect.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks/rthooks'
+2026-11-25T17:36:15.4437550Z 36719 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from '/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/hooks/rthooks'
+2026-11-25T17:36:15.4974940Z 36773 INFO: Creating base_library.zip...
+2026-11-25T17:36:15.5390960Z 36815 INFO: Looking for dynamic libraries
+2026-11-25T17:36:16.8957720Z 38171 INFO: Warnings written to /Users/runner/work/MarkEase/MarkEase/build/macos/warn-macos.txt
+2026-11-25T17:36:16.9860070Z 38255 INFO: Graph cross-reference written to /Users/runner/work/MarkEase/MarkEase/build/macos/xref-macos.html
+2026-11-25T17:36:18.2431030Z 39519 INFO: checking PYZ
+2026-11-25T17:36:18.2449880Z 39519 INFO: Building PYZ because PYZ-00.toc is non existent
+2026-11-25T17:36:18.2462580Z 39519 INFO: Building PYZ (ZlibArchive) /Users/runner/work/MarkEase/MarkEase/build/macos/PYZ-00.pyz
+2026-11-25T17:36:19.3022210Z 40575 INFO: Building PYZ (ZlibArchive) /Users/runner/work/MarkEase/MarkEase/build/macos/PYZ-00.pyz completed successfully.
+2026-11-25T17:36:19.3330510Z 40604 INFO: EXE target arch: x86_64
+2026-11-25T17:36:19.3494790Z 40604 INFO: Code signing identity: None
+2026-11-25T17:36:19.3550230Z 40614 INFO: checking PKG
+2026-11-25T17:36:19.3610690Z 40614 INFO: Building PKG because PKG-00.toc is non existent
+2026-11-25T17:36:19.3735860Z 40614 INFO: Building PKG (CArchive) MarkEase.pkg
+2026-11-25T17:36:19.3915300Z 40666 INFO: Building PKG (CArchive) MarkEase.pkg completed successfully.
+2026-11-25T17:36:19.3946030Z 40668 INFO: Bootloader /Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/PyInstaller/bootloader/Darwin-64bit/runw
+2026-11-25T17:36:19.3981550Z 40668 INFO: checking EXE
+2026-11-25T17:36:19.4015730Z 40668 INFO: Building EXE because EXE-00.toc is non existent
+2026-11-25T17:36:19.4030880Z 40668 INFO: Building EXE from EXE-00.toc
+2026-11-25T17:36:19.4067220Z 40668 INFO: Copying bootloader EXE to /Users/runner/work/MarkEase/MarkEase/build/macos/MarkEase
+2026-11-25T17:36:19.4103470Z 40669 INFO: Converting EXE to target arch (x86_64)
+2026-11-25T17:36:20.8483870Z 42118 INFO: Removing signature(s) from EXE
+2026-11-25T17:36:20.8851750Z 42158 INFO: Modifying Mach-O image UUID(s) in EXE
+2026-11-25T17:36:20.8955010Z 42171 INFO: Appending PKG archive to EXE
+2026-11-25T17:36:20.8999000Z 42175 INFO: Fixing EXE headers for code signing
+2026-11-25T17:36:20.9160350Z 42192 INFO: Re-signing the EXE
+2026-11-25T17:36:20.9900440Z 42266 INFO: Building EXE from EXE-00.toc completed successfully.
+2026-11-25T17:36:21.0058480Z 42280 INFO: checking COLLECT
+2026-11-25T17:36:21.0085370Z 42280 INFO: Building COLLECT because COLLECT-00.toc is non existent
+2026-11-25T17:36:21.0110560Z 42281 INFO: Building COLLECT COLLECT-00.toc
+2026-11-25T17:36:35.1121470Z 56388 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+2026-11-25T17:36:35.1404330Z 56416 INFO: checking BUNDLE
+2026-11-25T17:36:35.1404970Z 56416 INFO: Building BUNDLE because BUNDLE-00.toc is non existent
+2026-11-25T17:36:35.1405610Z 56416 INFO: Building BUNDLE BUNDLE-00.toc
+2026-11-25T17:36:46.7297040Z 67939 INFO: Signing the BUNDLE...
+2026-11-25T17:36:47.9347710Z 69179 INFO: Building BUNDLE BUNDLE-00.toc completed successfully.
+2026-11-25T17:36:47.9374490Z 69212 INFO: Build complete! The results are available in: /Users/runner/work/MarkEase/MarkEase/dist
+2026-11-25T17:36:48.2258150Z ##[group]Run set -euo pipefail
+2026-11-25T17:36:48.2258860Z [36;1mset -euo pipefail[0m
+2026-11-25T17:36:48.2259290Z [36;1mAPP=dist/MarkEase.app[0m
+2026-11-25T17:36:48.2259720Z [36;1mtest -d "$APP"[0m
+2026-11-25T17:36:48.2260160Z [36;1mtest -f "$APP/Contents/Info.plist"[0m
+2026-11-25T17:36:48.2260730Z [36;1mtest -f "$APP/Contents/MacOS/MarkEase"[0m
+2026-11-25T17:36:48.2261720Z [36;1m/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \[0m
+2026-11-25T17:36:48.2262650Z [36;1m  "$APP/Contents/Info.plist"[0m
+2026-11-25T17:36:48.2263330Z [36;1m/usr/libexec/PlistBuddy -c \[0m
+2026-11-25T17:36:48.2264060Z [36;1m  'Print :CFBundleDocumentTypes:0:LSItemContentTypes:0' \[0m
+2026-11-25T17:36:48.2264760Z [36;1m  "$APP/Contents/Info.plist"[0m
+2026-11-25T17:36:48.2265230Z [36;1m/usr/libexec/PlistBuddy -c \[0m
+2026-11-25T17:36:48.2265950Z [36;1m  'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' \[0m
+2026-11-25T17:36:48.2266870Z [36;1m  "$APP/Contents/Info.plist"[0m
+2026-11-25T17:36:48.2267550Z [36;1mplutil -lint "$APP/Contents/Info.plist"[0m
+2026-11-25T17:36:48.2269340Z [36;1m"$APP/Contents/MacOS/MarkEase" --self-test[0m
+2026-11-25T17:36:48.2269980Z [36;1m"$APP/Contents/MacOS/MarkEase" --net-test[0m
+2026-11-25T17:36:48.2371670Z shell: /bin/bash -e {0}
+2026-11-25T17:36:48.2372060Z env:
+2026-11-25T17:36:48.2372550Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:36:48.2373360Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:36:48.2374360Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:36:48.2375530Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:36:48.2376470Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:36:48.2377460Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:36:48.2378630Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:36:48.2379530Z ##[endgroup]
+2026-11-25T17:36:48.3166090Z 2.1.6
+2026-11-25T17:36:48.3269480Z net.daringfireball.markdown
+2026-11-25T17:36:48.3347590Z net.daringfireball.markdown
+2026-11-25T17:36:48.3376090Z dist/MarkEase.app/Contents/Info.plist: OK
+2026-11-25T17:36:49.2224810Z [MarkEase] log dir: /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/MacOS/logs
+2026-11-25T17:36:49.2227970Z [MarkEase][self-test] {"ok": true, "platform": "macOS", "python": "3.14.7", "version": "2.1.6", "gui": "cocoa", "frozen": true, "web_dir": "/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/web", "web_index": true, "icon": "", "pdf_export": true, "webview_version": ""}
+2026-11-25T17:36:49.6244040Z [MarkEase] log dir: /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/MacOS/logs
+2026-11-25T17:36:49.6246680Z [MarkEase][net-test] ok bytes=15770 type=image/png
+2026-11-25T17:36:49.6631420Z ##[group]Run set +e
+2026-11-25T17:36:49.6631990Z [36;1mset +e[0m
+2026-11-25T17:36:49.6632560Z [36;1mdist/MarkEase.app/Contents/MacOS/MarkEase --ui-test \[0m
+2026-11-25T17:36:49.6633320Z [36;1m  2>&1 | tee /tmp/markease-ui-test.log[0m
+2026-11-25T17:36:49.6633930Z [36;1mcode=${PIPESTATUS[0]}[0m
+2026-11-25T17:36:49.6634440Z [36;1mset -e[0m
+2026-11-25T17:36:49.6634850Z [36;1mif [ "$code" -ne 0 ]; then[0m
+2026-11-25T17:36:49.6635460Z [36;1m  echo "::error::--ui-test failed with code $code"[0m
+2026-11-25T17:36:49.6636060Z [36;1m  exit 1[0m
+2026-11-25T17:36:49.6636590Z [36;1mfi[0m
+2026-11-25T17:36:49.6637160Z [36;1mgrep -q '"initialized": true' /tmp/markease-ui-test.log[0m
+2026-11-25T17:36:49.6637990Z [36;1mgrep -q '"menubarVisible": true' /tmp/markease-ui-test.log[0m
+2026-11-25T17:36:49.6697310Z shell: /bin/bash -e {0}
+2026-11-25T17:36:49.6697760Z env:
+2026-11-25T17:36:49.6698160Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:36:49.6698800Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:36:49.6699550Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:36:49.6700490Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:36:49.6701440Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:36:49.6702300Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:36:49.6703170Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:36:49.6703850Z ##[endgroup]
+2026-11-25T17:37:31.0476760Z [MarkEase] log dir: /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/MacOS/logs
+2026-11-25T17:37:31.0941030Z [MarkEase] asset server: http://127.0.0.1:49190
+2026-11-25T17:37:31.0997300Z [MarkEase] shell-new skipped: macOS uses Info.plist document types
+2026-11-25T17:37:31.1050450Z [MarkEase][mac] open-file Apple Event handler installed
+2026-11-25T17:37:31.1084980Z [MarkEase][mac] open-file application delegate installed
+2026-11-25T17:37:31.1126850Z [MarkEase][mac] in-window menubar enabled; app menu only
+2026-11-25T17:37:31.1271460Z [MarkEase] url: http://127.0.0.1:49190/web/index.html
+2026-11-25T17:37:31.1366530Z [MarkEase][mac] About menu rewired
+2026-11-25T17:37:31.1449380Z [MarkEase][ui-test] {"initialized": true, "initStage": "done", "initError": null, "toolbarButtons": 30, "editorReady": true, "previewReady": true, "menubarVisible": true, "nativeMenuExpected": true, "readyState": "complete", "hasApi": true}
+2026-11-25T17:37:31.1671790Z ##[group]Run set +e
+2026-11-25T17:37:31.1672750Z [36;1mset +e[0m
+2026-11-25T17:37:31.1673780Z [36;1mdist/MarkEase.app/Contents/MacOS/MarkEase --find-test \[0m
+2026-11-25T17:37:31.1675060Z [36;1m  2>&1 | tee /tmp/markease-find-test.log[0m
+2026-11-25T17:37:31.1676050Z [36;1mcode=${PIPESTATUS[0]}[0m
+2026-11-25T17:37:31.1677410Z [36;1mset -e[0m
+2026-11-25T17:37:31.1677880Z [36;1mcat /tmp/markease-find-test.log[0m
+2026-11-25T17:37:31.1678470Z [36;1mif [ "$code" -ne 0 ]; then[0m
+2026-11-25T17:37:31.1679100Z [36;1m  echo "::error::--find-test failed with code $code"[0m
+2026-11-25T17:37:31.1679740Z [36;1m  exit 1[0m
+2026-11-25T17:37:31.1680140Z [36;1mfi[0m
+2026-11-25T17:37:31.1810460Z shell: /bin/bash -e {0}
+2026-11-25T17:37:31.1811110Z env:
+2026-11-25T17:37:31.1811720Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:37:31.1812350Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:37:31.1813630Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:37:31.1815060Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:37:31.1817030Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:37:31.1818250Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:37:31.1819670Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:37:31.1820680Z ##[endgroup]
+2026-11-25T17:38:11.7877570Z ##[group]Run set +e
+2026-11-25T17:38:11.7878190Z [36;1mset +e[0m
+2026-11-25T17:38:11.7878680Z [36;1mdist/MarkEase.app/Contents/MacOS/MarkEase \[0m
+2026-11-25T17:38:11.7879540Z [36;1m  --pdf-test /tmp/markease-test.pdf 2>&1 | tee /tmp/markease-pdf.log[0m
+2026-11-25T17:38:11.7880300Z [36;1mcode=${PIPESTATUS[0]}[0m
+2026-11-25T17:38:11.7880790Z [36;1mset -e[0m
+2026-11-25T17:38:11.7881320Z [36;1mcat /tmp/markease-pdf.log[0m
+2026-11-25T17:38:11.7881840Z [36;1mif [ "$code" -ne 0 ]; then[0m
+2026-11-25T17:38:11.7882440Z [36;1m  echo "::error::--pdf-test failed with code $code"[0m
+2026-11-25T17:38:11.7883870Z [36;1m  exit 1[0m
+2026-11-25T17:38:11.7884460Z [36;1mfi[0m
+2026-11-25T17:38:11.7885120Z [36;1mtest -s /tmp/markease-test.pdf[0m
+2026-11-25T17:38:11.7984740Z shell: /bin/bash -e {0}
+2026-11-25T17:38:11.7985410Z env:
+2026-11-25T17:38:11.7985940Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:38:11.7986570Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:38:11.7987620Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:38:11.7988980Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:38:11.7990350Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:38:11.7991620Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:38:11.7992870Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:38:11.7993900Z ##[endgroup]
+2026-11-25T17:38:52.1207680Z [MarkEase] log dir: /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/MacOS/logs
+2026-11-25T17:38:52.1645000Z [MarkEase] asset server: http://127.0.0.1:49389
+2026-11-25T17:38:52.1646640Z [MarkEase] shell-new skipped: macOS uses Info.plist document types
+2026-11-25T17:38:52.1648000Z [MarkEase][mac] open-file Apple Event handler installed
+2026-11-25T17:38:52.1649060Z [MarkEase][mac] open-file application delegate installed
+2026-11-25T17:38:52.1651270Z [MarkEase][mac] in-window menubar enabled; app menu only
+2026-11-25T17:38:52.1669730Z [MarkEase] url: http://127.0.0.1:49389/web/index.html
+2026-11-25T17:38:52.1672780Z [MarkEase][mac] About menu rewired
+2026-11-25T17:38:52.1675850Z [MarkEase][mac] fallback createPDF wrote /tmp/markease-test.pdf
+2026-11-25T17:38:52.1684100Z [MarkEase][pdf-test] {"ok": true, "path": "/tmp/markease-test.pdf", "size": 25121, "pages": 2, "embedded": true}
+2026-11-25T17:38:52.1696710Z [MarkEase] log dir: /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/MacOS/logs
+2026-11-25T17:38:52.1702520Z [MarkEase] asset server: http://127.0.0.1:49389
+2026-11-25T17:38:52.1704350Z [MarkEase] shell-new skipped: macOS uses Info.plist document types
+2026-11-25T17:38:52.1705770Z [MarkEase][mac] open-file Apple Event handler installed
+2026-11-25T17:38:52.1706930Z [MarkEase][mac] open-file application delegate installed
+2026-11-25T17:38:52.1715090Z [MarkEase][mac] in-window menubar enabled; app menu only
+2026-11-25T17:38:52.1766010Z [MarkEase] url: http://127.0.0.1:49389/web/index.html
+2026-11-25T17:38:52.1767240Z [MarkEase][mac] About menu rewired
+2026-11-25T17:38:52.1768180Z [MarkEase][mac] fallback createPDF wrote /tmp/markease-test.pdf
+2026-11-25T17:38:52.1770940Z [MarkEase][pdf-test] {"ok": true, "path": "/tmp/markease-test.pdf", "size": 25121, "pages": 2, "embedded": true}
+2026-11-25T17:38:52.1926600Z ##[group]Run set +e
+2026-11-25T17:38:52.1927710Z [36;1mset +e[0m
+2026-11-25T17:38:52.1928610Z [36;1mdist/MarkEase.app/Contents/MacOS/MarkEase --close-test \[0m
+2026-11-25T17:38:52.1929700Z [36;1m  2>&1 | tee /tmp/markease-close.log[0m
+2026-11-25T17:38:52.1930760Z [36;1mcode=${PIPESTATUS[0]}[0m
+2026-11-25T17:38:52.1931600Z [36;1mset -e[0m
+2026-11-25T17:38:52.1932240Z [36;1mcat /tmp/markease-close.log[0m
+2026-11-25T17:38:52.1933000Z [36;1mif [ "$code" -ne 0 ]; then[0m
+2026-11-25T17:38:52.1934280Z [36;1m  echo "::error::--close-test failed with code $code"[0m
+2026-11-25T17:38:52.1935450Z [36;1m  exit 1[0m
+2026-11-25T17:38:52.1936120Z [36;1mfi[0m
+2026-11-25T17:38:52.2063070Z shell: /bin/bash -e {0}
+2026-11-25T17:38:52.2063690Z env:
+2026-11-25T17:38:52.2064360Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:38:52.2064830Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:38:52.2065560Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:38:52.2067000Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:38:52.2068330Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:38:52.2069320Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:38:52.2070180Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:38:52.2070890Z ##[endgroup]
+2026-11-25T17:39:32.0591720Z ##[group]Run set +e
+2026-11-25T17:39:32.0592780Z [36;1mset +e[0m
+2026-11-25T17:39:32.0593870Z [36;1mprintf '# MarkEase open test\n\nhello\n' > /tmp/markease-open-test.md[0m
+2026-11-25T17:39:32.0594960Z [36;1mdist/MarkEase.app/Contents/MacOS/MarkEase \[0m
+2026-11-25T17:39:32.0597020Z [36;1m  --open-file-test /tmp/markease-open-test.md \[0m
+2026-11-25T17:39:32.0600020Z [36;1m  2>&1 | tee /tmp/markease-open-file.log[0m
+2026-11-25T17:39:32.0601380Z [36;1mcode=${PIPESTATUS[0]}[0m
+2026-11-25T17:39:32.0602850Z [36;1mset -e[0m
+2026-11-25T17:39:32.0604330Z [36;1mcat /tmp/markease-open-file.log[0m
+2026-11-25T17:39:32.0605500Z [36;1mif [ "$code" -ne 0 ]; then[0m
+2026-11-25T17:39:32.0618170Z [36;1m  echo "::error::--open-file-test failed with code $code"[0m
+2026-11-25T17:39:32.0619050Z [36;1m  exit 1[0m
+2026-11-25T17:39:32.0619490Z [36;1mfi[0m
+2026-11-25T17:39:32.0887820Z shell: /bin/bash -e {0}
+2026-11-25T17:39:32.0888270Z env:
+2026-11-25T17:39:32.0888790Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:39:32.0890040Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:39:32.0890680Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:39:32.0891600Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:39:32.0894750Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:39:32.0897510Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:39:32.0901600Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:39:32.0903520Z ##[endgroup]
+2026-11-25T17:40:13.6179060Z ##[group]Run python packaging/package.py \
+2026-11-25T17:40:13.6180260Z [36;1mpython packaging/package.py \[0m
+2026-11-25T17:40:13.6187440Z [36;1m  --target macos-x64 --dist dist --out out[0m
+2026-11-25T17:40:13.6294130Z shell: /bin/bash -e {0}
+2026-11-25T17:40:13.6294590Z env:
+2026-11-25T17:40:13.6295130Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:40:13.6295620Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:40:13.6296240Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:13.6297160Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:40:13.6298090Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:13.6298910Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:13.6299760Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:13.6300440Z   MK_CODESIGN_IDENTITY: 
+2026-11-25T17:40:13.6301040Z   MK_NOTARIZE: 0
+2026-11-25T17:40:13.6301530Z   APPLE_ID: 
+2026-11-25T17:40:13.6302180Z   APPLE_APP_SPECIFIC_PASSWORD: 
+2026-11-25T17:40:13.6306400Z   APPLE_TEAM_ID: 
+2026-11-25T17:40:13.6306870Z ##[endgroup]
+2026-11-25T17:40:14.1220350Z [package] version=2.1.6 target=macos-x64
+2026-11-25T17:40:14.2195650Z [package] clean runtime artifact: /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/MacOS/logs
+2026-11-25T17:40:14.3169370Z /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app: replacing existing signature
+2026-11-25T17:40:14.3170300Z [package] codesign identity: -
+2026-11-25T17:40:14.3412160Z [package] + codesign --force --deep --sign - --timestamp=none /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app
+2026-11-25T17:40:15.6882190Z [package] + codesign --verify --deep --strict --verbose=2 /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app
+2026-11-25T17:40:15.8927550Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/pymupdf/_mupdf.so
+2026-11-25T17:40:15.8929440Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/pymupdf/_mupdf.so
+2026-11-25T17:40:15.9008430Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/pymupdf/libmupdfcpp.so
+2026-11-25T17:40:15.9010100Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/pymupdf/libmupdfcpp.so
+2026-11-25T17:40:16.0111910Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/pymupdf/libmupdf.dylib
+2026-11-25T17:40:16.0113870Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/pymupdf/libmupdf.dylib
+2026-11-25T17:40:16.0126920Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/pymupdf/_extra.so
+2026-11-25T17:40:16.0128350Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/pymupdf/_extra.so
+2026-11-25T17:40:16.0134470Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/WebKit/_WebKit.cpython-314-darwin.so
+2026-11-25T17:40:16.0136140Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/WebKit/_WebKit.cpython-314-darwin.so
+2026-11-25T17:40:16.0144410Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_socket.cpython-314-darwin.so
+2026-11-25T17:40:16.0146730Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_socket.cpython-314-darwin.so
+2026-11-25T17:40:16.0160060Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_decimal.cpython-314-darwin.so
+2026-11-25T17:40:16.0162260Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_decimal.cpython-314-darwin.so
+2026-11-25T17:40:16.0167760Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_hashlib.cpython-314-darwin.so
+2026-11-25T17:40:16.0169780Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_hashlib.cpython-314-darwin.so
+2026-11-25T17:40:16.0172710Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/grp.cpython-314-darwin.so
+2026-11-25T17:40:16.0174620Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/grp.cpython-314-darwin.so
+2026-11-25T17:40:16.0179550Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_sha3.cpython-314-darwin.so
+2026-11-25T17:40:16.0181560Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_sha3.cpython-314-darwin.so
+2026-11-25T17:40:16.0185710Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/fcntl.cpython-314-darwin.so
+2026-11-25T17:40:16.0187910Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/fcntl.cpython-314-darwin.so
+2026-11-25T17:40:16.0198110Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_ssl.cpython-314-darwin.so
+2026-11-25T17:40:16.0200040Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_ssl.cpython-314-darwin.so
+2026-11-25T17:40:16.0203450Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_statistics.cpython-314-darwin.so
+2026-11-25T17:40:16.0205590Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_statistics.cpython-314-darwin.so
+2026-11-25T17:40:16.0210540Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_csv.cpython-314-darwin.so
+2026-11-25T17:40:16.0212470Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_csv.cpython-314-darwin.so
+2026-11-25T17:40:16.0216290Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_queue.cpython-314-darwin.so
+2026-11-25T17:40:16.0218410Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_queue.cpython-314-darwin.so
+2026-11-25T17:40:16.0223210Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_blake2.cpython-314-darwin.so
+2026-11-25T17:40:16.0225160Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_blake2.cpython-314-darwin.so
+2026-11-25T17:40:16.0230200Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_zstd.cpython-314-darwin.so
+2026-11-25T17:40:16.0232160Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_zstd.cpython-314-darwin.so
+2026-11-25T17:40:16.0237330Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_struct.cpython-314-darwin.so
+2026-11-25T17:40:16.0239390Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_struct.cpython-314-darwin.so
+2026-11-25T17:40:16.0244060Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/array.cpython-314-darwin.so
+2026-11-25T17:40:16.0246550Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/array.cpython-314-darwin.so
+2026-11-25T17:40:16.0251100Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_interpreters.cpython-314-darwin.so
+2026-11-25T17:40:16.0253570Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_interpreters.cpython-314-darwin.so
+2026-11-25T17:40:16.0255720Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_sha1.cpython-314-darwin.so
+2026-11-25T17:40:16.0257670Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_sha1.cpython-314-darwin.so
+2026-11-25T17:40:16.0262140Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_posixshmem.cpython-314-darwin.so
+2026-11-25T17:40:16.0266150Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_posixshmem.cpython-314-darwin.so
+2026-11-25T17:40:16.0285170Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_posixsubprocess.cpython-314-darwin.so
+2026-11-25T17:40:16.0287270Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_posixsubprocess.cpython-314-darwin.so
+2026-11-25T17:40:16.0291750Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_interpqueues.cpython-314-darwin.so
+2026-11-25T17:40:16.0293840Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_interpqueues.cpython-314-darwin.so
+2026-11-25T17:40:16.0300900Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_pickle.cpython-314-darwin.so
+2026-11-25T17:40:16.0302860Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_pickle.cpython-314-darwin.so
+2026-11-25T17:40:16.0307300Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/readline.cpython-314-darwin.so
+2026-11-25T17:40:16.0309280Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/readline.cpython-314-darwin.so
+2026-11-25T17:40:16.0313510Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/select.cpython-314-darwin.so
+2026-11-25T17:40:16.0315610Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/select.cpython-314-darwin.so
+2026-11-25T17:40:16.0325470Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_lzma.cpython-314-darwin.so
+2026-11-25T17:40:16.0327450Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_lzma.cpython-314-darwin.so
+2026-11-25T17:40:16.0338390Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/pyexpat.cpython-314-darwin.so
+2026-11-25T17:40:16.0340390Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/pyexpat.cpython-314-darwin.so
+2026-11-25T17:40:16.0366840Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/unicodedata.cpython-314-darwin.so
+2026-11-25T17:40:16.0368870Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/unicodedata.cpython-314-darwin.so
+2026-11-25T17:40:16.0373470Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/zlib.cpython-314-darwin.so
+2026-11-25T17:40:16.0376050Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/zlib.cpython-314-darwin.so
+2026-11-25T17:40:16.0381180Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_asyncio.cpython-314-darwin.so
+2026-11-25T17:40:16.0383690Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_asyncio.cpython-314-darwin.so
+2026-11-25T17:40:16.0390820Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_cn.cpython-314-darwin.so
+2026-11-25T17:40:16.0392830Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_cn.cpython-314-darwin.so
+2026-11-25T17:40:16.0397500Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_multibytecodec.cpython-314-darwin.so
+2026-11-25T17:40:16.0399590Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_multibytecodec.cpython-314-darwin.so
+2026-11-25T17:40:16.0403350Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_bisect.cpython-314-darwin.so
+2026-11-25T17:40:16.0405390Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_bisect.cpython-314-darwin.so
+2026-11-25T17:40:16.0410630Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/math.cpython-314-darwin.so
+2026-11-25T17:40:16.0412560Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/math.cpython-314-darwin.so
+2026-11-25T17:40:16.0417530Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_sha2.cpython-314-darwin.so
+2026-11-25T17:40:16.0419480Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_sha2.cpython-314-darwin.so
+2026-11-25T17:40:16.0423380Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_iso2022.cpython-314-darwin.so
+2026-11-25T17:40:16.0425460Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_iso2022.cpython-314-darwin.so
+2026-11-25T17:40:16.0429530Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/mmap.cpython-314-darwin.so
+2026-11-25T17:40:16.0431450Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/mmap.cpython-314-darwin.so
+2026-11-25T17:40:16.0439840Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_ctypes.cpython-314-darwin.so
+2026-11-25T17:40:16.0441850Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_ctypes.cpython-314-darwin.so
+2026-11-25T17:40:16.0445760Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_bz2.cpython-314-darwin.so
+2026-11-25T17:40:16.0447670Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_bz2.cpython-314-darwin.so
+2026-11-25T17:40:16.0458770Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_jp.cpython-314-darwin.so
+2026-11-25T17:40:16.0460800Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_jp.cpython-314-darwin.so
+2026-11-25T17:40:16.0469400Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_hk.cpython-314-darwin.so
+2026-11-25T17:40:16.0471450Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_hk.cpython-314-darwin.so
+2026-11-25T17:40:16.0474280Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/resource.cpython-314-darwin.so
+2026-11-25T17:40:16.0476320Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/resource.cpython-314-darwin.so
+2026-11-25T17:40:16.0482540Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_random.cpython-314-darwin.so
+2026-11-25T17:40:16.0484520Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_random.cpython-314-darwin.so
+2026-11-25T17:40:16.0489450Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_json.cpython-314-darwin.so
+2026-11-25T17:40:16.0491400Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_json.cpython-314-darwin.so
+2026-11-25T17:40:16.0495640Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/binascii.cpython-314-darwin.so
+2026-11-25T17:40:16.0497640Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/binascii.cpython-314-darwin.so
+2026-11-25T17:40:16.0501710Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_multiprocessing.cpython-314-darwin.so
+2026-11-25T17:40:16.0503790Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_multiprocessing.cpython-314-darwin.so
+2026-11-25T17:40:16.0507830Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_md5.cpython-314-darwin.so
+2026-11-25T17:40:16.0509900Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_md5.cpython-314-darwin.so
+2026-11-25T17:40:16.0516960Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_hmac.cpython-314-darwin.so
+2026-11-25T17:40:16.0519120Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_hmac.cpython-314-darwin.so
+2026-11-25T17:40:16.0524170Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_scproxy.cpython-314-darwin.so
+2026-11-25T17:40:16.0526200Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_scproxy.cpython-314-darwin.so
+2026-11-25T17:40:16.0528140Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_uuid.cpython-314-darwin.so
+2026-11-25T17:40:16.0530080Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_uuid.cpython-314-darwin.so
+2026-11-25T17:40:16.0538450Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_kr.cpython-314-darwin.so
+2026-11-25T17:40:16.0540730Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_kr.cpython-314-darwin.so
+2026-11-25T17:40:16.0546810Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_tw.cpython-314-darwin.so
+2026-11-25T17:40:16.0548800Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_codecs_tw.cpython-314-darwin.so
+2026-11-25T17:40:16.0554080Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_heapq.cpython-314-darwin.so
+2026-11-25T17:40:16.0556460Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_heapq.cpython-314-darwin.so
+2026-11-25T17:40:16.0562180Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_elementtree.cpython-314-darwin.so
+2026-11-25T17:40:16.0564330Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/python3__dot__14/lib-dynload/_elementtree.cpython-314-darwin.so
+2026-11-25T17:40:16.0608660Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/libssl.3.dylib
+2026-11-25T17:40:16.0610380Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/libssl.3.dylib
+2026-11-25T17:40:16.0615890Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Foundation/_Foundation.cpython-314-darwin.so
+2026-11-25T17:40:16.0631940Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Foundation/_Foundation.cpython-314-darwin.so
+2026-11-25T17:40:16.0633840Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Foundation/_inlines.cpython-314-darwin.so
+2026-11-25T17:40:16.0635610Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Foundation/_inlines.cpython-314-darwin.so
+2026-11-25T17:40:16.0807150Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/libcrypto.3.dylib
+2026-11-25T17:40:16.0808620Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/libcrypto.3.dylib
+2026-11-25T17:40:16.0825210Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingft.cpython-314-darwin.so
+2026-11-25T17:40:16.0826910Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingft.cpython-314-darwin.so
+2026-11-25T17:40:16.0837420Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingcms.cpython-314-darwin.so
+2026-11-25T17:40:16.0839130Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingcms.cpython-314-darwin.so
+2026-11-25T17:40:16.0864310Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_webp.cpython-314-darwin.so
+2026-11-25T17:40:16.0865920Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_webp.cpython-314-darwin.so
+2026-11-25T17:40:16.0879650Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingmath.cpython-314-darwin.so
+2026-11-25T17:40:16.0881390Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingmath.cpython-314-darwin.so
+2026-11-25T17:40:16.0890320Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libbrotlicommon.1.2.0.dylib
+2026-11-25T17:40:16.0892260Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libbrotlicommon.1.2.0.dylib
+2026-11-25T17:40:16.0896910Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libbrotlidec.1.2.0.dylib
+2026-11-25T17:40:16.0898750Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libbrotlidec.1.2.0.dylib
+2026-11-25T17:40:16.0913860Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/liblcms2.2.dylib
+2026-11-25T17:40:16.0915520Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/liblcms2.2.dylib
+2026-11-25T17:40:16.0926230Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libpng16.16.dylib
+2026-11-25T17:40:16.0927920Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libpng16.16.dylib
+2026-11-25T17:40:16.0936050Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libxcb.1.1.0.dylib
+2026-11-25T17:40:16.0937720Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libxcb.1.1.0.dylib
+2026-11-25T17:40:16.0964290Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libjpeg.62.4.0.dylib
+2026-11-25T17:40:16.0965970Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libjpeg.62.4.0.dylib
+2026-11-25T17:40:16.0994650Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libfreetype.6.dylib
+2026-11-25T17:40:16.0996420Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libfreetype.6.dylib
+2026-11-25T17:40:16.1052820Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libharfbuzz.0.dylib
+2026-11-25T17:40:16.1054760Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libharfbuzz.0.dylib
+2026-11-25T17:40:16.1058900Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libsharpyuv.0.dylib
+2026-11-25T17:40:16.1060620Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libsharpyuv.0.dylib
+2026-11-25T17:40:16.1078310Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libopenjp2.2.5.4.dylib
+2026-11-25T17:40:16.1080130Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libopenjp2.2.5.4.dylib
+2026-11-25T17:40:16.1229820Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libavif.16.4.2.dylib
+2026-11-25T17:40:16.1231560Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libavif.16.4.2.dylib
+2026-11-25T17:40:16.1242110Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libz.1.3.1.zlib-ng.dylib
+2026-11-25T17:40:16.1243860Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libz.1.3.1.zlib-ng.dylib
+2026-11-25T17:40:16.1266380Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libwebp.7.dylib
+2026-11-25T17:40:16.1268230Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libwebp.7.dylib
+2026-11-25T17:40:16.1272180Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libXau.6.dylib
+2026-11-25T17:40:16.1273890Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libXau.6.dylib
+2026-11-25T17:40:16.1279260Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libwebpmux.3.dylib
+2026-11-25T17:40:16.1281040Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libwebpmux.3.dylib
+2026-11-25T17:40:16.1284750Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libwebpdemux.2.dylib
+2026-11-25T17:40:16.1286490Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libwebpdemux.2.dylib
+2026-11-25T17:40:16.1296080Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/liblzma.5.dylib
+2026-11-25T17:40:16.1298440Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/liblzma.5.dylib
+2026-11-25T17:40:16.1319660Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libtiff.6.dylib
+2026-11-25T17:40:16.1321300Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/__dot__dylibs/libtiff.6.dylib
+2026-11-25T17:40:16.1358980Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imaging.cpython-314-darwin.so
+2026-11-25T17:40:16.1360760Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imaging.cpython-314-darwin.so
+2026-11-25T17:40:16.1413530Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_avif.cpython-314-darwin.so
+2026-11-25T17:40:16.1415140Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_avif.cpython-314-darwin.so
+2026-11-25T17:40:16.1427850Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingmorph.cpython-314-darwin.so
+2026-11-25T17:40:16.1429670Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingmorph.cpython-314-darwin.so
+2026-11-25T17:40:16.1439560Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingtk.cpython-314-darwin.so
+2026-11-25T17:40:16.1441250Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/PIL/_imagingtk.cpython-314-darwin.so
+2026-11-25T17:40:16.1727760Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Python.framework/Versions/Current/.
+2026-11-25T17:40:16.1735290Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Python.framework/Versions/Current/.
+2026-11-25T17:40:16.1752790Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/AppKit/_AppKit.cpython-314-darwin.so
+2026-11-25T17:40:16.1754600Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/AppKit/_AppKit.cpython-314-darwin.so
+2026-11-25T17:40:16.1756330Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/AppKit/_inlines.cpython-314-darwin.so
+2026-11-25T17:40:16.1758040Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/AppKit/_inlines.cpython-314-darwin.so
+2026-11-25T17:40:16.1834510Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/libzstd.1.dylib
+2026-11-25T17:40:16.1836150Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/libzstd.1.dylib
+2026-11-25T17:40:16.1841990Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/QuickLookUI/_QuickLookUI.cpython-314-darwin.so
+2026-11-25T17:40:16.1843960Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/QuickLookUI/_QuickLookUI.cpython-314-darwin.so
+2026-11-25T17:40:16.1848240Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreGraphics/_callbacks.cpython-314-darwin.so
+2026-11-25T17:40:16.1850200Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreGraphics/_callbacks.cpython-314-darwin.so
+2026-11-25T17:40:16.1852260Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreGraphics/_sortandmap.cpython-314-darwin.so
+2026-11-25T17:40:16.1854180Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreGraphics/_sortandmap.cpython-314-darwin.so
+2026-11-25T17:40:16.1857000Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreGraphics/_inlines.cpython-314-darwin.so
+2026-11-25T17:40:16.1860220Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreGraphics/_inlines.cpython-314-darwin.so
+2026-11-25T17:40:16.1862430Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreGraphics/_CoreGraphics.cpython-314-darwin.so
+2026-11-25T17:40:16.1864980Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreGraphics/_CoreGraphics.cpython-314-darwin.so
+2026-11-25T17:40:16.1867260Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/PDFKit/_PDFKit.cpython-314-darwin.so
+2026-11-25T17:40:16.1869080Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/PDFKit/_PDFKit.cpython-314-darwin.so
+2026-11-25T17:40:16.1872930Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreVideo/_CoreVideo.cpython-314-darwin.so
+2026-11-25T17:40:16.1874820Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/CoreVideo/_CoreVideo.cpython-314-darwin.so
+2026-11-25T17:40:16.1884410Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/QuartzCore/_QuartzCore.cpython-314-darwin.so
+2026-11-25T17:40:16.1886450Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/QuartzCore/_QuartzCore.cpython-314-darwin.so
+2026-11-25T17:40:16.1890700Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/ImageKit/_ImageKit.cpython-314-darwin.so
+2026-11-25T17:40:16.1892850Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/Quartz/ImageKit/_ImageKit.cpython-314-darwin.so
+2026-11-25T17:40:16.1899420Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/objc/_machsignals.cpython-314-darwin.so
+2026-11-25T17:40:16.1901080Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/objc/_machsignals.cpython-314-darwin.so
+2026-11-25T17:40:16.1936510Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/objc/_objc.cpython-314-darwin.so
+2026-11-25T17:40:16.1938150Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/objc/_objc.cpython-314-darwin.so
+2026-11-25T17:40:16.1943930Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/psutil/_psutil_osx.abi3.so
+2026-11-25T17:40:16.1945740Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/psutil/_psutil_osx.abi3.so
+2026-11-25T17:40:16.1955560Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/_elementpath.cpython-314-darwin.so
+2026-11-25T17:40:16.1957460Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/_elementpath.cpython-314-darwin.so
+2026-11-25T17:40:16.1964840Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/builder.cpython-314-darwin.so
+2026-11-25T17:40:16.1966450Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/builder.cpython-314-darwin.so
+2026-11-25T17:40:16.1974480Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/sax.cpython-314-darwin.so
+2026-11-25T17:40:16.1976010Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/sax.cpython-314-darwin.so
+2026-11-25T17:40:16.1990000Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/html/diff.cpython-314-darwin.so
+2026-11-25T17:40:16.1991610Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/html/diff.cpython-314-darwin.so
+2026-11-25T17:40:16.2011320Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/html/_difflib.cpython-314-darwin.so
+2026-11-25T17:40:16.2013170Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/html/_difflib.cpython-314-darwin.so
+2026-11-25T17:40:16.2167310Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/etree.cpython-314-darwin.so
+2026-11-25T17:40:16.2169200Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/etree.cpython-314-darwin.so
+2026-11-25T17:40:16.2255250Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/objectify.cpython-314-darwin.so
+2026-11-25T17:40:16.2257000Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/lxml/objectify.cpython-314-darwin.so
+2026-11-25T17:40:16.2263370Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/CoreFoundation/_CoreFoundation.cpython-314-darwin.so
+2026-11-25T17:40:16.2265350Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/CoreFoundation/_CoreFoundation.cpython-314-darwin.so
+2026-11-25T17:40:16.2267920Z --prepared:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/CoreFoundation/_inlines.cpython-314-darwin.so
+2026-11-25T17:40:16.2270190Z --validated:/Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app/Contents/Frameworks/CoreFoundation/_inlines.cpython-314-darwin.so
+2026-11-25T17:40:16.2271830Z /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app: valid on disk
+2026-11-25T17:40:16.2276150Z /Users/runner/work/MarkEase/MarkEase/dist/MarkEase.app: satisfies its Designated Requirement
+2026-11-25T17:40:16.8754450Z [package] building styled dmg with dmgbuild
+2026-11-25T17:40:25.2777570Z [package] + hdiutil verify /Users/runner/work/MarkEase/MarkEase/out/MarkEase_v2.1.6_macOS_x64.dmg
+2026-11-25T17:40:25.3239110Z Checksumming Whole_Disk…
+2026-11-25T17:40:25.5473580Z                           Whole_Disk: verified   CRC32 $B50E2CC4
+2026-11-25T17:40:25.5481200Z hdiutil: verify: checksum of "/Users/runner/work/MarkEase/MarkEase/out/MarkEase_v2.1.6_macOS_x64.dmg" is VALID
+2026-11-25T17:40:25.5482120Z verified   CRC32 $A44E21B9
+2026-11-25T17:40:25.6548960Z [package] artifact: /Users/runner/work/MarkEase/MarkEase/out/MarkEase_v2.1.6_macOS_x64.dmg (51.6 MB) sha256=b50ed990d8df36003a503d7d93f2f8a7e62416f20eac3b3aef4c2ca398b9acef
+2026-11-25T17:40:25.6551420Z [package] checksums: /Users/runner/work/MarkEase/MarkEase/out/SHA256SUMS.txt
+2026-11-25T17:40:25.7030170Z ##[group]Run set -euo pipefail
+2026-11-25T17:40:25.7030740Z [36;1mset -euo pipefail[0m
+2026-11-25T17:40:25.7031140Z [36;1mDMG=$(ls out/*.dmg)[0m
+2026-11-25T17:40:25.7031550Z [36;1mMOUNT=/tmp/markease_dmg[0m
+2026-11-25T17:40:25.7031970Z [36;1mmkdir -p "$MOUNT"[0m
+2026-11-25T17:40:25.7032550Z [36;1mhdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT"[0m
+2026-11-25T17:40:25.7033390Z [36;1mtrap 'hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true' EXIT[0m
+2026-11-25T17:40:25.7034150Z [36;1mtest -d "$MOUNT/MarkEase.app"[0m
+2026-11-25T17:40:25.7034640Z [36;1mtest -L "$MOUNT/Applications"[0m
+2026-11-25T17:40:25.7035110Z [36;1mtest -f "$MOUNT/.DS_Store"[0m
+2026-11-25T17:40:25.7035620Z [36;1mfind "$MOUNT" -iname '*background*' | grep -q .[0m
+2026-11-25T17:40:25.7036170Z [36;1mecho 'dmg layout assets: ok'[0m
+2026-11-25T17:40:25.7095320Z shell: /bin/bash -e {0}
+2026-11-25T17:40:25.7095700Z env:
+2026-11-25T17:40:25.7096000Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:40:25.7096460Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:40:25.7097020Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:25.7097860Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:40:25.7098700Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:25.7099460Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:25.7100220Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:25.7100810Z ##[endgroup]
+2026-11-25T17:40:25.9770550Z expected   CRC32 $A44E21B9
+2026-11-25T17:40:26.1025060Z /dev/disk2          	                               	/private/tmp/markease_dmg
+2026-11-25T17:40:26.1677900Z dmg layout assets: ok
+2026-11-25T17:40:26.2235360Z ##[group]Run actions/upload-artifact@v7
+2026-11-25T17:40:26.2236450Z with:
+2026-11-25T17:40:26.2237050Z   name: markease-macos-x64
+2026-11-25T17:40:26.2237640Z   path: out/*.tar.gz
+out/*.deb
+out/*.dmg
+out/SHA256SUMS.txt
+
+2026-11-25T17:40:26.2238260Z   if-no-files-found: error
+2026-11-25T17:40:26.2238720Z   compression-level: 0
+2026-11-25T17:40:26.2239300Z   overwrite: false
+2026-11-25T17:40:26.2239720Z   include-hidden-files: false
+2026-11-25T17:40:26.2240190Z   archive: true
+2026-11-25T17:40:26.2240550Z env:
+2026-11-25T17:40:26.2240940Z   PYTHONUNBUFFERED: 1
+2026-11-25T17:40:26.2241490Z   APPLE_CERTIFICATE_P12: 
+2026-11-25T17:40:26.2242610Z   pythonLocation: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:26.2243640Z   PKG_CONFIG_PATH: /Users/runner/hostedtoolcache/Python/3.14.7/x64/lib/pkgconfig
+2026-11-25T17:40:26.2244590Z   Python_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:26.2245510Z   Python2_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:26.2246340Z   Python3_ROOT_DIR: /Users/runner/hostedtoolcache/Python/3.14.7/x64
+2026-11-25T17:40:26.2247000Z ##[endgroup]
+2026-11-25T17:40:26.6201400Z With the provided path, there will be 2 files uploaded
+2026-11-25T17:40:26.6208090Z Artifact name is valid!
+2026-11-25T17:40:26.6208690Z Root directory input is valid!
+2026-11-25T17:40:27.0074340Z Uploading artifact: markease-macos-x64.zip
+2026-11-25T17:40:27.0116050Z Beginning upload of artifact content to blob storage
+2026-11-25T17:40:32.1594010Z Uploaded bytes 8388608
+2026-11-25T17:40:32.4588640Z Uploaded bytes 16777216
+2026-11-25T17:40:32.6066650Z Uploaded bytes 25165824
+2026-11-25T17:40:32.6594510Z Uploaded bytes 33554432
+2026-11-25T17:40:32.7853040Z Uploaded bytes 41943040
+2026-11-25T17:40:34.1656070Z Uploaded bytes 50331648
+2026-11-25T17:40:35.2954880Z Uploaded bytes 54131076
+2026-11-25T17:40:35.3748930Z Finished uploading artifact content to blob storage!
+2026-11-25T17:40:35.3752010Z SHA256 digest of uploaded artifact is 8032d237cdc8c38c7088802d0352f06735f0be3d3b1792d3e5072e6f83a87b04
+2026-11-25T17:40:35.3753990Z Finalizing artifact upload
+2026-11-25T17:40:35.9888130Z Artifact markease-macos-x64 successfully finalized. Artifact ID 15048346005
+2026-11-25T17:40:35.9894770Z Artifact markease-macos-x64 has been successfully uploaded! Final size is 54131076 bytes. Artifact ID is 15048346005
+2026-11-25T17:40:35.9899640Z Artifact download URL: https://github.com/zbt00123/MarkEase/actions/runs/45666301274/artifacts/15048346005
+2026-11-25T17:40:36.0291120Z Post job cleanup.
+2026-11-25T17:40:36.2057290Z Cache hit occurred on the primary key setup-python-macOS-x64-python-3.14.7-pip-8a4f023d6c37fccfd9af2183a0f944243aaafdb7c296f31949896424e6aa0316, not saving cache.
+2026-11-25T17:40:36.2270000Z Post job cleanup.
+2026-11-25T17:40:36.3667750Z [command]/usr/local/bin/git version
+2026-11-25T17:40:36.4215210Z git version 2.55.0
+2026-11-25T17:40:36.4247420Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/4116fa54-46e0-4167-b884-b4b325ed7bd8/.gitconfig'
+2026-11-25T17:40:36.4266840Z Temporarily overriding HOME='/Users/runner/work/_temp/4116fa54-46e0-4167-b884-b4b325ed7bd8' before making global git config changes
+2026-11-25T17:40:36.4268310Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-25T17:40:36.4272970Z [command]/usr/local/bin/git config --global --add safe.directory /Users/runner/work/MarkEase/MarkEase
+2026-11-25T17:40:36.4367930Z Removing SSH command configuration
+2026-11-25T17:40:36.4375500Z [command]/usr/local/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-25T17:40:36.4479890Z [command]/usr/local/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-25T17:40:36.6134650Z Removing HTTP extra header
+2026-11-25T17:40:36.6140920Z [command]/usr/local/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-25T17:40:36.6235060Z [command]/usr/local/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-25T17:40:36.7374090Z Removing includeIf entries pointing to credentials config files
+2026-11-25T17:40:36.7380360Z [command]/usr/local/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-25T17:40:36.7461420Z includeif.gitdir:/Users/runner/work/MarkEase/MarkEase/.git.path
+2026-11-25T17:40:36.7462460Z includeif.gitdir:/Users/runner/work/MarkEase/MarkEase/.git/worktrees/*.path
+2026-11-25T17:40:36.7463410Z includeif.gitdir:/github/workspace/.git.path
+2026-11-25T17:40:36.7464160Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-11-25T17:40:36.7472390Z [command]/usr/local/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/MarkEase/MarkEase/.git.path
+2026-11-25T17:40:36.7553340Z /Users/runner/work/_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config
+2026-11-25T17:40:36.7564600Z [command]/usr/local/bin/git config --local --unset includeif.gitdir:/Users/runner/work/MarkEase/MarkEase/.git.path \/Users\/runner\/work\/_temp\/git\-credentials\-7cad765a\-4bba\-4da7\-b0c1\-19321341845b\.config
+2026-11-25T17:40:36.7686130Z [command]/usr/local/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/MarkEase/MarkEase/.git/worktrees/*.path
+2026-11-25T17:40:36.7769340Z /Users/runner/work/_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config
+2026-11-25T17:40:36.7780260Z [command]/usr/local/bin/git config --local --unset includeif.gitdir:/Users/runner/work/MarkEase/MarkEase/.git/worktrees/*.path \/Users\/runner\/work\/_temp\/git\-credentials\-7cad765a\-4bba\-4da7\-b0c1\-19321341845b\.config
+2026-11-25T17:40:36.7877500Z [command]/usr/local/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-11-25T17:40:36.7956230Z /github/runner_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config
+2026-11-25T17:40:36.7970250Z [command]/usr/local/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-7cad765a\-4bba\-4da7\-b0c1\-19321341845b\.config
+2026-11-25T17:40:36.8054090Z [command]/usr/local/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-11-25T17:40:36.8131080Z /github/runner_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config
+2026-11-25T17:40:36.8140630Z [command]/usr/local/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-7cad765a\-4bba\-4da7\-b0c1\-19321341845b\.config
+2026-11-25T17:40:36.8235860Z [command]/usr/local/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-25T17:40:36.9370890Z Removing credentials config '/Users/runner/work/_temp/git-credentials-7cad765a-4bba-4da7-b0c1-19321341845b.config'
+2026-11-25T17:40:36.9582670Z Cleaning up orphan processes

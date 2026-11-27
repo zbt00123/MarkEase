@@ -216,6 +216,15 @@ def record_event(event, message=None, level='INFO', **context):
         pass
 
 
+def log_info(event, message=None, **context):
+    """Write an INFO record to disk (for traceable one-off events)."""
+    try:
+        rec = _make_record('INFO', event, message, None, context or None)
+        _write_record(rec)
+    except Exception:
+        pass
+
+
 def log_error(event, message=None, exception=None, **context):
     """
     Write an ERROR record to disk, including a snapshot of the in-memory

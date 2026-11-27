@@ -19,6 +19,7 @@
     let _replaceAllBtn = null;
     let _toastEl = null;
     let _toastTimer = null;
+    let _dragState = null;
 
     // ★ v2.1.6：预览查找 / 模式感知
     let _returnFocusEl = null;
@@ -42,8 +43,8 @@
         style.textContent = `
 /* ---- 查找栏 ---- */
 #findbar {
-    position: absolute;
-    top: 76px;
+    position: fixed;
+    top: 96px;
     right: 24px;
     z-index: 900;
     background: #fff;
@@ -54,9 +55,22 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    min-width: 460px;
+    min-width: min(460px, calc(100vw - 32px));
+    max-width: calc(100vw - 32px);
+    cursor: move;
 }
 #findbar.hidden { display: none !important; }
+
+/* 输入框/按钮保持原有光标；空白区域显示可拖动 */
+#findbar input,
+#findbar button,
+#findbar label {
+    cursor: auto;
+}
+#findbar button { cursor: pointer; }
+#findbar label { cursor: pointer; }
+#findbar.dragging,
+#findbar.dragging * { cursor: move !important; user-select: none !important; }
 
 .find-row { display: flex; align-items: center; gap: 6px; }
 
@@ -567,6 +581,8 @@ body.dark .cm-search-match-current {
         _closeBtn.addEventListener('click', () => closeFindBar());
         _replaceOneBtn.addEventListener('click', () => replaceOne());
         _replaceAllBtn.addEventListener('click', () => replaceAll());
+
+        initDrag();
     }
 
     function onInputKeydown(e) {
@@ -582,6 +598,110 @@ body.dark .cm-search-match-current {
         }
     }
 
+    // ---------------- 拖动 / 边界 ----------------
+    // 可移动区域：工具栏底部到状态栏顶部之间；每次打开都回到右上角。
+    function getFindBarArea() {
+        const toolbar = document.getElementById('toolbar');
+        const statusbar = document.getElementById('statusbar');
+        const toolbarBottom = toolbar
+            ? toolbar.getBoundingClientRect().bottom
+            : 0;
+        const statusbarTop = statusbar
+            ? statusbar.getBoundingClientRect().top
+            : window.innerHeight;
+        const left = 8;
+        const right = Math.max(left + 1, window.innerWidth - 8);
+        const top = Math.max(8, toolbarBottom + 10);
+        const bottom = Math.max(top + 1, statusbarTop - 10);
+        return { left, right, top, bottom };
+    }
+
+    function clampFindBarPosition(left, top) {
+        const area = getFindBarArea();
+        const width = _bar.offsetWidth || _bar.getBoundingClientRect().width;
+        const height = _bar.offsetHeight || _bar.getBoundingClientRect().height;
+        const maxLeft = Math.max(area.left, area.right - width);
+        const maxTop = Math.max(area.top, area.bottom - height);
+        return {
+            left: Math.min(Math.max(left, area.left), maxLeft),
+            top: Math.min(Math.max(top, area.top), maxTop)
+        };
+    }
+
+    function applyFindBarPosition(left, top) {
+        if (!_bar) return;
+        const pos = clampFindBarPosition(left, top);
+        _bar.style.left = `${Math.round(pos.left)}px`;
+        _bar.style.top = `${Math.round(pos.top)}px`;
+        _bar.style.right = 'auto';
+        _bar.style.bottom = 'auto';
+    }
+
+    function resetFindBarPosition() {
+        if (!_bar) return;
+        const area = getFindBarArea();
+        const width = _bar.offsetWidth || 460;
+        applyFindBarPosition(area.right - width - 16, area.top + 12);
+    }
+
+    function isFindBarControl(target) {
+        return !!(target && target.closest && target.closest(
+            'input, button, label, select, textarea, a, ' +
+            '[contenteditable="true"]'));
+    }
+
+    function initDrag() {
+        if (!_bar) return;
+
+        _bar.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            // 文本框内拖动 = 选择文本；按钮/复选框/链接保持原行为
+            if (isFindBarControl(e.target)) return;
+            e.preventDefault();
+            const rect = _bar.getBoundingClientRect();
+            _dragState = {
+                offsetX: e.clientX - rect.left,
+                offsetY: e.clientY - rect.top
+            };
+            _bar.classList.add('dragging');
+            try {
+                _bar.setPointerCapture(e.pointerId);
+            } catch (err) { /* ignore */ }
+        });
+
+        _bar.addEventListener('pointermove', (e) => {
+            if (!_dragState) return;
+            e.preventDefault();
+            applyFindBarPosition(
+                e.clientX - _dragState.offsetX,
+                e.clientY - _dragState.offsetY
+            );
+        });
+
+        const endDrag = (e) => {
+            if (!_dragState) return;
+            _dragState = null;
+            _bar.classList.remove('dragging');
+            try {
+                _bar.releasePointerCapture(e.pointerId);
+            } catch (err) { /* ignore */ }
+        };
+        _bar.addEventListener('pointerup', endDrag);
+        _bar.addEventListener('pointercancel', endDrag);
+
+        // 双击空白区域复位到右上角；双击输入框仍是选词
+        _bar.addEventListener('dblclick', (e) => {
+            if (isFindBarControl(e.target)) return;
+            resetFindBarPosition();
+        });
+
+        window.addEventListener('resize', () => {
+            if (!_bar || _bar.classList.contains('hidden')) return;
+            const rect = _bar.getBoundingClientRect();
+            applyFindBarPosition(rect.left, rect.top);
+        });
+    }
+
     // ---------------- 打开 / 关闭 ----------------
     function openFindBar(focusReplace) {
         if (!_bar) return;
@@ -592,6 +712,9 @@ body.dark .cm-search-match-current {
 
         _bar.classList.remove('hidden');
         _bar.style.display = 'flex';
+        // 每次打开都重新定位到工具栏下方右上角，不记忆上次位置
+        resetFindBarPosition();
+        requestAnimationFrame(resetFindBarPosition);
         setTimeout(() => {
             if (focusReplace) {
                 _replaceInput.focus();

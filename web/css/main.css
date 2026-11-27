@@ -128,6 +128,11 @@ html.dark .splash-text.error { color: #f85149; }
     font-size: 1.2em !important;
 }
 
+/* 给 ⚡ 留出悬浮空间：位于行号与正文之间，而不是压在行号上 */
+#editor .cm-content {
+    padding-left: 28px !important;
+}
+
 #preview-container { overflow: auto; }
 #preview {
     padding: 24px 32px;
@@ -1319,6 +1324,101 @@ body.dark #preview .task-list-bullet {
 }
 
 /* ============================================================
+   有序列表自动编号 ⚡（v2.1.7 / 浮在序号左侧）
+   ============================================================ */
+.cm-list-auto-float {
+    position: fixed;
+    z-index: 900;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+    color: #6e7781;
+    font-size: 18px;
+    line-height: 1;
+    font-family: "Segoe UI Emoji", "Apple Color Emoji", "Segoe UI", sans-serif;
+    opacity: 0.7;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.cm-list-auto-float:hover {
+    opacity: 1;
+    background: #ffffff;
+}
+
+body.dark .cm-list-auto-float {
+    background: rgba(45, 51, 59, 0.75);
+    color: #e3b341;
+}
+
+body.dark .cm-list-auto-float:hover {
+    background: #2d333b;
+}
+
+.list-auto-menu {
+    position: fixed;
+    z-index: 950;
+    min-width: 214px;
+    padding: 6px;
+    background: #ffffff;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(140, 149, 159, 0.2);
+    font-size: 13px;
+    color: #24292f;
+}
+
+.list-auto-menu-title {
+    padding: 4px 8px 6px;
+    margin-bottom: 4px;
+    color: #6a737d;
+    font-size: 12px;
+    border-bottom: 1px solid #eaeef2;
+}
+
+.list-auto-menu-item {
+    display: block;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.list-auto-menu-item:hover {
+    background: #f3f4f6;
+}
+
+body.dark .list-auto-menu {
+    background: #2d333b;
+    border-color: #444c56;
+    color: #dcdcdc;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+body.dark .list-auto-menu-title {
+    color: #8b949e;
+    border-bottom-color: #444c56;
+}
+
+body.dark .list-auto-menu-item:hover {
+    background: #373e47;
+}
+
+/* ============================================================
    深色模式下弹窗文字
    ============================================================ */
 body.dark .modal-overlay .modal { color: #dcdcdc; }
@@ -1879,6 +1979,14 @@ body.dark #preview li[data-md-editable="1"]:focus {
 #preview li.task-list-item[data-md-editable="1"] .task-list-bullet,
 #preview li.task-list-item[data-md-editable="1"] .task-list-checkbox {
     pointer-events: none;
+}
+
+/* ★ 预览中的任务复选框必须可点击：点击□/✅直接切换源码里的 [ ]/[x] */
+#preview li.task-list-item[data-md-editable="1"] .task-list-checkbox,
+#preview li.task-list-item[data-md-editable="0"] .task-list-checkbox,
+#preview li.task-list-item .task-list-checkbox {
+    pointer-events: auto !important;
+    cursor: pointer;
 }
 
 /* ============================================================

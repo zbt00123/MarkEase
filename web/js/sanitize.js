@@ -89,6 +89,7 @@
             'class': 1,
             'data-line': 1,
             'data-md-task-index': 1,
+            'data-md-task-ordinal': 1,
             'data-md-task-checked': 1,
             'data-md-task-bullet': 1,
             'role': 1,
@@ -106,6 +107,7 @@
         'li':    {
             'class': 1,
             'id': 1,
+            'value': 1,
             'data-footnote-item': 1,
             'data-footnote-index': 1,
         },

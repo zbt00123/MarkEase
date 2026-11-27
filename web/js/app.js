@@ -1,4 +1,8 @@
 // MarkEase 主逻辑（阶段 16-13 修复 2）
+//   ★ v2.1.7 新增：
+//     1) 有序列表自动编号（list-autonumber.js）：改号/删行自动续号
+//     2) 自动编号后显示 ⚡，可保持自动或转为手动（仅当前会话）
+//     3) 任务列表点击改为按“第几个任务项”定位，修复脚注导致点不动
 //   ★ 本轮修改：
 //     1) 新增 extractLiInlineText：li 编辑时只提取 inline 内容
 //     2) applyPreviewEdit 用 extractLiInlineText 处理 li
@@ -18,6 +22,7 @@ import { EditorState, Compartment, EditorSelection, StateField, StateEffect } fr
 import { EditorView, keymap, lineNumbers, highlightActiveLineGutter, Decoration } from './vendor/view.mjs';
 import { defaultKeymap, history, historyKeymap, undo, redo, isolateHistory } from './vendor/commands.mjs';
 import { markdown } from './vendor/lang-markdown.mjs';
+import { orderedListAutoNumber } from './list-autonumber.js';
 import { syntaxHighlighting, HighlightStyle, syntaxTree } from './vendor/language.mjs';
 import { tags } from './vendor/lezer-highlight.mjs';
 
@@ -729,6 +734,7 @@ function initEditor() {
                 history(),
                 keymap.of([...defaultKeymap, ...historyKeymap]),
                 markdown(),
+                orderedListAutoNumber(),
                 themeCompartment.of(syntaxHighlighting(lightHighlight)),
                 EditorView.lineWrapping,
                 EditorState.allowMultipleSelections.of(true),
@@ -912,7 +918,7 @@ window.MKSetPdfZoom = function (enable) {
     } catch (e) { /* ignore */ }
 };
 
-// createPDF 兜底导出时使用：把界面切换成"打印版式"（隐藏工具栏/菜单/状态栏）
+// createPDF / 原生打印导出时使用：浅色、无查找窗口/高亮/选区的打印版式
 window.MKSetPdfMode = function (enable) {
     try {
         let style = document.getElementById('mk-pdf-mode-style');
@@ -926,23 +932,76 @@ window.MKSetPdfMode = function (enable) {
                 'html.mk-pdf-mode #toc,',
                 'html.mk-pdf-mode #toc-resizer,',
                 'html.mk-pdf-mode #editor-container,',
-                'html.mk-pdf-mode #splash { display: none !important; }',
+                'html.mk-pdf-mode #splash,',
+                'html.mk-pdf-mode #findbar,',
+                'html.mk-pdf-mode #find-toast,',
+                'html.mk-pdf-mode .find-toast,',
+                'html.mk-pdf-mode .modal-overlay { display: none !important; }',
                 'html.mk-pdf-mode #main { display: block !important;',
-                '  overflow: visible !important; zoom: 1 !important; }',
+                '  overflow: visible !important; zoom: 1 !important;',
+                '  width: 720px !important; }',
                 'html.mk-pdf-mode #preview-container { display: block !important;',
-                '  overflow: visible !important; width: 100% !important;',
-                '  height: auto !important; }',
-                'html.mk-pdf-mode #preview { max-width: none !important;',
-                '  padding: 0 !important; }',
+                '  overflow: visible !important; width: 720px !important;',
+                '  height: auto !important; background: #fff !important; }',
+                'html.mk-pdf-mode #preview { width: 720px !important;',
+                '  max-width: 720px !important; margin: 0 !important;',
+                '  padding: 0 !important; box-sizing: border-box !important;',
+                '  background: #fff !important; }',
                 'html.mk-pdf-mode body, html.mk-pdf-mode #app {',
-                '  background: #fff !important; color: #000 !important;',
-                '  overflow: visible !important; height: auto !important; }',
+                '  width: 720px !important; background: #fff !important;',
+                '  color: #000 !important; overflow: visible !important;',
+                '  height: auto !important; }',
                 'html.mk-pdf-mode .markdown-body {',
-                '  background: #fff !important; color: #000 !important; }'
+                '  background: #fff !important; color: #000 !important; }',
+                'html.mk-pdf-mode ::selection,',
+                'html.mk-pdf-mode *::selection { background: transparent !important; }',
+                'html.mk-pdf-mode ::highlight(mk-find-match),',
+                'html.mk-pdf-mode ::highlight(mk-find-current),',
+                'html.mk-pdf-mode ::highlight(mk-find-fuzzy),',
+                'html.mk-pdf-mode ::highlight(mk-find-fuzzy-current) {',
+                '  background-color: transparent !important; }'
             ].join('\n');
             document.head.appendChild(style);
         }
-        document.documentElement.classList.toggle('mk-pdf-mode', !!enable);
+
+        if (enable) {
+            window.__mkPdfThemeState = {
+                htmlDark: document.documentElement.classList.contains('dark'),
+                bodyDark: document.body.classList.contains('dark'),
+                colorScheme: document.documentElement.style.colorScheme || ''
+            };
+            // PDF 始终浅色：移除 dark 类，避免 body.dark 的变量/背景进入导出
+            document.documentElement.classList.remove('dark');
+            document.body.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+
+            // 查找窗口、高亮、选区不能进入 PDF
+            try {
+                if (window.FindBar && window.FindBar.close) {
+                    window.FindBar.close();
+                }
+            } catch (e) { /* ignore */ }
+            try {
+                const sel = window.getSelection && window.getSelection();
+                if (sel) sel.removeAllRanges();
+            } catch (e) { /* ignore */ }
+            try {
+                if (document.activeElement && document.activeElement.blur) {
+                    document.activeElement.blur();
+                }
+            } catch (e) { /* ignore */ }
+
+            document.documentElement.classList.add('mk-pdf-mode');
+            // 强制一次布局，让 createPDF/打印拿到浅色版式
+            void document.body.offsetHeight;
+        } else {
+            document.documentElement.classList.remove('mk-pdf-mode');
+            const state = window.__mkPdfThemeState || {};
+            if (state.htmlDark) document.documentElement.classList.add('dark');
+            if (state.bodyDark) document.body.classList.add('dark');
+            document.documentElement.style.colorScheme = state.colorScheme || '';
+            window.__mkPdfThemeState = null;
+        }
     } catch (e) { /* ignore */ }
 };
 async function onSetDefaultProgram() {
@@ -2013,19 +2072,80 @@ function setupScrollSync() {
 // ============================================================
 const TASK_LINE_RE = /^(\s*(?:>[ \t]*)?[-*+][ \t]+)\[([ xX])\]/;
 
+// ★ v2.1.7：用“第几个任务项”定位源码，避免脚注预处理改变偏移后点不动。
+function findTaskBracketPos(doc, ordinal) {
+    if (!editorView || !doc || ordinal < 0) return -1;
+
+    let count = 0;
+    let inFence = false;
+    let fenceChar = '';
+    let fenceLen = 0;
+    let prevText = '';
+
+    for (let ln = 1; ln <= doc.lines; ln++) {
+        const line = doc.line(ln);
+        const text = line.text;
+        const fence = /^[ \t]{0,3}(`{3,}|~{3,})/.exec(text);
+
+        if (inFence) {
+            if (fence && fence[1][0] === fenceChar &&
+                fence[1].length >= fenceLen) {
+                inFence = false;
+            }
+            prevText = text;
+            continue;
+        }
+        if (fence) {
+            inFence = true;
+            fenceChar = fence[1][0];
+            fenceLen = fence[1].length;
+            prevText = text;
+            continue;
+        }
+
+        const m = /^([ \t]*)(>[ \t]*)?([-*+][ \t]+)\[([ xX])\]/.exec(text);
+        if (!m) {
+            prevText = text;
+            continue;
+        }
+
+        const indent = m[1] || '';
+        const quote = m[2] || '';
+        if (!quote && indent.length >= 4) {
+            const prevIsList = /^[ \t]*[-*+][ \t]|^[ \t]*\d+\.[ \t]/.test(prevText);
+            if (!prevIsList) {
+                prevText = text;
+                continue;
+            }
+        }
+
+        if (count === ordinal) {
+            return line.from + indent.length + quote.length + m[3].length;
+        }
+        count++;
+        prevText = text;
+    }
+
+    return -1;
+}
+
 function setupTaskListClick() {
     previewEl.addEventListener('click', (e) => {
         const target = e.target && e.target.closest
             ? e.target.closest('.task-list-checkbox')
             : null;
         if (!target) return;
-        const idxStr = target.getAttribute('data-md-task-index');
-        if (idxStr == null) return;
-        const idx = parseInt(idxStr, 10);
-        if (!Number.isFinite(idx)) return;
+        const ordStr = target.getAttribute('data-md-task-ordinal');
+        if (ordStr == null) return;
+        const ordinal = parseInt(ordStr, 10);
+        if (!Number.isFinite(ordinal) || ordinal < 0) return;
+
+        const bracketPos = findTaskBracketPos(editorView.state.doc, ordinal);
+        if (bracketPos < 0) return;
+
         e.preventDefault();
         e.stopPropagation();
-        toggleTaskCheckbox(idx);
+        toggleTaskCheckbox(bracketPos);
     }, true);
 
     if (!editorView) return;
@@ -4228,7 +4348,9 @@ function fragmentToMarkdown(node) {
                     const checked = cb && cb.getAttribute('data-md-task-checked') === '1';
                     prefix = '- ' + (checked ? '[x] ' : '[ ] ');
                 } else if (ordered) {
-                    prefix = (idx + '. ');
+                    // ★ v2.1.7：优先使用 <li value> 恢复源码中的手动编号
+                    const explicit = parseInt(li.getAttribute('value'), 10);
+                    prefix = ((Number.isFinite(explicit) ? explicit : idx) + '. ');
                     idx++;
                 } else {
                     prefix = '- ';
@@ -4762,11 +4884,22 @@ function applyPreviewEdit(el) {
 async function onNew() {
     commitActivePreviewEdit();
     if (isDirty) {
-        const ok = await showConfirm(
-            T('unsaved_content_title', '未保存的内容'),
-            T('unsaved_content_warning', '未保存的内容将丢失，继续？')
-        );
-        if (!ok) return;
+        // ★ 与关闭窗口一致：取消 / 不保存 / 保存
+        const choice = await showUnsavedCloseDialog();
+
+        if (choice === 'cancel') return;
+
+        if (choice === 'save') {
+            // 保存被取消、失败或只导出了 PDF 时，不新建文档
+            let saved = false;
+            try {
+                saved = await onSave();
+            } catch (e) {
+                setStatus('保存失败: ' + (e && e.message ? e.message : e));
+                saved = false;
+            }
+            if (!saved) return;
+        }
     }
 
     currentFile = '';
@@ -5387,7 +5520,9 @@ function listToMarkdown(listEl, ordered, depth) {
                  checkbox.checked);
             prefix = '- [' + (checked ? 'x' : ' ') + '] ';
         } else if (ordered) {
-            prefix = idx + '. ';
+            // ★ v2.1.7：优先使用 <li value> 恢复源码中的手动编号
+            const explicit = parseInt(li.getAttribute('value'), 10);
+            prefix = (Number.isFinite(explicit) ? explicit : idx) + '. ';
             idx++;
         } else {
             prefix = '- ';

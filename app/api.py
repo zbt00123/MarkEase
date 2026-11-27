@@ -71,6 +71,15 @@ def _log_event(event, message=None, **context):
         pass
 
 
+def _log_info(event, message=None, **context):
+    if _logging is None:
+        return
+    try:
+        _logging.log_info(event, message=message, **context)
+    except Exception:
+        pass
+
+
 def _log_error(event, message=None, exception=None, **context):
     if _logging is None:
         return
@@ -861,6 +870,8 @@ class Api:
     # ---------- 启动文件 ----------
     def set_startup_file(self, path):
         self._startup_file = path or ''
+        _log_info('startup_file_queued', 'startup file received',
+                  path=self._startup_file)
         return {'ok': True}
 
     def get_startup_file(self):
@@ -1957,10 +1968,21 @@ class Api:
         embed_ok = embed_markdown_into_pdf(pdf_path, md_to_embed)
 
         size = os.path.getsize(pdf_path)
+        pages = 0
+        try:
+            import pymupdf
+            doc = pymupdf.open(pdf_path)
+            try:
+                pages = doc.page_count
+            finally:
+                doc.close()
+        except Exception:
+            pass
         return {
             'ok': True,
             'path': pdf_path,
             'size': size,
+            'pages': pages,
             'embedded': embed_ok,
         }
 

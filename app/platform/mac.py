@@ -172,6 +172,8 @@ class MacPlatform(PlatformBase):
 
     def _rewire_about_menu(self, main):
         """把系统 App 菜单的 About 改为打开 MarkEase 自己的关于窗口。"""
+        if getattr(self, '_about_rewired', False):
+            return
         try:
             import AppKit
             if main.numberOfItems() < 1:
@@ -180,32 +182,36 @@ class MacPlatform(PlatformBase):
             if sub is None:
                 return
 
-            class _AboutHandler(AppKit.NSObject):
-                def showAbout_(self, sender):
-                    try:
-                        api = getattr(self, '_mk_api', None)
-                        if api is not None:
-                            # 直接开自定义关于窗口，不依赖前端是否已初始化
+            handler = getattr(self, '_about_handler', None)
+            if handler is None:
+                class _AboutHandler(AppKit.NSObject):
+                    def showAbout_(self, sender):
+                        try:
+                            api = getattr(self, '_mk_api', None)
+                            if api is not None:
+                                # 直接开自定义关于窗口，不依赖前端是否已初始化
+                                threading.Thread(
+                                    target=api.open_about_window,
+                                    daemon=True,
+                                    name='MarkEaseAboutMenu',
+                                ).start()
+                                return
+                            window = getattr(self, '_mk_window', None)
+                            if window is None:
+                                return
                             threading.Thread(
-                                target=api.open_about_window,
+                                target=lambda: window.evaluate_js(
+                                    "window.MKMenuAction && "
+                                    "window.MKMenuAction('about')"),
                                 daemon=True,
                                 name='MarkEaseAboutMenu',
                             ).start()
-                            return
-                        window = getattr(self, '_mk_window', None)
-                        if window is None:
-                            return
-                        threading.Thread(
-                            target=lambda: window.evaluate_js(
-                                "window.MKMenuAction && "
-                                "window.MKMenuAction('about')"),
-                            daemon=True,
-                            name='MarkEaseAboutMenu',
-                        ).start()
-                    except Exception as e:
-                        print(f'[MarkEase][mac] About menu failed: {e}')
+                        except Exception as e:
+                            print(f'[MarkEase][mac] About menu failed: {e}')
 
-            handler = _AboutHandler.alloc().init()
+                handler = _AboutHandler.alloc().init()
+                self._about_handler = handler
+
             handler._mk_window = getattr(self, '_window', None)
             handler._mk_api = getattr(self, '_api', None)
             for item in sub.itemArray():
@@ -218,7 +224,7 @@ class MacPlatform(PlatformBase):
                         'orderFrontStandardAboutPanel' in action):
                     item.setTarget_(handler)
                     item.setAction_(b'showAbout:')
-                    self._about_handler = handler
+                    self._about_rewired = True
                     print('[MarkEase][mac] About menu rewired')
                     return
         except Exception as e:
@@ -306,6 +312,47 @@ class MacPlatform(PlatformBase):
         except Exception as e:
             print(f'[MarkEase][mac] cannot install open-file handler: {e}')
 
+        # 真正让 macOS 的「双击 .md」生效的是 NSApplicationDelegate 的
+        # application:openFile:/openFiles:。旧版只注册 AppleEvent handler，
+        # LaunchServices 仍会走 delegate，delegate 不实现就弹
+        # “MarkEase cannot open files in the Markdown Document format”。
+        try:
+            from webview.platforms import cocoa
+
+            class _MarkEaseAppDelegate(cocoa.BrowserView.AppDelegate):
+                def application_openFile_(self, sender, filename):
+                    try:
+                        _queue_file(str(filename))
+                    except Exception as exc:
+                        print(f'[MarkEase][mac] openFile failed: {exc}')
+                    return True
+
+                def application_openFiles_(self, sender, filenames):
+                    try:
+                        for path in filenames:
+                            _queue_file(str(path))
+                    except Exception as exc:
+                        print(f'[MarkEase][mac] openFiles failed: {exc}')
+
+                def application_openURLs_(self, sender, urls):
+                    try:
+                        for url in urls:
+                            if url is not None and url.isFileURL():
+                                _queue_file(str(url.path()))
+                    except Exception as exc:
+                        print(f'[MarkEase][mac] openURLs failed: {exc}')
+
+            cocoa.BrowserView.AppDelegate = _MarkEaseAppDelegate
+            # 关键：必须在 NSApplication 开始 run loop 前就成为 delegate。
+            # 双击启动时 odoc 事件可能早于 webview.start()，等 BrowserView.init
+            # 再设置 delegate 已经太晚，系统会弹 "cannot open ... format"。
+            delegate = _MarkEaseAppDelegate.alloc().init()
+            cocoa.BrowserView._shared_app_delegate = delegate
+            cocoa.BrowserView.app.setDelegate_(delegate)
+            print('[MarkEase][mac] open-file application delegate installed')
+        except Exception as e:
+            print(f'[MarkEase][mac] cannot install open-file delegate: {e}')
+
     def start_open_file_watcher(self, window, api):
         """窗口加载后，把 Apple Event 送来的文件转交前端打开。"""
         def _watch():
@@ -389,14 +436,14 @@ class MacPlatform(PlatformBase):
         if wv is None:
             return {'ok': False, 'error': '无法获取 WKWebView'}
 
-        # 只用 WKWebView.createPDF：不启动 Chrome，避免 macOS 的
-        # “允许创建 PDF / 访问文件”隐私提示。长文档会分块生成后合并。
+        # NSPrintOperation 在 macOS 上会卡在保存面板，已弃用。
+        # createPDF 先按浅色打印版式截取，再按 Letter 页切片。
         if self._fallback_create_pdf(window, wv, pdf_path):
             return {'ok': True}
         return {'ok': False, 'error': 'PDF 导出失败'}
 
     def _fallback_create_pdf(self, window, wv, pdf_path):
-        """NSPrintSaveJob 不写文件时的兜底：WKWebView.createPDF。"""
+        """createPDF 兜底：先截取浅色长图，再按 Letter 页切片。"""
         try:
             import Foundation
         except Exception as e:
@@ -409,15 +456,15 @@ class MacPlatform(PlatformBase):
                     'window.MKSetPdfMode && window.MKSetPdfMode(true)')
             except Exception:
                 pass
-            time.sleep(0.3)
+            time.sleep(0.6)
 
             width, height = self._pdf_page_size(window)
             if width <= 0:
-                width = 1200.0
+                width = 720.0
             if height <= 0:
                 height = 1600.0
 
-            # PDF 单页最大 200in；超长文档分块捕获后用 PyMuPDF 合并
+            # PDF 单页最大 200in；超长文档分块捕获
             if height <= 18000.0:
                 rects = [Foundation.NSMakeRect(0.0, 0.0, width, height)]
             else:
@@ -439,24 +486,26 @@ class MacPlatform(PlatformBase):
                     return False
                 parts.append(tmp)
 
-            if len(parts) == 1:
-                shutil.move(parts[0], pdf_path)
-            else:
+            if not parts:
+                return False
+
+            source = parts[0]
+            if len(parts) > 1:
                 import pymupdf
+                fd, merged = tempfile.mkstemp(suffix='.pdf')
+                os.close(fd)
                 out = pymupdf.open()
                 try:
                     for part in parts:
-                        src = pymupdf.open(part)
-                        out.insert_pdf(src)
-                        src.close()
-                    out.save(pdf_path)
+                        src_doc = pymupdf.open(part)
+                        out.insert_pdf(src_doc)
+                        src_doc.close()
+                    out.save(merged)
                 finally:
                     out.close()
-                    for part in parts:
-                        try:
-                            os.remove(part)
-                        except Exception:
-                            pass
+                source = merged
+
+            self._paginate_pdf(source, pdf_path)
             print(f'[MarkEase][mac] fallback createPDF wrote {pdf_path}')
             return True
         except Exception as e:
@@ -468,6 +517,86 @@ class MacPlatform(PlatformBase):
                     'window.MKSetPdfMode && window.MKSetPdfMode(false)')
             except Exception:
                 pass
+
+    def _paginate_pdf(self, source_path, pdf_path):
+        """把 createPDF 的长页按 Letter 尺寸切片，尽量避开文字行。"""
+        import pymupdf
+
+        page_w, page_h = 612.0, 792.0
+        margin = 28.8
+        content_w = page_w - margin * 2
+        content_h = page_h - margin * 2
+
+        src = pymupdf.open(source_path)
+        out = pymupdf.open()
+        try:
+            for src_page in src:
+                width = float(src_page.rect.width)
+                height = float(src_page.rect.height)
+                if width <= 1 or height <= 1:
+                    continue
+                scale = content_w / width
+                step = content_h / scale
+
+                obstacles = []
+                try:
+                    text = src_page.get_text('dict')
+                    for block in text.get('blocks', []):
+                        if block.get('type') == 0:
+                            for line in block.get('lines', []):
+                                bbox = line.get('bbox')
+                                if bbox:
+                                    obstacles.append((bbox[1], bbox[3]))
+                        else:
+                            bbox = block.get('bbox')
+                            if bbox:
+                                obstacles.append((bbox[1], bbox[3]))
+                    for image in src_page.get_image_info():
+                        bbox = image.get('bbox')
+                        if bbox:
+                            obstacles.append((bbox[1], bbox[3]))
+                except Exception:
+                    obstacles = []
+
+                def safe_break(target, min_y):
+                    candidate = target
+                    for _ in range(20):
+                        hit = None
+                        for y0, y1 in obstacles:
+                            if y0 < candidate - 1 < y1:
+                                hit = (y0, y1)
+                                break
+                        if hit is None:
+                            return candidate
+                        new_y = hit[0] - 2
+                        if new_y <= min_y:
+                            new_y = hit[1] + 2
+                        if new_y <= min_y or new_y >= target:
+                            return target
+                        candidate = new_y
+                    return target
+
+                y = 0.0
+                while y < height - 1:
+                    target = min(y + step, height)
+                    if target < height:
+                        target = safe_break(target, y + step * 0.5)
+                    if target <= y + 10:
+                        target = min(y + step, height)
+                    slice_h = target - y
+                    dest_h = slice_h * scale
+                    page = out.new_page(width=page_w, height=page_h)
+                    dest = pymupdf.Rect(
+                        margin, margin, margin + content_w,
+                        margin + min(dest_h, content_h))
+                    clip = pymupdf.Rect(0, y, width, target)
+                    page.show_pdf_page(dest, src, src_page.number, clip=clip)
+                    y = target
+
+            out.save(pdf_path, garbage=4, deflate=True)
+        finally:
+            out.close()
+            src.close()
 
     def _wk_content_size(self, wv):
         """在主线程获取 WKWebView 可视宽度 / 全文高度。"""
@@ -500,17 +629,18 @@ class MacPlatform(PlatformBase):
         return holder.get('size') or (1200.0, 1600.0)
 
     def _pdf_page_size(self, window):
-        """用 JS 取打印版式的宽高（CSS 像素），避免依赖 WKWebView.scrollView。"""
+        """用打印版式的 preview 宽高（CSS 像素）作为 createPDF 的 rect。"""
         try:
             width = float(window.evaluate_js(
-                'window.innerWidth || 1200'))
+                "(document.getElementById('preview') || {})."
+                "getBoundingClientRect().width || 720"))
             height = float(window.evaluate_js(
-                'Math.max(document.body.scrollHeight, '
-                'document.documentElement.scrollHeight) || 1600'))
-            return max(width, 800.0), max(height, 1000.0)
+                "Math.max((document.getElementById('preview') || {})."
+                "scrollHeight || 0, document.body.scrollHeight) || 1600"))
+            return max(width, 320.0), max(height, 600.0)
         except Exception as e:
             print(f'[MarkEase][mac] PDF size probe failed: {e}')
-            return (1200.0, 1600.0)
+            return (720.0, 1600.0)
 
     def _wk_create_pdf(self, wv, rect):
         """在主线程调用 WKWebView.createPDF，返回 NSData 或 None。"""

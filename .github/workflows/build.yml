@@ -1,22 +1,14 @@
-name: Build Linux & macOS
+name: Build all platforms
 
-# MarkEase 的 Linux / macOS 打包入口。
-#
-# - Linux  : ubuntu-22.04 上构建（glibc 较老，兼容更多发行版），产出 tar.gz + deb
-# - macOS  : 分别在 macos-26-intel（x64）与 macos-26（Apple Silicon）上原生构建，
-#            各产出一个 dmg，从而同时兼容 Intel 与 M 系列芯片
-# - 所有平台共用同一份业务代码（app/platform 负责系统差异），无需维护三份分支
-#
-# 触发：手动 workflow_dispatch、PR（验证构建），
-#       或被 build-all-platforms.yml 统一调用（发版时）。
-# 说明：Windows 由 build-windows.yml 构建；需要“一次打全平台”时用统一入口。
+# MarkEase 唯一构建入口：一次运行生成 Windows / Linux / macOS（Intel + ARM）。
+# 触发：手动 workflow_dispatch，或推送 v* 标签。
+# 说明：PyInstaller 不能交叉编译，四个目标分别在各自原生 runner 上构建。
 
 on:
   workflow_dispatch:
-  workflow_call:
-  pull_request:
-    branches:
-      - main
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: read
@@ -25,7 +17,68 @@ env:
   PYTHONUNBUFFERED: '1'
 
 jobs:
-  build:
+  # ============================================================
+  #  Windows x64
+  # ============================================================
+  windows-x64:
+    name: windows-x64
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Build (PyInstaller)
+        run: python -m PyInstaller --clean --noconfirm MarkEase.spec
+
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          $exe = 'dist/MarkEase/MarkEase.exe'
+          if (-not (Test-Path $exe)) { throw "missing $exe" }
+          if (-not (Test-Path 'dist/MarkEase/MarkEase.exe.config')) {
+            throw 'missing MarkEase.exe.config (needed by pythonnet on non-ASCII paths)'
+          }
+          if (-not (Test-Path 'dist/MarkEase/_internal/pythonnet/runtime/Python.Runtime.dll')) {
+            throw 'missing pythonnet runtime'
+          }
+          if (-not (Test-Path 'dist/MarkEase/_internal/web/index.html')) {
+            throw 'missing web assets'
+          }
+
+      - name: Package portable zip
+        shell: pwsh
+        run: |
+          $ver = python -c "import re;print('.'.join(re.search(r'filevers=\((\d+),\s*(\d+),\s*(\d+)', open('version_info.txt', encoding='utf-8').read()).groups()))"
+          New-Item -ItemType Directory -Force out | Out-Null
+          $zip = "out/MarkEase_v${ver}_Windows_x64_portable.zip"
+          Compress-Archive -Path 'dist/MarkEase' -DestinationPath $zip -CompressionLevel Optimal
+          Write-Host "artifact: $zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: markease-windows-x64
+          path: out/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  # ============================================================
+  #  Linux x64 / macOS Intel / macOS Apple Silicon
+  # ============================================================
+  unix:
+    name: ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,10 +97,7 @@ jobs:
             arch: arm64
 
     runs-on: ${{ matrix.os }}
-    name: ${{ matrix.name }}
-
     env:
-      # 在 job 级暴露，才能用于 step 的 if 条件（GitHub 不允许 secrets 直接出现在 if）
       APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
 
     steps:
@@ -77,16 +127,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install pyinstaller
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            python -m pip install dmgbuild
+          fi
 
       - name: Import Developer ID certificate (optional)
         if: runner.os == 'macOS' && env.APPLE_CERTIFICATE_P12 != ''
         env:
-          CERT_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
           CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: |
           set -euo pipefail
           KEYCHAIN=/tmp/markease-signing.keychain
-          echo "$CERT_P12" | base64 --decode > /tmp/markease-cert.p12
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > /tmp/markease-cert.p12
           security create-keychain -p actions "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p actions "$KEYCHAIN"
@@ -114,9 +166,7 @@ jobs:
           set -euo pipefail
           test -x dist/MarkEase/MarkEase
           test -f dist/MarkEase/_internal/web/index.html
-          echo '--- self-test ---'
           xvfb-run -a dist/MarkEase/MarkEase --self-test
-          echo '--- net-test ---'
           dist/MarkEase/MarkEase --net-test
 
       - name: Verify build output (macOS)
@@ -127,16 +177,18 @@ jobs:
           test -d "$APP"
           test -f "$APP/Contents/Info.plist"
           test -f "$APP/Contents/MacOS/MarkEase"
-          echo '--- Info.plist ---'
           /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
             "$APP/Contents/Info.plist"
-          echo '--- self-test ---'
+          /usr/libexec/PlistBuddy -c \
+            'Print :CFBundleDocumentTypes:0:LSItemContentTypes:0' \
+            "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c \
+            'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' \
+            "$APP/Contents/Info.plist"
+          plutil -lint "$APP/Contents/Info.plist"
           "$APP/Contents/MacOS/MarkEase" --self-test
-          echo '--- net-test ---'
           "$APP/Contents/MacOS/MarkEase" --net-test
 
-      # 真实启动一次窗口，并由 --ui-test 检查前端是否真正初始化：
-      # initialized=True + 工具栏按钮 > 0 才算通过，能直接抓出"空白窗口"。
       - name: GUI smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -159,7 +211,6 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           set +e
-          # macOS runner 没有 GNU timeout；--ui-test 会在 8 秒后自行退出
           dist/MarkEase.app/Contents/MacOS/MarkEase --ui-test \
             2>&1 | tee /tmp/markease-ui-test.log
           code=${PIPESTATUS[0]}
@@ -169,12 +220,36 @@ jobs:
             exit 1
           fi
           grep -q '"initialized": true' /tmp/markease-ui-test.log
-          if grep -q '"toolbarButtons": 0' /tmp/markease-ui-test.log; then
-            echo "::error::toolbar did not initialize"
+          grep -q '"menubarVisible": true' /tmp/markease-ui-test.log
+
+      - name: Find bar drag/bounds test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set +e
+          timeout 45s xvfb-run -a dist/MarkEase/MarkEase --find-test \
+            2>&1 | tee /tmp/markease-find-test.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-find-test.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--find-test failed with code $code"
             exit 1
           fi
 
-      # 实际导出一次 PDF，验证打印管线 + 100% 缩放
+      - name: Find bar drag/bounds test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set +e
+          dist/MarkEase.app/Contents/MacOS/MarkEase --find-test \
+            2>&1 | tee /tmp/markease-find-test.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-find-test.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--find-test failed with code $code"
+            exit 1
+          fi
+
       - name: PDF smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -205,7 +280,6 @@ jobs:
           fi
           test -s /tmp/markease-test.pdf
 
-      # macOS 关闭流程：模拟 force_close，进程必须在 10 秒内以 0 退出
       - name: Close/quit smoke test (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -220,6 +294,46 @@ jobs:
             exit 1
           fi
 
+      - name: Verify PDF colors/layout (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          python - <<'PY'
+          import pymupdf
+          doc = pymupdf.open('/tmp/markease-test.pdf')
+          assert doc.page_count >= 2, f'only {doc.page_count} page(s)'
+          for index in (0, doc.page_count - 1):
+              page = doc[index]
+              pix = page.get_pixmap(matrix=pymupdf.Matrix(0.5, 0.5),
+                                    alpha=False)
+              points = [(3, 3), (pix.width - 4, 3),
+                        (3, pix.height - 4),
+                        (pix.width - 4, pix.height - 4)]
+              for x, y in points:
+                  rgb = pix.pixel(x, y)[:3]
+                  assert sum(rgb) / 3 > 180, (
+                      f'page {index} corner ({x},{y}) is dark: {rgb}')
+          text = ''.join(p.get_text() for p in doc)
+          assert '替换为' not in text and '查找' not in text, \
+              'find bar text leaked into PDF'
+          print(f'pdf layout ok: {doc.page_count} pages, light background')
+          PY
+
+      - name: Open-file smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set +e
+          printf '# MarkEase open test\n\nhello\n' > /tmp/markease-open-test.md
+          dist/MarkEase.app/Contents/MacOS/MarkEase \
+            --open-file-test /tmp/markease-open-test.md \
+            2>&1 | tee /tmp/markease-open-file.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-open-file.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--open-file-test failed with code $code"
+            exit 1
+          fi
+
       - name: Package
         env:
           MK_CODESIGN_IDENTITY: ${{ secrets.MAC_CODESIGN_IDENTITY }}
@@ -230,6 +344,21 @@ jobs:
         run: |
           python packaging/package.py \
             --target ${{ matrix.target }} --dist dist --out out
+
+      - name: Verify dmg contents (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          DMG=$(ls out/*.dmg)
+          MOUNT=/tmp/markease_dmg
+          mkdir -p "$MOUNT"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT"
+          trap 'hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true' EXIT
+          test -d "$MOUNT/MarkEase.app"
+          test -L "$MOUNT/Applications"
+          test -f "$MOUNT/.DS_Store"
+          find "$MOUNT" -iname '*background*' | grep -q .
+          echo 'dmg layout assets: ok'
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7

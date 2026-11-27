@@ -65,7 +65,7 @@ def _read_version_from_version_info():
 
 
 # 前端 BUILD_TAG（与 web/js/render.js 保持一致；仅作日志标识）
-_RENDER_BUILD_TAG = 'render-v25'
+_RENDER_BUILD_TAG = 'render-v27'
 
 
 def _init_logging_early():
@@ -949,7 +949,11 @@ def _start_pdf_test(window, api, out_path):
         md = ('# PDF Test\n\n'
               'Hello **MarkEase** 中文测试。\n\n'
               '- one\n- two\n\n'
-              '> quote line\n')
+              '> quote line\n\n')
+        # 足够长，确保触发多页导出（分页是否正确）
+        paragraph = ('这是用于验证 PDF 分页的段落。MarkEase 应该把内容'
+                     '排成多页，而不是一张很长的单页。\n\n')
+        md += paragraph * 40
         try:
             window.run_js(
                 'window.MKTestLoad && window.MKTestLoad(%s)'
@@ -967,6 +971,11 @@ def _start_pdf_test(window, api, out_path):
 
         print('[MarkEase][pdf-test] '
               + _json.dumps(result, ensure_ascii=False))
+        if result.get('ok') and int(result.get('pages') or 0) < 2:
+            result = {'ok': False,
+                      'error': 'PDF did not paginate (pages < 2)',
+                      'pages': result.get('pages')}
+            print('[MarkEase][pdf-test] ' + _json.dumps(result))
         try:
             window.destroy()
         except Exception:
@@ -1004,6 +1013,107 @@ def _start_close_test(window):
 
     threading.Thread(target=_worker, daemon=True,
                      name='MarkEaseCloseTest').start()
+
+
+def _start_find_test(window):
+    """CI/本地冒烟：打开查找栏，检查默认右上角及拖动边界。"""
+    import json as _json
+
+    probe = (
+        "JSON.stringify((function(){"
+        "var b=document.getElementById('findbar');"
+        "var r=b.getBoundingClientRect();"
+        "var t=document.getElementById('toolbar').getBoundingClientRect();"
+        "var s=document.getElementById('statusbar').getBoundingClientRect();"
+        "return {visible:!b.classList.contains('hidden'),"
+        "top:r.top,left:r.left,right:r.right,bottom:r.bottom,"
+        "toolbarBottom:t.bottom,statusTop:s.top,"
+        "vw:window.innerWidth,vh:window.innerHeight};"
+        "})())"
+    )
+
+    def _worker():
+        try:
+            window.events.loaded.wait(20)
+        except Exception:
+            pass
+        time.sleep(2)
+        try:
+            window.run_js("window.FindBar && window.FindBar.open(false)")
+            time.sleep(0.4)
+            raw = window.run_js(probe)
+            data = _json.loads(raw) if isinstance(raw, str) else raw
+            print(f'[MarkEase][find-test] default: {data}')
+            ok = bool(data.get('visible')) and \
+                data['top'] >= data['toolbarBottom'] - 1 and \
+                data['bottom'] <= data['statusTop'] + 1 and \
+                data['right'] <= data['vw'] + 1 and data['left'] >= -1
+            if not ok:
+                print('[MarkEase][find-test] default position out of bounds')
+                os._exit(3)
+
+            drag = (
+                "JSON.stringify((function(){"
+                "var b=document.getElementById('findbar');"
+                "function ev(type,x,y){b.dispatchEvent(new PointerEvent(type,{"
+                "bubbles:true,cancelable:true,pointerId:1,pointerType:'mouse',"
+                "button:0,clientX:x,clientY:y}));}"
+                "ev('pointerdown',400,300);"
+                "ev('pointermove',10,10);"
+                "ev('pointerup',10,10);"
+                "var r=b.getBoundingClientRect();"
+                "var t=document.getElementById('toolbar').getBoundingClientRect();"
+                "return {top:r.top,left:r.left,"
+                "toolbarBottom:t.bottom,vw:window.innerWidth};"
+                "})())"
+            )
+            raw = window.run_js(drag)
+            moved = _json.loads(raw) if isinstance(raw, str) else raw
+            print(f'[MarkEase][find-test] dragged: {moved}')
+            ok = moved['top'] >= moved['toolbarBottom'] - 1 and \
+                moved['left'] >= -1 and moved['left'] <= moved['vw'] + 1
+            os._exit(0 if ok else 3)
+        except Exception as e:
+            print(f'[MarkEase][find-test] failed: {e}')
+            os._exit(4)
+
+    threading.Thread(target=_worker, daemon=True,
+                     name='MarkEaseFindTest').start()
+
+
+def _start_open_file_test(window, path):
+    """macOS：验证 open-file delegate -> watcher -> 前端打开链路。"""
+    def _worker():
+        try:
+            window.events.loaded.wait(20)
+        except Exception:
+            pass
+        time.sleep(1.5)
+        try:
+            import AppKit
+            delegate = AppKit.NSApplication.sharedApplication().delegate()
+            responds = bool(delegate.respondsToSelector_(
+                b'application:openFile:'))
+            if not responds or not hasattr(delegate,
+                                           'application_openFile_'):
+                print('[MarkEase][open-file-test] delegate method missing '
+                      f'(responds={responds})')
+                os._exit(3)
+            accepted = bool(delegate.application_openFile_(None, path))
+            time.sleep(2.5)
+            shown = window.run_js(
+                "(document.getElementById('file-path') || {}).textContent "
+                "|| ''")
+            print(f'[MarkEase][open-file-test] accepted={accepted} '
+                  f'path={path} shown={shown}')
+            ok = accepted and os.path.basename(path) in str(shown)
+            os._exit(0 if ok else 3)
+        except Exception as e:
+            print(f'[MarkEase][open-file-test] failed: {e}')
+            os._exit(4)
+
+    threading.Thread(target=_worker, daemon=True,
+                     name='MarkEaseOpenFileTest').start()
 
 
 def main():
@@ -1178,6 +1288,12 @@ def main():
         _pdf_test_out = (sys.argv[idx + 1] if len(sys.argv) > idx + 1
                          else os.path.abspath('markease_pdf_test.pdf'))
 
+    _open_file_test = None
+    if '--open-file-test' in sys.argv:
+        idx = sys.argv.index('--open-file-test')
+        if len(sys.argv) > idx + 1:
+            _open_file_test = sys.argv[idx + 1]
+
     _test_started = {'done': False}
 
     def on_loaded():
@@ -1208,6 +1324,10 @@ def main():
                 _start_pdf_test(window, api, _pdf_test_out)
             if '--close-test' in sys.argv:
                 _start_close_test(window)
+            if '--find-test' in sys.argv:
+                _start_find_test(window)
+            if _open_file_test:
+                _start_open_file_test(window, _open_file_test)
 
     window.events.loaded += on_loaded
     window.events.closing += on_closing

@@ -1,4 +1,13 @@
 // MarkEase 渲染管线（阶段 16-13 修复 2）
+//   ★ v2.1.7 修改：
+//     1) BUILD_TAG 更新为 render-v27
+//     2) 预览任务列表去掉额外的 “- ” 前缀，只保留复选框
+//     3) 有序列表按源码实际编号渲染（<li value>），保证所见即所得
+//   ★ v2.1.6 修改：
+//     1) BUILD_TAG 更新为 render-v26
+//     2) 修复正文中转义的 \[ ... \] 被误判为独立公式导致断行
+//        —— 仅行首/行尾的 \[ ... \] 按独立公式处理，
+//           正文中的 \[ \] 还原为字面量方括号
 //   ★ v2.1.5 修改：
 //     1) BUILD_TAG 更新为 render-v25
 //     2) 代码块按逻辑行包裹，长行自动换行 + 续行悬挂缩进
@@ -19,7 +28,7 @@
 (function (global) {
     'use strict';
 
-    var BUILD_TAG = 'render-v25';
+    var BUILD_TAG = 'render-v27';
     console.log('[MarkEase] ' + BUILD_TAG + ' loaded');
 
     var KATEX_OPTS = {
@@ -646,7 +655,7 @@
             var text = item.checked ? '[x]' : '[ ]';
             var spanHtml =
                 '<span class="task-list-checkbox"' +
-                ' data-md-task-index="' + item.bracketPos + '"' +
+                ' data-md-task-ordinal="' + i + '"' +
                 ' data-md-task-checked="' + checkedVal + '"' +
                 ' role="checkbox"' +
                 ' aria-checked="' + ariaVal + '"' +
@@ -711,6 +720,28 @@
     // ============================================================
     //  数学公式
     // ============================================================
+    // ★ v2.1.6：`\[` / `\]` 同时也是 CommonMark 的转义写法。
+    //   只有行首的 `\[` 与行尾的 `\]`（允许前后空白）才按独立公式处理；
+    //   正文里成对出现的 `\[文字\]` 交给 marked 还原为字面量方括号，
+    //   否则会被当成块级公式插入 <div class="math-block">，造成断行。
+    function isBlockMathDelimiter(md, start, end) {
+        var i = start - 1;
+        while (i >= 0) {
+            var before = md.charAt(i);
+            if (before === '\n') break;
+            if (before !== ' ' && before !== '\t') return false;
+            i--;
+        }
+        i = end;
+        while (i < md.length) {
+            var after = md.charAt(i);
+            if (after === '\n') break;
+            if (after !== ' ' && after !== '\t' && after !== '\r') return false;
+            i++;
+        }
+        return true;
+    }
+
     function preprocessMath(md) {
         var mathList = [];
         var codeRanges = collectCodeRanges(md);
@@ -722,6 +753,10 @@
         var blockRe = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]/g;
         while ((m = blockRe.exec(md)) !== null) {
             if (isInCode(m.index)) continue;
+            if (m[2] !== undefined &&
+                !isBlockMathDelimiter(md, m.index, m.index + m[0].length)) {
+                continue;
+            }
             var texB = (m[1] !== undefined) ? m[1] : m[2];
             texB = texB.replace(/^\s+|\s+$/g, '');
             if (!texB) continue;
@@ -1474,6 +1509,79 @@
     }
 
     // ============================================================
+    //  ★ v2.1.7：有序列表“所见即所得”编号
+    //  浏览器默认会把 <ol> 重新按 1,2,3 编号，导致编辑器里手写的
+    //  1,3,4 在预览中变成 1,2,3。这里把源码里的实际编号写到
+    //  <li value="...">，保证预览编号与编辑器一致。
+    // ============================================================
+    function collectOrderedListNumbers(source) {
+        var text = String(source == null ? '' : source);
+        var codeRanges = collectCodeRanges(text);
+        var isInCode = makeIsInCode(codeRanges);
+        var numbers = [];
+        var lines = text.split('\n');
+        var offset = 0;
+        var prevLine = '';
+
+        for (var li = 0; li < lines.length; li++) {
+            var line = lines[li];
+            var lineStart = offset;
+            offset += line.length + 1;
+
+            if (isInCode(lineStart)) {
+                prevLine = line;
+                continue;
+            }
+
+            var m = /^([ \t]*)(>[ \t]*)?(\d{1,9})([.)])[ \t]+/.exec(line);
+            if (m) {
+                var indent = m[1] || '';
+                var quote = m[2] || '';
+                if (!quote && indent.length >= 4) {
+                    var prevIsList = /^[ \t]*[-*+][ \t]|^[ \t]*\d+\.[ \t]/.test(prevLine);
+                    if (!prevIsList) {
+                        prevLine = line;
+                        continue;
+                    }
+                }
+                numbers.push(parseInt(m[3], 10));
+            }
+            prevLine = line;
+        }
+
+        return numbers;
+    }
+
+    function applyOrderedListNumbers(html, source) {
+        if (!html || typeof DOMParser === 'undefined') return html;
+
+        var numbers = collectOrderedListNumbers(source);
+        if (numbers.length === 0) return html;
+
+        try {
+            var doc = new DOMParser().parseFromString(
+                '<div id="__ol_value_root__">' + html + '</div>',
+                'text/html'
+            );
+            var root = doc.getElementById('__ol_value_root__');
+            if (!root) return html;
+
+            var lis = root.querySelectorAll('ol > li');
+            // 数量不一致说明列表结构映射不可靠（例如源码里有裸 HTML <ol>），
+            // 保持浏览器默认顺序编号，避免把编号写错。
+            if (lis.length !== numbers.length) return html;
+
+            for (var i = 0; i < lis.length; i++) {
+                lis[i].setAttribute('value', String(numbers[i]));
+            }
+            return root.innerHTML;
+        } catch (e) {
+            console.warn('[applyOrderedListNumbers]', e);
+            return html;
+        }
+    }
+
+    // ============================================================
     //  任务列表
     // ============================================================
     function markTaskListItems(root) {
@@ -1490,28 +1598,8 @@
                 list.classList.add('contains-task-list');
             }
 
-            var target = li;
-            for (var c = 0; c < li.childNodes.length; c++) {
-                var child = li.childNodes[c];
-                if (child.nodeType === 1 &&
-                    child.tagName.toLowerCase() === 'p') {
-                    target = child;
-                    break;
-                }
-            }
-
-            if (target.firstChild &&
-                target.firstChild.nodeType === 1 &&
-                target.firstChild.classList &&
-                target.firstChild.classList.contains('task-list-bullet')) {
-                continue;
-            }
-
-            var bullet = document.createElement('span');
-            bullet.className = 'task-list-bullet';
-            bullet.setAttribute('contenteditable', 'false');
-            bullet.textContent = '- ';
-            target.insertBefore(bullet, target.firstChild);
+            // ★ v2.1.7：预览中不再插入 “- ” 前缀，只保留复选框本身；
+            //   复制 / 导出仍由 checkbox 状态还原为 “- [x] ”。
         }
     }
 
@@ -1626,6 +1714,7 @@
                 html = restoreTaskListHtml(html, taskPre.taskItems);
                 html = replaceMathPlaceholders(html, mathPre.mathList);
                 html = fixLooseListParagraphs(html);
+                html = applyOrderedListNumbers(html, htmlPre.text);
                 html = window.sanitizeHtml(html);
                 html = postprocessFootnotes(html, footnotePre.footnotes);
 
