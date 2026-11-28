@@ -54,11 +54,13 @@ class LinuxPlatform(PlatformBase):
         return None
 
     def on_webview_started(self, window=None):
-        """GUI 启动后显式恢复窗口的标准装饰与可缩放属性。
+        """GUI 启动后修窗口装饰 + 记录输入法状态。
 
-        pywebview 的 GTK 后端在部分 GNOME / Wayland 环境下创建的
-        Gtk.ApplicationWindow 会被当成"不可缩放"窗口，GNOME 于是只画一个
-        关闭按钮（没有最小化 / 最大化）。这里强制设置回来。
+        1) pywebview 通过 Gtk.Application.set_menubar(空菜单) 让 GTK 走 CSD，
+           GNOME 下这类窗口经常只画一个关闭按钮，没有最小化/最大化。
+           清掉应用菜单 + 强制 decorated/resizable，尽量恢复标准标题栏。
+        2) 打一行输入法诊断（gtk-im-module / GTK_IM_MODULE / XMODIFIERS /
+           GDK 后端），方便定位 fcitx5 在冻结应用里不生效的问题。
         """
         try:
             native = getattr(window, 'native', None)
@@ -69,6 +71,46 @@ class LinuxPlatform(PlatformBase):
                 w.set_deletable(True)
         except Exception as e:
             print(f'[MarkEase][linux] restore window decorations failed: {e}')
+
+        try:
+            from gi.repository import Gtk
+            app = Gtk.Application.get_default()
+            if app is not None:
+                app.set_menubar(None)
+        except Exception:
+            pass
+
+        try:
+            from gi.repository import Gtk, Gdk
+            settings = Gtk.Settings.get_default()
+            im = settings.get_property('gtk-im-module') if settings else ''
+            display = Gdk.Display.get_default()
+            print('[MarkEase][linux][ime] gtk-im-module=%r GTK_IM_MODULE=%r '
+                  'XMODIFIERS=%r display=%s'
+                  % (im, os.environ.get('GTK_IM_MODULE'),
+                     os.environ.get('XMODIFIERS'),
+                     type(display).__name__ if display else 'none'))
+            # 环境里没设 GTK_IM_MODULE、但系统确实在用 fcitx5（装了 GTK3 模块
+            # 且 XMODIFIERS 指向 fcitx / 有 fcitx5 配置目录）时，显式打开。
+            if settings is not None and not os.environ.get('GTK_IM_MODULE'):
+                fcitx_likely = (
+                    'fcitx' in (os.environ.get('XMODIFIERS') or '').lower()
+                    or os.path.isdir(os.path.expanduser('~/.config/fcitx5'))
+                )
+                if fcitx_likely:
+                    for path in (
+                            '/usr/lib/x86_64-linux-gnu/gtk-3.0/3.0.0/immodules',
+                            '/usr/lib64/gtk-3.0/3.0.0/immodules'):
+                        try:
+                            names = os.listdir(path)
+                        except OSError:
+                            continue
+                        if any(n.startswith('im-fcitx') for n in names):
+                            settings.set_property('gtk-im-module', 'fcitx')
+                            print('[MarkEase][linux][ime] forced gtk-im-module=fcitx')
+                            break
+        except Exception as e:
+            print(f'[MarkEase][linux][ime] probe failed: {e}')
 
     # ---------- 剪贴板 ----------
     def read_clipboard_text(self):

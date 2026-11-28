@@ -2702,6 +2702,15 @@ async function handleImageDrop(dt) {
         return;
     }
 
+    // 还有一些 WebKitGTK 版本连 uri-list 都不给，只在 text/plain 里放
+    // 文件绝对路径（/home/user/xxx.pdf）。同样按路径处理。
+    const plainPath = _pathFromPlainText(plainText);
+    if (plainPath) {
+        console.log('[drag] text/plain path:', plainPath);
+        await importDroppedPaths([plainPath]);
+        return;
+    }
+
     const html = dt.getData('text/html');
     if (html) {
         let imgSrc = null;
@@ -3045,6 +3054,20 @@ async function _handleDroppedMarkdown(file) {
     _openedOriginalContent = getContent();
     _openedFilePath = currentFile || '';
     _forceSaveAsNextTime = false;
+}
+
+// 从纯文本里提取文件绝对路径（WebKitGTK 的 text/plain 拖入）
+function _pathFromPlainText(text) {
+    if (!text) return '';
+    const first = String(text).split(/\r?\n/)[0].trim();
+    if (!first) return '';
+    if (/^file:\/\//i.test(first)) {
+        let p = first.replace(/^file:\/\//i, '');
+        try { p = decodeURIComponent(p); } catch (e) { /* keep raw */ }
+        return p;
+    }
+    if (first.startsWith('/') || /^[A-Za-z]:[\\/]/.test(first)) return first;
+    return '';
 }
 
 // 只拿到文件路径（Linux/WebKitGTK 的 text/uri-list 拖入）时的统一入口：
