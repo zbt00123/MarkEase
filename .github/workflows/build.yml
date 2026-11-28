@@ -305,6 +305,36 @@ jobs:
             exit 1
           fi
 
+      # --quit-test 走"正常关窗"路径（不 force_close）：旧版在 webview.start()
+      # 返回后会卡在解释器收尾的线程 join 上，macOS 报 hang。这里直接兜住。
+      - name: Quit smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set +e
+          timeout 90s dist/MarkEase.app/Contents/MacOS/MarkEase --quit-test \
+            2>&1 | tee /tmp/markease-quit.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-quit.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--quit-test failed with code $code"
+            exit 1
+          fi
+
+      - name: Quit smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set +e
+          timeout 90s xvfb-run -a dist/MarkEase/MarkEase --quit-test \
+            2>&1 | tee /tmp/markease-quit-linux.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/markease-quit-linux.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::--quit-test failed with code $code"
+            exit 1
+          fi
+
       - name: Verify PDF colors/layout (macOS)
         if: runner.os == 'macOS'
         run: |

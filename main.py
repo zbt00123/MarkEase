@@ -135,6 +135,27 @@ def _log_critical(event, message=None, exception=None, **context):
         pass
 
 
+def _hard_exit(code=0):
+    """跳过 Python 解释器收尾直接退出。
+
+    macOS 上 webview.start() 返回后，_Py_Finalize 会 join pywebview / PyObjC
+    留下的非 daemon 线程，那个线程永远不结束 → 关窗后进程假死 20s+，被系统
+    判定 hang。这里刷完日志直接 os._exit，资源清理已在 on_closed / finally
+    里完成。
+    """
+    try:
+        import logging
+        logging.shutdown()
+    except Exception:
+        pass
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    os._exit(code)
+
+
 # 早期初始化（在 import webview 之前完成）
 _LOG_DIR = _init_logging_early()
 _log_event('app_boot_start',
@@ -1025,6 +1046,32 @@ def _start_close_test(window):
                      name='MarkEaseCloseTest').start()
 
 
+def _start_quit_test(window):
+    """CI：模拟正常关窗（不调用 force_close），验证进程能自行退出。
+
+    旧版在 webview.start() 返回后卡在 _Py_Finalize 的线程 join 上，
+    macOS 会报 hang；这个用例专门盯这条关机路径。
+    """
+    def _worker():
+        try:
+            window.events.loaded.wait(20)
+        except Exception:
+            pass
+        time.sleep(2)
+        try:
+            window.destroy()
+        except Exception as e:
+            print(f'[MarkEase][quit-test] destroy failed: {e}')
+            os._exit(4)
+        # 正常情况下 main() 收尾后 os._exit(0)，不会走到这里
+        time.sleep(20)
+        print('[MarkEase][quit-test] TIMEOUT: process did not exit')
+        os._exit(3)
+
+    threading.Thread(target=_worker, daemon=True,
+                     name='MarkEaseQuitTest').start()
+
+
 def _start_find_test(window):
     """CI/本地冒烟：打开查找栏，检查默认右上角及拖动边界。"""
     import json as _json
@@ -1334,6 +1381,8 @@ def main():
                 _start_pdf_test(window, api, _pdf_test_out)
             if '--close-test' in sys.argv:
                 _start_close_test(window)
+            if '--quit-test' in sys.argv:
+                _start_quit_test(window)
             if '--find-test' in sys.argv:
                 _start_find_test(window)
             if _open_file_test:
@@ -1394,6 +1443,22 @@ def main():
     _log_event('webview_start_returned',
                'webview.start returned; main() is exiting')
 
+    # ★ 关窗后"假死"（macOS 上被系统判定 hang）：webview.start() 返回后
+    #   Python 进入 _Py_Finalize → wait_for_thread_shutdown，会去 join 一个
+    #   非 daemon 线程（pywebview / PyObjC 的 GUI 线程），它永远不会结束，
+    #   主线程就一直卡在 __psynch_cvwait，20 秒后被系统判定无响应。
+    #   这里先把非 daemon 线程记进日志（便于以后定位），然后直接 os._exit
+    #   跳过解释器收尾 —— atexit / 资源清理已经在 on_closed 和 finally 里做完。
+    try:
+        leftover = [t.name for t in threading.enumerate()
+                    if not t.daemon and t is not threading.current_thread()]
+        _log_event('shutdown_threads', 'non-daemon threads at shutdown',
+                   threads=leftover)
+    except Exception:
+        pass
+
+    _hard_exit(0)
+
 
 if __name__ == '__main__':
     if '--self-test' in sys.argv:
@@ -1405,11 +1470,17 @@ if __name__ == '__main__':
     except SystemExit:
         raise
     except BaseException as e:
-        # 顶层兜底：任何未捕获异常都写 CRITICAL
+        # 顶层兜底：任何未捕获异常都写 CRITICAL，然后硬退出，避免同样的
+        # 解释器收尾 hang（异常路径下 pywebview 的线程同样不会结束）。
         try:
             _log_critical('main_unhandled_exception',
                           'Unhandled exception escaped main()',
                           exception=e)
         except Exception:
             pass
-        raise
+        try:
+            import traceback
+            traceback.print_exc()
+        except Exception:
+            pass
+        _hard_exit(1)
