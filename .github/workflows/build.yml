@@ -307,11 +307,12 @@ jobs:
 
       # --quit-test 走"正常关窗"路径（不 force_close）：旧版在 webview.start()
       # 返回后会卡在解释器收尾的线程 join 上，macOS 报 hang。这里直接兜住。
+      # macOS runner 没有 GNU timeout，超时由 --quit-test 自带的 20s 看门狗负责。
       - name: Quit smoke test (macOS)
         if: runner.os == 'macOS'
         run: |
           set +e
-          timeout 90s dist/MarkEase.app/Contents/MacOS/MarkEase --quit-test \
+          dist/MarkEase.app/Contents/MacOS/MarkEase --quit-test \
             2>&1 | tee /tmp/markease-quit.log
           code=${PIPESTATUS[0]}
           set -e
