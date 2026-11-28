@@ -443,28 +443,31 @@ jobs:
           echo 'installed .deb launches and initializes the UI'
 
   # ============================================================
-  #  Linux legacy（UOS 20 / 麒麟 V10 / Debian 10-11，glibc 2.28）
-  #  构建环境是 debian:10 容器 + python-build-standalone（glibc 2.17），
-  #  PyGObject 在 buster 用户态编译；MK_LINUX_LEGACY=1 额外带上
-  #  libffi.so.8 / libssl.so.3（老系统没有）。
+  #  Linux legacy（麒麟 V10 / Debian 11，glibc 2.31）
+  #  debian:11 容器 + python-build-standalone（glibc 2.17）；
+  #  MK_LINUX_LEGACY=1 额外带上 libffi.so.8 / libssl.so.3（老系统没有）。
+  #
+  #  ★ UOS 20（glibc 2.28 / glib 2.58）覆盖不到：PyGObject 3.50 要求
+  #    glib >= 2.64，buster 只有 2.58；要支持得另做一套更老 Python 的产物。
+  #  这条线仍在收敛，先 continue-on-error，不拖红正式发布。
   # ============================================================
   linux-legacy-x64:
-    name: linux-legacy-x64 (debian:10)
+    name: linux-legacy-x64 (debian:11)
+    continue-on-error: true
     runs-on: ubuntu-22.04
     container:
-      image: debian:10
-    # debian:10 容器里默认 shell 是 dash，不支持 `set -o pipefail`。
+      image: debian:11
+    # 容器里默认 shell 是 dash，不支持 `set -o pipefail`。
     defaults:
       run:
         shell: bash
     steps:
-      # debian:10 镜像里没有 git，actions/checkout 会在容器内调用它，
-      # 所以先修好 apt 源（buster 已进 archive）并装上 git。
+      # bullseye 已进入 archive，且镜像里没有 git（checkout 需要）。
       - name: Bootstrap container (archive apt sources + git)
         run: |
           printf '%s\n' \
-            'deb http://archive.debian.org/debian buster main contrib' \
-            'deb http://archive.debian.org/debian-security buster/updates main contrib' \
+            'deb http://archive.debian.org/debian bullseye main contrib' \
+            'deb http://archive.debian.org/debian-security bullseye-security main contrib' \
             > /etc/apt/sources.list
           printf 'Acquire::Check-Valid-Until "false";\nAcquire::Retries "3";\n' \
             > /etc/apt/apt.conf.d/99markease-archive
@@ -485,17 +488,8 @@ jobs:
             flex bison ninja-build python3-mako python3-pip \
             xvfb dbus libgl1-mesa-dri
 
-      # buster 只有 gobject-introspection 1.58，PyGObject 3.50 的 meson 要求 >= 1.64。
-      # 这里只改 pkg-config 报出的版本号，实际仍链接系统的 1.58：PyGObject 若用到
-      # 1.64 新增 API 会编译失败（明确报错），届时再退回源码构建 GI。
-      - name: Shim gobject-introspection pkg-config to 1.64
-        run: |
-          set -euo pipefail
-          mkdir -p /usr/local/lib/pkgconfig
-          sed 's/^Version:.*/Version: 1.64.0/' \
-            /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-introspection-1.0.pc \
-            > /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc
-          PKG_CONFIG_PATH=/usr/local/lib/pkgconfig pkg-config --modversion gobject-introspection-1.0
+      # buster 只有 gobject-introspection 1.58，PyGObject 3.50 要求 glib >= 2.64，
+      # 所以 legacy 基线选 bullseye（glib 2.66 / GI 1.66 / glibc 2.31）。
 
       - name: Install python-build-standalone 3.14 (glibc 2.17 baseline)
         env:

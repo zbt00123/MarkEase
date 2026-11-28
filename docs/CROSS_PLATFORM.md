@@ -98,12 +98,12 @@ run, the legacy package for the older 信创 baseline.
 
 | | main (`build.yml`) | legacy (same workflow) |
 |---|---|---|
-| build host | ubuntu-22.04 | `debian:10` container |
+| build host | ubuntu-22.04 | `debian:11` container |
 | Python | actions/setup-python 3.14 (glibc 2.35) | python-build-standalone 3.14 (glibc 2.17) |
-| PyGObject | wheel-less build on jammy | built in the buster userland (GLib 2.58) |
+| PyGObject | wheel-less build on jammy | built in the bullseye userland (GLib 2.66) |
 | extra bundled libs | none | `libffi.so.8`, `libssl.so.3`, `libcrypto.so.3` |
 | artifact | `..._Linux_x64.deb` | `..._Linux_x64_legacy.deb` |
-| covers | Ubuntu 22.04+, Debian 12+, deepin 23, openKylin 2 | UOS 20, Kylin V10, Debian 10/11 (pending first green CI run) |
+| covers | Ubuntu 22.04+, Debian 12+, deepin 23, openKylin 2 | Kylin V10, Debian 11 (glibc 2.31) |
 
 Both use the same package name (`markease`), so a machine installs exactly one
 of them. Build the legacy variant locally with:

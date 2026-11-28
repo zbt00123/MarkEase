@@ -102,10 +102,7 @@ _ROOT_LIB_KEEP_PREFIXES = ('libpython', 'libmupdf')
 
 _LEGACY_BUILD = os.environ.get('MK_LINUX_LEGACY') == '1'
 if _LEGACY_BUILD:
-    # libgirepository：legacy 构建里我们从源码装了 GI 1.64（buster 只有 1.58，
-    # 而 PyGObject 3.50 要求 >= 1.64）。目标系统上不一定有 1.64，所以连带打包。
-    _ROOT_LIB_KEEP_PREFIXES += ('libffi', 'libssl', 'libcrypto',
-                                'libgirepository')
+    _ROOT_LIB_KEEP_PREFIXES += ('libffi', 'libssl', 'libcrypto')
     print('[linux.spec] legacy build: keeping bundled '
           + ', '.join(_ROOT_LIB_KEEP_PREFIXES))
 
