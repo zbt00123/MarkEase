@@ -166,6 +166,17 @@ jobs:
           set -euo pipefail
           test -x dist/MarkEase/MarkEase
           test -f dist/MarkEase/_internal/web/index.html
+          # 构建机的 GTK / GLib / libstdc++ 不能进产物：在更新的发行版上
+          # 它们会顶掉系统同名库，WebKit 因符号版本不满足而加载失败。
+          leaked=$(find dist/MarkEase/_internal -maxdepth 1 \
+            \( -name 'libgtk-3.so*' -o -name 'libglib-2.0.so*' \
+               -o -name 'libstdc++.so*' -o -name 'libgio-2.0.so*' \
+               -o -name 'libgobject-2.0.so*' -o -name 'libicu*' \) \
+            -printf '%f\n' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::system libraries got bundled into _internal: $leaked"
+            exit 1
+          fi
           xvfb-run -a dist/MarkEase/MarkEase --self-test
           dist/MarkEase/MarkEase --net-test
 
@@ -369,5 +380,259 @@ jobs:
             out/*.deb
             out/*.dmg
             out/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+
+  # ============================================================
+  #  .deb 安装冒烟测试：在比构建机（ubuntu-22.04）更新的 LTS 上装包并启动。
+  #
+  #  v2.1.7 的故障：产物里打了 ubuntu-22.04 的 libstdc++.so.6 / GLib 2.72，
+  #  在 Ubuntu 26.04 上顶掉系统库，libicui18n 需要 CXXABI_1.3.15 而包里没有，
+  #  WebKit typelib 加载失败 → 点图标无反应。裸 dist/ 的测试查不出这类问题，
+  #  必须安装 .deb 后跑一次。
+  # ============================================================
+  linux-deb-on-newer-distro:
+    name: linux-deb (ubuntu-24.04)
+    needs: unix
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: markease-linux-x64
+          path: out
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb
+
+      - name: Install the .deb
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y ./out/*.deb
+          dpkg -s markease | grep -E '^(Status|Version|Depends):'
+
+      - name: Assert no build-host system libraries
+        run: |
+          set -euo pipefail
+          leaked=$(find /opt/markease/_internal -maxdepth 1 \
+            \( -name 'libgtk-3.so*' -o -name 'libglib-2.0.so*' \
+               -o -name 'libstdc++.so*' -o -name 'libgio-2.0.so*' \
+               -o -name 'libgobject-2.0.so*' -o -name 'libicu*' \) \
+            -printf '%f\n' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::build-host system libraries leaked into the .deb: $leaked"
+            exit 1
+          fi
+          echo 'bundle is free of build-host system libraries'
+
+      - name: GUI smoke test from the installed .deb
+        run: |
+          set +e
+          timeout 60s xvfb-run -a /opt/markease/MarkEase --ui-test \
+            2>&1 | tee /tmp/deb-ui-test.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/deb-ui-test.log
+          if [ "$code" -ne 0 ]; then
+            echo "::error::installed .deb failed --ui-test with code $code"
+            exit 1
+          fi
+          grep -q '"initialized": true' /tmp/deb-ui-test.log
+          echo 'installed .deb launches and initializes the UI'
+
+  # ============================================================
+  #  Linux legacy（UOS 20 / 麒麟 V10 / Debian 10-11，glibc 2.28）
+  #  构建环境是 debian:10 容器 + python-build-standalone（glibc 2.17），
+  #  PyGObject 在 buster 用户态编译；MK_LINUX_LEGACY=1 额外带上
+  #  libffi.so.8 / libssl.so.3（老系统没有）。
+  # ============================================================
+  linux-legacy-x64:
+    name: linux-legacy-x64 (debian:10)
+    runs-on: ubuntu-22.04
+    container:
+      image: debian:10
+    steps:
+      # debian:10 镜像里没有 git，actions/checkout 会在容器内调用它，
+      # 所以先修好 apt 源（buster 已进 archive）并装上 git。
+      - name: Bootstrap container (archive apt sources + git)
+        run: |
+          printf '%s\n' \
+            'deb http://archive.debian.org/debian buster main contrib' \
+            'deb http://archive.debian.org/debian-security buster/updates main contrib' \
+            > /etc/apt/sources.list
+          printf 'Acquire::Check-Valid-Until "false";\nAcquire::Retries "3";\n' \
+            > /etc/apt/apt.conf.d/99markease-archive
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build dependencies
+        run: |
+          apt-get install -y --no-install-recommends \
+            build-essential pkg-config curl xz-utils file \
+            libglib2.0-dev libgirepository1.0-dev libffi-dev \
+            libcairo2-dev libpango1.0-dev \
+            libgtk-3-dev libwebkit2gtk-4.0-dev \
+            gir1.2-gtk-3.0 gir1.2-webkit2-4.0 \
+            xvfb dbus libgl1-mesa-dri
+
+      - name: Install python-build-standalone 3.14 (glibc 2.17 baseline)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          URL=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest \
+            | grep -o 'https://[^"]*cpython-3\.14\.[^"]*-x86_64-unknown-linux-gnu-install_only\.tar\.gz' \
+            | head -1)
+          if [ -z "$URL" ]; then
+            echo "::error::no cpython 3.14 x86_64-unknown-linux-gnu build found"
+            exit 1
+          fi
+          echo "python: $URL"
+          mkdir -p /opt/py
+          curl -fsSL "$URL" | tar -xz -C /opt/py --strip-components=1
+          /opt/py/bin/python3 --version
+          echo /opt/py/bin >> "$GITHUB_PATH"
+
+      - name: Assert the interpreter really is glibc <= 2.28
+        run: |
+          set -euo pipefail
+          max_of() {
+            strings "$1" | grep -oE 'GLIBC_2\.[0-9]+' | sort -uV | tail -1
+          }
+          echo "python3.14: $(max_of /opt/py/bin/python3.14)"
+          lib=$(ls /opt/py/lib/libpython3.14.so* 2>/dev/null | head -1 || true)
+          if [ -n "$lib" ]; then
+            echo "libpython:  $(max_of "$lib")"
+            max=$(max_of "$lib")
+          else
+            max=$(max_of /opt/py/bin/python3.14)
+          fi
+          case "$max" in
+            GLIBC_2.1?|GLIBC_2.2?) echo "baseline ok: $max" ;;
+            *) echo "::error::unexpected baseline $max"; exit 1 ;;
+          esac
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r requirements.txt pyinstaller
+          python3 -c "import gi, webview; print('gi', gi.__version__); print('pywebview', webview.__version__)"
+
+      # buster 的 WebKit2 是 2.30 一代，比 jammy 的 2.44 老不少。
+      # evaluate_javascript 是 2.40 才有的 API，pywebview 在老版本上会退回
+      # run_javascript —— 这里把实际能力打出来，以后排查省事。
+      - name: Record GTK / WebKit2 capability
+        run: |
+          python3 - <<'PY'
+          import gi
+          gi.require_version('Gtk', '3.0')
+          gi.require_version('WebKit2', '4.0')
+          from gi.repository import Gtk, WebKit2
+
+          print('GTK     %d.%d.%d' % (Gtk.get_major_version(),
+                                      Gtk.get_minor_version(),
+                                      Gtk.get_micro_version()))
+          print('WebKit2 %d.%d.%d' % (WebKit2.get_major_version(),
+                                      WebKit2.get_minor_version(),
+                                      WebKit2.get_micro_version()))
+          print('WebView.evaluate_javascript:',
+                hasattr(WebKit2.WebView, 'evaluate_javascript'))
+          PY
+
+      - name: Build (PyInstaller, legacy library set)
+        env:
+          MK_LINUX_LEGACY: '1'
+        run: python3 -m PyInstaller --clean --noconfirm packaging/linux.spec
+
+      - name: Verify bundle (ABI + no build-host system libraries)
+        run: |
+          set -euo pipefail
+          test -x dist/MarkEase/MarkEase
+          test -f dist/MarkEase/_internal/web/index.html
+          target=dist/MarkEase/_internal/libpython3.14.so.1.0
+          [ -f "$target" ] || target=dist/MarkEase/MarkEase
+          max=$(strings "$target" | grep -oE 'GLIBC_2\.[0-9]+' | sort -uV | tail -1)
+          echo "bundled runtime requires $max"
+          case "$max" in
+            GLIBC_2.1?|GLIBC_2.2?) echo "baseline ok: $max" ;;
+            *) echo "::error::bundle needs $max, too new for UOS 20 / Kylin V10"; exit 1 ;;
+          esac
+          leaked=$(find dist/MarkEase/_internal -maxdepth 1 \
+            \( -name 'libgtk-3.so*' -o -name 'libglib-2.0.so*' \
+               -o -name 'libstdc++.so*' -o -name 'libgio-2.0.so*' \
+               -o -name 'libgobject-2.0.so*' -o -name 'libicu*' \) \
+            -printf '%f\n' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::system libraries got bundled: $leaked"
+            exit 1
+          fi
+          for lib in libffi.so.8 libssl.so.3 libcrypto.so.3; do
+            if [ -e "dist/MarkEase/_internal/$lib" ]; then
+              echo "bundled: $lib"
+            else
+              echo "::warning::not bundled: $lib (must exist on the target system)"
+            fi
+          done
+
+      - name: Headless self-test
+        run: dist/MarkEase/MarkEase --self-test
+
+      - name: Package legacy tar.gz + .deb
+        run: |
+          python3 packaging/package.py --target linux-x64 --dist dist --out out \
+            --variant legacy
+          ls -lh out
+          dpkg-deb -I out/*_legacy.deb \
+            | grep -E '^ (Package|Version|Architecture|Depends):'
+
+      - name: Install the .deb and verify it configures
+        run: |
+          set -euo pipefail
+          apt-get install -y --no-install-recommends ./out/*_legacy.deb
+          dpkg -s markease | grep -E '^(Status|Version):'
+          dpkg -L markease | grep -E 'markease.desktop|/opt/markease/MarkEase$'
+
+      - name: Self-test from the installed package
+        run: /opt/markease/MarkEase --self-test
+
+      # 容器里没有 GPU，WebKit 的 user-namespace 沙箱也不可用；这一步先作为
+      # 观察项。第一次跑通后删掉 continue-on-error，让它变成硬门槛。
+      - name: GUI smoke test (best effort)
+        continue-on-error: true
+        env:
+          WEBKIT_FORCE_SANDBOX: '0'
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: |
+          set +e
+          timeout 120s dbus-run-session -- xvfb-run -a \
+            /opt/markease/MarkEase --ui-test 2>&1 | tee /tmp/legacy-ui-test.log
+          code=${PIPESTATUS[0]}
+          set -e
+          cat /tmp/legacy-ui-test.log
+          grep -q '"initialized": true' /tmp/legacy-ui-test.log || exit 1
+          test "$code" -eq 0
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          echo '--- app log ---'
+          tail -120 ~/.local/state/markease/logs/markease.log 2>/dev/null || true
+          echo '--- webkit on this image ---'
+          ldconfig -p | grep -i webkit || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: markease-linux-x64-legacy
+          path: |
+            out/*_legacy.tar.gz
+            out/*_legacy.deb
           if-no-files-found: error
           compression-level: 0

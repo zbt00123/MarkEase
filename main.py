@@ -880,7 +880,16 @@ def _start_ui_test(window):
         except Exception:
             time.sleep(2)
 
-        script = r"""(function(){try{var m=document.getElementById('menubar');var s=m?getComputedStyle(m):null;return JSON.stringify({initialized:!!window.__markEaseInitialized,initStage:window.__mkInitStage||'',initError:window.__mkInitError||null,toolbarButtons:document.querySelectorAll('#toolbar .tb-btn').length,editorReady:!!document.querySelector('.cm-editor'),previewReady:!!document.getElementById('preview'),menubarVisible:!!(s&&s.display!=='none'&&s.visibility!=='hidden'),nativeMenuExpected:document.documentElement.classList.contains('platform-mac'),readyState:document.readyState,hasApi:!!(window.pywebview&&window.pywebview.api)});}catch(e){return JSON.stringify({fatal:String(e)});}})()"""
+        # conflictModalVisible：验证"拖拽同名图片冲突弹窗"真的能显示。
+        # 该弹窗在 index.html 里带 inline style="display:none"，历史上只
+        # remove 了 .hidden 类，弹窗永远不显示（macOS 上表现为拖入同名
+        # 图片毫无反应）。这里顺手做一次可见性回归。
+        script = r"""(function(){try{
+var m=document.getElementById('menubar');var s=m?getComputedStyle(m):null;
+var conflict=(function(){try{
+  if(typeof window.__mkTestDragConflictModal!=='function')return 'no-hook';
+  return window.__mkTestDragConflictModal();}catch(e){return 'err:'+e;}})();
+return JSON.stringify({initialized:!!window.__markEaseInitialized,initStage:window.__mkInitStage||'',initError:window.__mkInitError||null,toolbarButtons:document.querySelectorAll('#toolbar .tb-btn').length,editorReady:!!document.querySelector('.cm-editor'),previewReady:!!document.getElementById('preview'),menubarVisible:!!(s&&s.display!=='none'&&s.visibility!=='hidden'),nativeMenuExpected:document.documentElement.classList.contains('platform-mac'),readyState:document.readyState,hasApi:!!(window.pywebview&&window.pywebview.api),conflictModalVisible:conflict});}catch(e){return JSON.stringify({fatal:String(e)});}})()"""
 
         deadline = time.time() + 30.0
         data = {}
@@ -918,6 +927,7 @@ def _start_ui_test(window):
         ok = (bool(data.get('initialized')) and
               int(data.get('toolbarButtons') or 0) > 0 and
               bool(data.get('editorReady')) and
+              data.get('conflictModalVisible') is True and
               not data.get('initError'))
         os._exit(0 if ok else 3)
 

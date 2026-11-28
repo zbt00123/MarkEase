@@ -75,9 +75,60 @@ exe = EXE(
     icon=icons.get('png') or 'NONE',
 )
 
+# ============================================================
+#  ★ 不打包发行版自带的系统库
+#
+#  PyInstaller 在 Linux 上会把构建机（CI 上是 ubuntu-22.04）的 GTK / GLib /
+#  libstdc++ 等一起拷进 _internal，启动时它们会先于目标系统的同名库被加载。
+#  在比构建机新的发行版上，系统的 WebKitGTK 反过来要求更新的符号版本：
+#  Ubuntu 26.04 的 libicui18n.so.78 需要 CXXABI_1.3.15（GCC 14+），而 22.04 的
+#  libstdc++.so.6 只到 CXXABI_1.3.13，于是 WebKit 的 typelib 加载失败，
+#  应用在创建窗口之前就退出（从图标启动时看不到任何报错）。
+#
+#  这些库本来就该由 .deb 的 Depends 交给发行版提供，这里只保留：
+#    - libpython*  ：Python 运行时
+#    - libmupdf*   ：PyMuPDF 自带（顶层那几个是 COLLECT 生成的软链接，
+#                    保留它们不影响 RUNPATH=$ORIGIN 的解析）
+#  包内子目录（Python 扩展模块、pillow.libs 里 auditwheel 修补过的库）一律
+#  保留：Pillow / PyMuPDF 的扩展模块自带 RPATH，靠目录内的库自洽运行，
+#  已经用 DT_NEEDED/RPATH 逐项核对过，不依赖下面被剔除的这些系统库。
+#
+#  ★ MK_LINUX_LEGACY=1（legacy 构建，给 UOS 20 / 麒麟 V10 / Debian 10-11）：
+#    老系统的 libffi 只有 6/7、OpenSSL 只有 1.1，而 Python 3.14 的 ctypes 要
+#    libffi.so.8、ssl 要 libssl.so.3。这几个库 ABI 稳定、不会被系统的图形栈
+#    加载，所以 legacy 产物把它们一起带上（soname 不同，不会顶掉系统库）。
+# ============================================================
+_ROOT_LIB_KEEP_PREFIXES = ('libpython', 'libmupdf')
+
+_LEGACY_BUILD = os.environ.get('MK_LINUX_LEGACY') == '1'
+if _LEGACY_BUILD:
+    _ROOT_LIB_KEEP_PREFIXES += ('libffi', 'libssl', 'libcrypto')
+    print('[linux.spec] legacy build: keeping bundled '
+          + ', '.join(_ROOT_LIB_KEEP_PREFIXES))
+
+
+def _is_bundled_system_lib(dest):
+    """dest 是 _internal 内的相对路径；根目录下的系统 .so 判定为需剔除。"""
+    path = str(dest).replace('\\', '/')
+    while path.startswith('./'):
+        path = path[2:]
+    if '/' in path:              # 包内子目录：扩展模块 / wheel 自带库
+        return False
+    name = path.lower()
+    if '.cpython-' in name or not name.startswith('lib'):
+        return False
+    return not name.startswith(_ROOT_LIB_KEEP_PREFIXES)
+
+
+bundled_binaries = [b for b in a.binaries if not _is_bundled_system_lib(b[0])]
+_dropped = len(a.binaries) - len(bundled_binaries)
+if _dropped:
+    print(f'[linux.spec] dropped {_dropped} system libraries '
+          f'(provided by the target distro)')
+
 coll = COLLECT(
     exe,
-    a.binaries,
+    bundled_binaries,
     a.datas,
     strip=False,
     upx=False,

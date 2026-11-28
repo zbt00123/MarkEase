@@ -72,6 +72,25 @@ def clean_runtime_artifacts(app_dir, is_mac=False):
                 shutil.rmtree(target, ignore_errors=True)
 
 
+# macOS 原生对话框（打开/保存面板、菜单）的语言由 bundle 支持的本地化决定。
+BUNDLE_LANGUAGES = ('zh_CN', 'zh_TW', 'en', 'ja', 'ko')
+
+
+def ensure_bundle_localizations(app_path):
+    """给 .app 补上 .lproj 目录。
+
+    PyInstaller 生成的 bundle 里一个 .lproj 都没有，macOS 会认为这个 App
+    只支持开发语言，于是中文系统下 NSOpenPanel / NSAlert（"打开"文件
+    对话框）仍然显示英文。补上空目录即可让 AppKit 选中对应语言。
+    """
+    resources = os.path.join(app_path, 'Contents', 'Resources')
+    os.makedirs(resources, exist_ok=True)
+    for lang in BUNDLE_LANGUAGES:
+        lproj = os.path.join(resources, f'{lang}.lproj')
+        os.makedirs(lproj, exist_ok=True)
+        log(f'bundle localization: {lang}.lproj')
+
+
 def ensure_icon_png(root, work_dir):
     """生成 Linux .desktop 用的 256px PNG。"""
     os.makedirs(work_dir, exist_ok=True)
@@ -99,7 +118,7 @@ Version: {version}
 Section: editors
 Priority: optional
 Architecture: {arch}
-Depends: libgtk-3-0, libwebkit2gtk-4.0-37 | libwebkit2gtk-4.1-0, gir1.2-gtk-3.0, gir1.2-webkit2-4.0 | gir1.2-webkit2-4.1, libglib2.0-0, libcairo2, libpango-1.0-0
+Depends: libgtk-3-0 | libgtk-3-0t64, libglib2.0-0 | libglib2.0-0t64, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37, gir1.2-webkit2-4.1 | gir1.2-webkit2-4.0, gir1.2-gtk-3.0, libcairo2, libpango-1.0-0, libgdk-pixbuf-2.0-0 | libgdk-pixbuf2.0-0
 Recommends: chromium | google-chrome-stable | microsoft-edge-stable
 Installed-Size: {installed_size}
 Maintainer: ZBT Studio <zbt00123@users.noreply.github.com>
@@ -108,6 +127,42 @@ Description: MarkEase - Markdown editor with live preview
  MarkEase is a lightweight Markdown editor with a live preview,
  KaTeX math, Mermaid-free architecture, PDF/HTML import and export.
 """
+
+# 图形栈由发行版提供（见 linux.spec 的说明）。24.04 起部分包名带 t64 后缀，
+# 所以 Depends 里两种写法都要列，dpkg 会挑能装上的那个。
+DEB_POSTINST = """#!/bin/sh
+set -e
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
+fi
+exit 0
+"""
+
+DEB_POSTRM = """#!/bin/sh
+set -e
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
+fi
+exit 0
+"""
+
+# 不允许再被打进产物的系统库（构建机自己的 GTK / GLib / libstdc++ 等）。
+# 一旦回潮，在比构建机新的发行版上会顶掉系统库，WebKit 直接加载失败。
+FORBIDDEN_BUNDLED_LIBS = (
+    'libgtk-3.so.0',
+    'libgdk-3.so.0',
+    'libglib-2.0.so.0',
+    'libgio-2.0.so.0',
+    'libgobject-2.0.so.0',
+    'libgirepository-1.0.so.1',
+    'libstdc++.so.6',
+    'libpango-1.0.so.0',
+    'libcairo.so.2',
+    'libicu',
+)
 
 DESKTOP_ENTRY = """[Desktop Entry]
 Type=Application
@@ -124,17 +179,43 @@ StartupWMClass=MarkEase
 """
 
 
-def package_linux(root, dist, out, version):
+def assert_no_system_libs(app_dir):
+    """构建产物里不能出现构建机的系统库（见 linux.spec 的说明）。
+
+    PyInstaller 一旦把构建机的 GTK / GLib / libstdc++ 打进 _internal，
+    在更新的发行版上就会顶掉系统同名库，导致 WebKit 无法加载、应用静默退出。
+    """
+    internal = os.path.join(app_dir, '_internal')
+    if not os.path.isdir(internal):
+        return
+    leaked = []
+    for name in sorted(os.listdir(internal)):
+        path = os.path.join(internal, name)
+        if not os.path.isfile(path) and not os.path.islink(path):
+            continue
+        for forbidden in FORBIDDEN_BUNDLED_LIBS:
+            if name == forbidden or name.startswith(forbidden):
+                leaked.append(name)
+                break
+    if leaked:
+        raise SystemExit(
+            'refusing to package: system libraries were bundled into '
+            f'_internal: {", ".join(leaked)}')
+
+
+def package_linux(root, dist, out, version, variant=''):
     app_dir = os.path.join(dist, 'MarkEase')
     if not os.path.isdir(app_dir):
         raise SystemExit(f'missing build output: {app_dir}')
 
     clean_runtime_artifacts(app_dir, is_mac=False)
+    assert_no_system_libs(app_dir)
 
+    suffix = f'_{variant}' if variant else ''
     os.makedirs(out, exist_ok=True)
     artifacts = []
 
-    tar_name = f'MarkEase_v{version}_Linux_x64.tar.gz'
+    tar_name = f'MarkEase_v{version}_Linux_x64{suffix}.tar.gz'
     tar_path = os.path.join(out, tar_name)
     run(['tar', '-czf', tar_path, '-C', dist, 'MarkEase'])
     artifacts.append(tar_path)
@@ -179,7 +260,16 @@ def package_linux(root, dist, out, version):
             f.write(DEB_CONTROL.format(version=version, arch='amd64',
                                        installed_size=installed_kb))
 
-        deb_name = f'MarkEase_v{version}_Linux_x64.deb'
+        # 维护脚本：装/卸时刷新桌面数据库与图标缓存，避免 .md 关联
+        # 和图标要等用户重新登录才出现。
+        for name, body in (('postinst', DEB_POSTINST),
+                           ('postrm', DEB_POSTRM)):
+            path = os.path.join(control_dir, name)
+            with open(path, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(body)
+            os.chmod(path, 0o755)
+
+        deb_name = f'MarkEase_v{version}_Linux_x64{suffix}.deb'
         deb_path = os.path.join(out, deb_name)
         run(['dpkg-deb', '--build', '--root-owner-group', stage, deb_path])
         artifacts.append(deb_path)
@@ -274,6 +364,7 @@ def package_macos(root, dist, out, version, arch):
         raise SystemExit(f'missing build output: {app_path}')
 
     clean_runtime_artifacts(app_path, is_mac=True)
+    ensure_bundle_localizations(app_path)
     os.makedirs(out, exist_ok=True)
     codesign_app(app_path)
 
@@ -349,6 +440,10 @@ def main():
                         choices=['linux-x64', 'macos-x64', 'macos-arm64'])
     parser.add_argument('--dist', default='dist')
     parser.add_argument('--out', default='out')
+    parser.add_argument('--variant', default='',
+                        choices=['', 'legacy'],
+                        help='linux-x64 only: "legacy" = Debian 10/11, '
+                             'UOS 20, Kylin V10 build (glibc 2.28)')
     args = parser.parse_args()
 
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
@@ -357,9 +452,9 @@ def main():
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
 
-    log(f'version={version} target={args.target}')
+    log(f'version={version} target={args.target} variant={args.variant or "-"}')
     if args.target == 'linux-x64':
-        artifacts = package_linux(root, dist, out, version)
+        artifacts = package_linux(root, dist, out, version, args.variant)
     elif args.target == 'macos-x64':
         artifacts = package_macos(root, dist, out, version, 'x64')
     else:

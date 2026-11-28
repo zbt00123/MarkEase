@@ -55,8 +55,67 @@ python -m PyInstaller --clean --noconfirm packaging/linux.spec
 python packaging/package.py --target linux-x64 --dist dist --out out
 ```
 
-`ubuntu-22.04` is used for CI because its older glibc produces a binary that
-runs on more distributions. The `.deb` declares GTK3 / WebKit2GTK dependencies.
+`ubuntu-22.04` is used for CI because its glibc is the oldest one GitHub still
+provides runners for. That sets the real compatibility floor of the Linux
+artifact — see the baseline table below. The `.deb` declares the GTK3 /
+WebKit2GTK dependencies and, since v2.1.8, no longer ships them itself.
+
+### Linux compatibility baseline
+
+Measured on the v2.1.7 bundle (`GLIBC_*` / `CXXABI_*` strings in `.dynstr` of
+each ELF object); the limits come from the frozen interpreter, not from the app:
+
+| Requirement | Minimum | Comes from |
+|---|---|---|
+| glibc | **2.35** | `_internal/libpython3.14.so.1.0` (built on jammy) |
+| GTK 3 | 3.22+ (any) | target distro, `.deb` Depends |
+| WebKit2GTK | 4.0 or 4.1 + matching `gir1.2-webkit2-*` | target distro |
+| libstdc++ | GCC 5+ for PyMuPDF (`CXXABI_1.3`, `GLIBCXX_3.4`) | target distro |
+| libffi | `libffi.so.8` | target distro (GTK3 pulls it) |
+| libssl | `libssl.so.3` (OpenSSL 3) for the `ssl` module | target distro |
+
+So the main artifact runs on distributions at or above the jammy baseline:
+Ubuntu 22.04+, Debian 12+, Fedora 36+, RHEL/Rocky 9+, deepin 23 (glibc 2.38),
+openKylin 2.x. It does **not** run on glibc 2.28/2.31 systems such as
+统信 UOS 20 (Debian 10 baseline) or 银河麒麟 V10 (Debian 11 baseline) — the
+frozen interpreter needs `GLIBC_2.35`, and the process dies at start with
+`GLIBC_2.34 not found`. Those are served by the separate **legacy** build
+described below. 信创 arm64 (飞腾 / 鲲鹏) still needs its own arm64 build;
+PyInstaller cannot cross-compile.
+
+Quick check on any target system:
+
+```bash
+ldd --version | head -1                          # need >= 2.35 (main build)
+ldd /opt/markease/_internal/libpython3.14.so.1.0 | grep -i 'not found' || echo 'glibc ok'
+ls /usr/lib/*/girepository-1.0/WebKit2-*.typelib  # need 4.0 or 4.1
+```
+
+### Legacy build (UOS 20 / Kylin V10 / Debian 10-11)
+
+`build.yml` produces the main package (glibc 2.35) and, in the same workflow
+run, the legacy package for the older 信创 baseline.
+
+| | main (`build.yml`) | legacy (same workflow) |
+|---|---|---|
+| build host | ubuntu-22.04 | `debian:10` container |
+| Python | actions/setup-python 3.14 (glibc 2.35) | python-build-standalone 3.14 (glibc 2.17) |
+| PyGObject | wheel-less build on jammy | built in the buster userland (GLib 2.58) |
+| extra bundled libs | none | `libffi.so.8`, `libssl.so.3`, `libcrypto.so.3` |
+| artifact | `..._Linux_x64.deb` | `..._Linux_x64_legacy.deb` |
+| covers | Ubuntu 22.04+, Debian 12+, deepin 23, openKylin 2 | UOS 20, Kylin V10, Debian 10/11 (pending first green CI run) |
+
+Both use the same package name (`markease`), so a machine installs exactly one
+of them. Build the legacy variant locally with:
+
+```bash
+MK_LINUX_LEGACY=1 python -m PyInstaller --clean --noconfirm packaging/linux.spec
+python packaging/package.py --target linux-x64 --dist dist --out out --variant legacy
+```
+
+The legacy job lives in the same workflow so one run produces every platform,
+but it is the only job that needs the Debian 10 container; a failure there
+still uploads its diagnostics without blocking the other artifacts.
 
 ### macOS
 
@@ -147,8 +206,14 @@ after every build, so a blank window fails the build instead of shipping.
 
 ## Testing the Linux build on Windows
 
-The Linux binary is built on Ubuntu 22.04 (glibc 2.35, WebKit2GTK 4.0).
-The closer your test environment is to that, the more meaningful the result.
+The Linux binary is built on Ubuntu 22.04 (glibc 2.35). Since v2.1.8 the bundle
+**no longer ships the build host's GTK / GLib / libstdc++** — those come from the
+target distribution (declared in the `.deb` `Depends`). That is what makes the
+package work on 24.04 / 26.04, where the system WebKitGTK requires newer symbol
+versions than jammy provides. Always test the `.deb` on a **newer** LTS as well
+as on 22.04: v2.1.7 shipped a jammy `libstdc++.so.6` that lacked
+`CXXABI_1.3.15`, so Ubuntu 26.04 could not load WebKit at all (no window, no
+error, nothing in the journal).
 
 ### Option A — WSL2 + WSLg (Windows 11 22H2 or newer)
 
@@ -163,10 +228,11 @@ Inside Ubuntu:
 
 ```bash
 sudo apt update
-sudo apt install -y libgtk-3-0 libwebkit2gtk-4.0-37 \
-  gir1.2-gtk-3.0 gir1.2-webkit2-4.0 libglib2.0-0 libcairo2 libpango-1.0-0
+sudo apt install -y libgtk-3-0t64 libwebkit2gtk-4.1-0 \
+  gir1.2-gtk-3.0 gir1.2-webkit2-4.1 libglib2.0-0t64 libcairo2 libpango-1.0-0
+# On 22.04 the names are libgtk-3-0 / libglib2.0-0 (no t64 suffix).
 
-tar -xzf /mnt/c/path/to/MarkEase_v2.1.6_Linux_x64.tar.gz
+tar -xzf /mnt/c/path/to/MarkEase_v2.1.8_Linux_x64.tar.gz
 cd MarkEase
 ./MarkEase
 ```

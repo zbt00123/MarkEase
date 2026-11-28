@@ -349,8 +349,11 @@ class ImagePickerApi:
                 md_path = os.path.relpath(candidate, doc_dir).replace('\\', '/')
                 return self._confirm_pick(md_path, base_name, unsaved=False)
             else:
-                fd, tmp = tempfile.mkstemp(suffix=ext)
-                os.close(fd)
+                # ★ 未保存文档：临时目录随机、文件名保留原样。
+                #   用 mkstemp 会因为 tmpXXXX 的随机名写进 Markdown，
+                #   保存时按文件名迁移到 assets/ 后变成随机文件名。
+                folder = tempfile.mkdtemp(prefix='markease_img_')
+                tmp = os.path.join(folder, (base_name or 'image') + ext)
                 with open(tmp, 'wb') as f:
                     f.write(data)
                 return self._confirm_pick(tmp.replace('\\', '/'),

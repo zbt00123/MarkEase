@@ -97,6 +97,12 @@ info_plist = {
     'CFBundleExecutable': 'MarkEase',
     'CFBundlePackageType': 'APPL',
     'CFBundleSignature': '????',
+    # ★ 系统自带对话框（打开/保存面板、菜单）的语言由 bundle 支持的
+    #   本地化决定。PyInstaller 生成的 bundle 没有任何 .lproj，中文系统下
+    #   NSOpenPanel 仍然显示英文。这里声明语言，并在打包阶段补 lproj 目录
+    #   （见 packaging/package.py 的 ensure_bundle_localizations）。
+    'CFBundleDevelopmentRegion': 'zh_CN',
+    'CFBundleLocalizations': ['zh_CN', 'zh_TW', 'en', 'ja', 'ko'],
     'NSHighResolutionCapable': True,
     'NSSupportsAutomaticGraphicsSwitching': True,
     'LSMinimumSystemVersion': '11.0',

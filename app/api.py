@@ -320,6 +320,20 @@ def _sanitize_image_name(name):
     return base, ext.lower()
 
 
+def _temp_image_path(base, ext):
+    """未保存文档用的临时图片路径。
+
+    ★ 目录随机、文件名保留原样。不能用 mkstemp —— 它生成的是
+      ``tmpab12cd.jpg``，这个随机名会写进 Markdown，保存时再被
+      ``_migrate_images_to_doc_dir`` 按文件名迁移到 ``assets/``，
+      最终落到磁盘的就是随机名（macOS 拖拽必现，因为 WKWebView
+      拿不到 file.path，只能走字节流）。
+    """
+    folder = tempfile.mkdtemp(prefix='markease_img_')
+    name = (base or 'image') + (ext or '.png')
+    return os.path.join(folder, name)
+
+
 def _normalize_lang_code(lang: str) -> str:
     if not lang:
         return 'zh_CN'
@@ -1435,10 +1449,16 @@ class Api:
         if not os.path.exists(html_path):
             return {'ok': False, 'error': '缺少 web/image_picker.html'}
 
+        # ★ 必须走 asset server 的 HTTP 地址，不能用本地文件路径。
+        #   WKWebView 对 file:// 的子资源（css/js）限制更多，第二个窗口
+        #   用 file:// 打开时在 macOS 上是白屏；主窗口 / 关于窗口都是 HTTP，
+        #   只有这里用了文件路径，所以只有"插入图片"窗口会白。
+        picker_url = (f'http://127.0.0.1:{self._asset_port}'
+                      f'/web/image_picker.html')
         try:
             picker_window = webview.create_window(
                 title='插入图片',
-                url=html_path,
+                url=picker_url,
                 js_api=picker_api,
                 width=960,
                 height=640,
@@ -1522,8 +1542,7 @@ class Api:
         base, ext = _sanitize_image_name(os.path.basename(filename or 'image.png'))
 
         if not self._current_file:
-            fd, tmp = tempfile.mkstemp(suffix=ext)
-            os.close(fd)
+            tmp = _temp_image_path(base, ext)
             try:
                 with open(tmp, 'wb') as f:
                     f.write(data)
@@ -1547,8 +1566,7 @@ class Api:
             except Exception:
                 pass
 
-            fd, tmp = tempfile.mkstemp(suffix=ext)
-            os.close(fd)
+            tmp = _temp_image_path(base, ext)
             try:
                 with open(tmp, 'wb') as f:
                     f.write(data)

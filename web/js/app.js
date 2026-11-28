@@ -3165,13 +3165,39 @@ function showDragConflictModal(info) {
         info.target_name || '';
     document.getElementById('drag-conflict-target-size').textContent =
         _formatSize(info.target_size);
-    document.getElementById('drag-conflict-modal').classList.remove('hidden');
+    // ★ 这个弹窗在 index.html 里带 inline style="display:none"，
+    //   只去掉 .hidden 类是不够的（inline 样式优先级更高）——旧版因此
+    //   永远不会显示，拖入同名图片时表现为"什么都没发生"。
+    const modal = document.getElementById('drag-conflict-modal');
+    modal.style.display = '';
+    modal.classList.remove('hidden');
 }
 
 function hideDragConflictModal() {
-    document.getElementById('drag-conflict-modal').classList.add('hidden');
+    const modal = document.getElementById('drag-conflict-modal');
+    modal.style.display = 'none';
+    modal.classList.add('hidden');
     pendingDragConflict = null;
 }
+
+// CI 冒烟测试钩子：app.js 是 ES module，函数不在全局作用域，
+// 所以显式挂一个到 window 供 main.py 的 --ui-test 调用，
+// 用来回归"同名图片冲突弹窗必须真的可见"。
+window.__mkTestDragConflictModal = function () {
+    try {
+        showDragConflictModal({
+            src_path: '/tmp/a.jpg', src_name: 'a.jpg', src_size: 1,
+            target_path: '/tmp/b.jpg', target_name: 'b.jpg', target_size: 1,
+        });
+        const el = document.getElementById('drag-conflict-modal');
+        const vis = !!el && getComputedStyle(el).display !== 'none' &&
+            el.offsetHeight > 0;
+        hideDragConflictModal();
+        return vis;
+    } catch (e) {
+        return 'err:' + e;
+    }
+};
 
 async function resolveDragConflict(action) {
     if (!pendingDragConflict) return;
