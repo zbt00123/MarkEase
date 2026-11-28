@@ -496,7 +496,8 @@ jobs:
           curl -fsSLO https://download.gnome.org/sources/gobject-introspection/1.64/gobject-introspection-1.64.1.tar.xz
           tar -xf gobject-introspection-1.64.1.tar.xz
           cd gobject-introspection-1.64.1
-          meson setup _build --prefix=/usr/local --buildtype=release
+          meson setup _build --prefix=/usr/local --buildtype=release \
+            -Ddoctool=false
           ninja -C _build
           ninja -C _build install
           ldconfig
