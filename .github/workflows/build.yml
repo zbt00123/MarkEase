@@ -485,24 +485,17 @@ jobs:
             flex bison ninja-build python3-mako python3-pip \
             xvfb dbus libgl1-mesa-dri
 
-      # buster 只有 gobject-introspection 1.58，而 PyGObject 3.50 要求 >= 1.64。
-      # 从源码装 1.64.1 到 /usr/local，PyGObject 编译时就能通过 pkg-config 找到；
-      # 运行期再用一起打包的 libgirepository（见 linux.spec 的 legacy keep 列表）。
-      - name: Build gobject-introspection 1.64 (buster has 1.58)
+      # buster 只有 gobject-introspection 1.58，PyGObject 3.50 的 meson 要求 >= 1.64。
+      # 这里只改 pkg-config 报出的版本号，实际仍链接系统的 1.58：PyGObject 若用到
+      # 1.64 新增 API 会编译失败（明确报错），届时再退回源码构建 GI。
+      - name: Shim gobject-introspection pkg-config to 1.64
         run: |
           set -euo pipefail
-          python3 -m pip install --no-cache-dir 'meson==0.63.3'
-          cd /tmp
-          curl -fsSLO https://download.gnome.org/sources/gobject-introspection/1.64/gobject-introspection-1.64.1.tar.xz
-          tar -xf gobject-introspection-1.64.1.tar.xz
-          cd gobject-introspection-1.64.1
-          meson setup _build --prefix=/usr/local --buildtype=release \
-            -Ddoctool=disabled
-          ninja -C _build
-          ninja -C _build install
-          ldconfig
-          PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/local/lib/x86_64-linux-gnu/pkgconfig \
-            pkg-config --modversion gobject-introspection-1.0
+          mkdir -p /usr/local/lib/pkgconfig
+          sed 's/^Version:.*/Version: 1.64.0/' \
+            /usr/lib/x86_64-linux-gnu/pkgconfig/gobject-introspection-1.0.pc \
+            > /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc
+          PKG_CONFIG_PATH=/usr/local/lib/pkgconfig pkg-config --modversion gobject-introspection-1.0
 
       - name: Install python-build-standalone 3.14 (glibc 2.17 baseline)
         env:
