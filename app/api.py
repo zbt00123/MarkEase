@@ -1501,7 +1501,8 @@ class Api:
             try:
                 if os.path.samefile(path, target):
                     md_path = os.path.relpath(target, doc_dir).replace('\\', '/')
-                    return {'ok': True, 'md_path': md_path, 'unsaved': False}
+                    return {'ok': True, 'md_path': md_path, 'unsaved': False,
+                            'reused': True}
             except Exception:
                 pass
             try:
@@ -1562,7 +1563,8 @@ class Api:
                     existing = f.read()
                 if existing == data:
                     md_path = os.path.relpath(target, doc_dir).replace('\\', '/')
-                    return {'ok': True, 'md_path': md_path, 'unsaved': False}
+                    return {'ok': True, 'md_path': md_path, 'unsaved': False,
+                            'reused': True}
             except Exception:
                 pass
 

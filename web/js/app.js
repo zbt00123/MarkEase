@@ -3061,6 +3061,9 @@ async function importDroppedLocalFile(file) {
         }
         if (r && r.ok) {
             insertImageMarkdown(r.md_path, r.unsaved);
+            if (r.reused) {
+                setStatus('图片内容相同，已复用 assets 中的文件');
+            }
         } else {
             setStatus('导入失败: ' + ((r && r.error) || '未知错误'));
         }
@@ -3135,10 +3138,17 @@ function setupDragConflictModal() {
     });
 }
 
+// 同名图片"替换"是原地覆盖文件，URL 不变 → WebKit 会一直用缓存里的旧图。
+// 每次替换后推进版本号，渲染时把 ?v=... 拼到 /fs/ URL 上，强制重新拉取。
+function bumpAssetVersion() {
+    window.__mkAssetVersion = Date.now();
+}
+
 function fileUrlForPreview(absPath) {
     if (!window.__assetBaseUrl || !absPath) return '';
     const normalized = String(absPath).replace(/\\/g, '/');
-    return window.__assetBaseUrl + '/fs/' + encodeURIComponent(normalized);
+    const url = window.__assetBaseUrl + '/fs/' + encodeURIComponent(normalized);
+    return window.__mkAssetVersion ? url + '?v=' + window.__mkAssetVersion : url;
 }
 
 function _formatSize(bytes) {
@@ -3206,6 +3216,7 @@ async function resolveDragConflict(action) {
         const r = await window.pywebview.api.resolve_dropped_conflict(src, action);
         hideDragConflictModal();
         if (r && r.ok) {
+            bumpAssetVersion();   // 覆盖了同名文件，让预览强制重新拉图
             insertImageMarkdown(r.md_path, r.unsaved);
         } else if (r && r.cancelled) {
             setStatus('已取消');
@@ -5107,6 +5118,8 @@ async function onInsertImage() {
 
 window.onImagePickerResult = function (payload) {
     if (!payload) return;
+    // 选择器里也可能"替换"同名图片，同样要推进版本号
+    bumpAssetVersion();
     if (typeof payload === 'string') {
         insertImageMarkdown_fromText(payload, false);
         return;

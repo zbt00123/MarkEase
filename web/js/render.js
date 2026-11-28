@@ -115,7 +115,12 @@
         var baseUrl = _getAssetBase();
         if (!baseUrl) return null;
         var normalized = String(absPath).replace(/\\/g, '/').replace(/^\/+/, '');
-        return baseUrl + '/fs/' + encodeURIComponent(normalized);
+        var url = baseUrl + '/fs/' + encodeURIComponent(normalized);
+        // ★ 同名图片"替换"后文件被原地覆盖，URL 不变会被 WebKit 缓存住，
+        //   预览会一直显示旧图直到重启。带上版本号强制重新拉取。
+        var v = global.__mkAssetVersion;
+        if (v) url += '?v=' + v;
+        return url;
     }
 
     function _toFileUrl(absPath) {

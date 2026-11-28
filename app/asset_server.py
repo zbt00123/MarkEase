@@ -189,7 +189,7 @@ class AssetServer:
                     if ext not in ALLOWED_FS_EXTS:
                         self.send_error(403, 'Extension not allowed')
                         return
-                    self._serve_file(abs_path)
+                    self._serve_file(abs_path, no_store=True)
                     return
 
                 # ---------- 根路径重定向 ----------
@@ -243,7 +243,7 @@ class AssetServer:
                 except Exception:
                     pass
 
-            def _serve_file(self, abs_path):
+            def _serve_file(self, abs_path, no_store=False):
                 if not os.path.isfile(abs_path):
                     self.send_error(404, 'Not found')
                     return
@@ -256,7 +256,14 @@ class AssetServer:
                 self.send_response(200)
                 self.send_header('Content-Type', _mime_for(abs_path))
                 self.send_header('Content-Length', str(len(data)))
-                self.send_header('Cache-Control', 'no-cache')
+                # /fs/ 下的文件可能被原地覆盖（插入图片时"替换"同名文件），
+                # 必须禁止缓存，否则预览会一直显示旧图，直到重启。
+                self.send_header('Cache-Control',
+                                 'no-store, no-cache, must-revalidate'
+                                 if no_store else 'no-cache')
+                if no_store:
+                    self.send_header('Pragma', 'no-cache')
+                    self.send_header('Expires', '0')
                 self._cors_headers()
                 self.end_headers()
                 self.wfile.write(data)
