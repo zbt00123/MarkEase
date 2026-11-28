@@ -453,6 +453,10 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: debian:10
+    # debian:10 容器里默认 shell 是 dash，不支持 `set -o pipefail`。
+    defaults:
+      run:
+        shell: bash
     steps:
       # debian:10 镜像里没有 git，actions/checkout 会在容器内调用它，
       # 所以先修好 apt 源（buster 已进 archive）并装上 git。
