@@ -114,10 +114,12 @@
         if (!absPath) return null;
         var baseUrl = _getAssetBase();
         if (!baseUrl) return null;
-        var normalized = String(absPath).replace(/\\/g, '/').replace(/^\/+/, '');
+        // ★ 必须保留开头的 '/'：服务端 /fs/ 收到后会 unquote 再 abspath。
+        //   以前这里 strip 掉了前导斜杠，Linux 上（cwd 不是 /）就变成相对路径，
+        //   abspath 解析到错误位置 → 404 → 预览全是"图片加载失败"。
+        var normalized = String(absPath).replace(/\\/g, '/');
         var url = baseUrl + '/fs/' + encodeURIComponent(normalized);
-        // ★ 同名图片"替换"后文件被原地覆盖，URL 不变会被 WebKit 缓存住，
-        //   预览会一直显示旧图直到重启。带上版本号强制重新拉取。
+        // 同名图片"替换"后文件被原地覆盖，URL 不变会被 WebKit 缓存住。
         var v = global.__mkAssetVersion;
         if (v) url += '?v=' + v;
         return url;

@@ -14,7 +14,7 @@ import tempfile
 import mimetypes
 import urllib.request
 import urllib.error
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico'}
@@ -38,22 +38,105 @@ def _list_drives():
     return out
 
 
+def _gtk_bookmarks():
+    """读取「文件」管理器左侧收藏（GTK 书签）。
+
+    格式：``file:///home/user/%E6%A1%8C%E9%9D%A2 桌面``，每行一个。
+    """
+    home = os.path.expanduser('~')
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home, '.config')
+    out = []
+    for rel in ('gtk-3.0/bookmarks', 'gtk-4.0/bookmarks'):
+        path = os.path.join(cfg, rel)
+        try:
+            with open(path, 'r', encoding='utf-8', errors='replace') as f:
+                lines = f.read().splitlines()
+        except Exception:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split(None, 1)
+            uri = parts[0]
+            label = parts[1].strip() if len(parts) > 1 else ''
+            if not uri.startswith('file://'):
+                continue
+            try:
+                target = unquote(uri[len('file://'):])
+            except Exception:
+                continue
+            if not os.path.isdir(target):
+                continue
+            name = label or os.path.basename(target.rstrip('/')) or target
+            out.append({'name': name, 'path': target})
+    return out
+
+
+def _xdg_user_dirs():
+    """读取 ~/.config/user-dirs.dirs（跟随系统语言，中文系统下是“桌面/下载”）。"""
+    home = os.path.expanduser('~')
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home, '.config')
+    path = os.path.join(cfg, 'user-dirs.dirs')
+    result = {}
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            lines = f.read().splitlines()
+    except Exception:
+        return result
+    for line in lines:
+        line = line.strip()
+        if not line.startswith('XDG_') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        value = value.strip().strip('"').replace('$HOME', home)
+        if value and os.path.isdir(value):
+            result[key.strip()] = value
+    return result
+
+
 def _list_shortcuts():
     home = os.path.expanduser('~')
     out = []
+    seen = set()
 
     def add(name, path):
-        if path and os.path.isdir(path):
-            out.append({'name': name, 'path': path})
+        if not path or not os.path.isdir(path):
+            return
+        real = os.path.realpath(path)
+        if real in seen:
+            return
+        seen.add(real)
+        out.append({'name': name, 'path': path})
 
-    add('桌面', os.path.join(home, 'Desktop'))
-    add('下载', os.path.join(home, 'Downloads'))
-    add('图片', os.path.join(home, 'Pictures'))
-    add('文档', os.path.join(home, 'Documents'))
-    add('视频', os.path.join(home, 'Videos'))
-    add('音乐', os.path.join(home, 'Music'))
+    # 1) 文件管理器书签 —— 与 Ubuntu「文件」左侧收藏保持一致
+    for item in _gtk_bookmarks():
+        add(item['name'], item['path'])
+
+    # 2) XDG 用户目录（系统语言为中文时路径就是 桌面/下载/图片…）
+    labels = (
+        ('XDG_DESKTOP_DIR', '桌面'),
+        ('XDG_DOWNLOAD_DIR', '下载'),
+        ('XDG_PICTURES_DIR', '图片'),
+        ('XDG_DOCUMENTS_DIR', '文档'),
+        ('XDG_VIDEOS_DIR', '视频'),
+        ('XDG_MUSIC_DIR', '音乐'),
+        ('XDG_PUBLICSHARE_DIR', '公开'),
+        ('XDG_TEMPLATES_DIR', '模板'),
+    )
+    dirs = _xdg_user_dirs()
+    for key, label in labels:
+        if key in dirs:
+            add(label, dirs[key])
+
+    # 3) 兜底：常见英文目录
+    for name, sub in (('桌面', 'Desktop'), ('下载', 'Downloads'),
+                      ('图片', 'Pictures'), ('文档', 'Documents'),
+                      ('视频', 'Videos'), ('音乐', 'Music')):
+        add(name, os.path.join(home, sub))
+
     onedrive = os.environ.get('OneDrive')
-    if onedrive and os.path.isdir(onedrive):
+    if onedrive:
         add('OneDrive', onedrive)
     return out
 

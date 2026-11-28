@@ -244,6 +244,19 @@ def package_linux(root, dist, out, version, variant=''):
             os.makedirs(icon_dir, exist_ok=True)
             shutil.copyfile(icon, os.path.join(icon_dir, 'markease.png'))
 
+        # AppStream 元数据：应用中心/GNOME 软件据此把 deb 显示为已安装应用，
+        # 否则本地安装的包在图形界面里既看不到也没法卸载。
+        metainfo_src = os.path.join(root, 'resources', 'appstream',
+                                    'markease.metainfo.xml')
+        if os.path.isfile(metainfo_src):
+            metainfo_dir = os.path.join(stage, 'usr', 'share', 'metainfo')
+            os.makedirs(metainfo_dir, exist_ok=True)
+            shutil.copyfile(metainfo_src,
+                            os.path.join(metainfo_dir,
+                                         'markease.metainfo.xml'))
+        else:
+            log(f'WARNING: missing AppStream metadata: {metainfo_src}')
+
         installed_kb = 0
         for base, _dirs, files in os.walk(opt):
             for name in files:

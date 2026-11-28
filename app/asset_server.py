@@ -184,6 +184,9 @@ class AssetServer:
                 # ---------- /fs/* ----------
                 if path.startswith('/fs/'):
                     raw = unquote(path[4:])
+                    # 旧版前端会去掉前导 '/', 这里兜住；Windows 盘符路径不动。
+                    if os.name != 'nt' and raw and not raw.startswith('/'):
+                        raw = '/' + raw
                     abs_path = os.path.abspath(raw)
                     ext = os.path.splitext(abs_path)[1].lower()
                     if ext not in ALLOWED_FS_EXTS:

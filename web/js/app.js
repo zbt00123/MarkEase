@@ -2675,6 +2675,26 @@ async function handleImageDrop(dt) {
         }
     }
 
+    // ★ WebKitGTK（Linux）从文件管理器拖入时只提供 text/uri-list 里的
+    //   file:///... 路径，dataTransfer.files 是空的 —— 旧逻辑会一路落到
+    //   "未能识别拖入内容"。这里解析出路径，交给 Python 按扩展名处理。
+    if (uriList) {
+        const filePaths = String(uriList)
+            .split(/\r?\n/)
+            .map(s => s.trim())
+            .filter(s => s && !s.startsWith('#') && /^file:\/\//i.test(s))
+            .map(s => {
+                let p = s.replace(/^file:\/\//i, '');
+                try { p = decodeURIComponent(p); } catch (e) { /* keep raw */ }
+                return p;
+            });
+        if (filePaths.length) {
+            console.log('[drag] uri-list files:', filePaths);
+            await importDroppedPaths(filePaths);
+            return;
+        }
+    }
+
     const plainText = (dt.getData('text/plain') || '').trim();
     if (plainText && /^https?:\/\/\S+$/i.test(plainText)) {
         console.log('[drag] text/plain URL:', plainText);
@@ -3025,6 +3045,69 @@ async function _handleDroppedMarkdown(file) {
     _openedOriginalContent = getContent();
     _openedFilePath = currentFile || '';
     _forceSaveAsNextTime = false;
+}
+
+// 只拿到文件路径（Linux/WebKitGTK 的 text/uri-list 拖入）时的统一入口：
+// 按扩展名分派到已有的 PDF / HTML / 图片处理链路。
+async function importDroppedPaths(paths) {
+    for (const p of paths) {
+        await importDroppedPath(p);
+    }
+}
+
+async function importDroppedPath(path) {
+    if (!path) return;
+    const name = (String(path).split(/[\\/]/).pop() || '').toLowerCase();
+
+    try {
+        if (name.endsWith('.pdf')) {
+            setStatus('正在导入 PDF...');
+            const r = await window.pywebview.api.import_dropped_pdf(path);
+            if (!r || !r.ok) {
+                setStatus('PDF 导入失败: ' + ((r && r.error) || '未知错误'));
+                return;
+            }
+            await _applyDroppedPdfResult(r, path);
+            return;
+        }
+
+        if (name.endsWith('.html') || name.endsWith('.htm')) {
+            setStatus('正在导入 HTML...');
+            const r = await window.pywebview.api.import_dropped_html(path);
+            if (!r || !r.ok) {
+                setStatus('HTML 导入失败: ' + ((r && r.error) || '未知错误'));
+                return;
+            }
+            await _applyImportedHtmlResult(r, true);
+            return;
+        }
+
+        if (/\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(name)) {
+            setStatus('正在导入本地图片...');
+            const r = await window.pywebview.api.import_dropped_file(path);
+            if (r && r.conflict) {
+                showDragConflictModal(r);
+                return;
+            }
+            if (r && r.ok) {
+                insertImageMarkdown(r.md_path, r.unsaved);
+                if (r.reused) setStatus('图片内容相同，已复用 assets 中的文件');
+                return;
+            }
+            setStatus('导入失败: ' + ((r && r.error) || '未知错误'));
+            return;
+        }
+
+        if (/\.(md|markdown|txt)$/i.test(name)) {
+            // 纯路径拖入拿不到内容，提示用"文件 → 打开"或先拖到编辑器外
+            setStatus('请用「文件 → 打开」打开 Markdown，或把文件拖到编辑器区域');
+            return;
+        }
+
+        setStatus('不支持的文件类型: ' + name);
+    } catch (e) {
+        setStatus('导入异常: ' + (e && e.message ? e.message : e));
+    }
 }
 
 async function importDroppedLocalFile(file) {

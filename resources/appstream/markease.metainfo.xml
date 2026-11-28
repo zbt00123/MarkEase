@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  应用中心 / GNOME 软件靠 AppStream 元数据把 .deb 认成"一个应用"。
+  没有这个文件时，本地安装的 deb 不会出现在"已安装"列表里，用户也就
+  没法从图形界面卸载。id 与 markease.desktop 对应。
+-->
+<component type="desktop-application">
+  <id>markease</id>
+  <name>MarkEase</name>
+  <summary>Markdown editor with live preview</summary>
+  <summary xml:lang="zh_CN">带实时预览的 Markdown 编辑器</summary>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>MarkEase is a lightweight Markdown editor with a live preview, KaTeX
+    math, PDF/HTML import and export.</p>
+    <p xml:lang="zh_CN">MarkEase 是一款轻量 Markdown 编辑器，支持实时预览、
+    KaTeX 公式，以及 PDF / HTML 的导入与导出。</p>
+  </description>
+  <launchable type="desktop-id">markease.desktop</launchable>
+  <url type="homepage">https://github.com/zbt00123/MarkEase</url>
+  <url type="bugtracker">https://github.com/zbt00123/MarkEase/issues</url>
+  <developer_name>ZBT Studio</developer_name>
+  <categories>
+    <category>Office</category>
+    <category>TextEditor</category>
+  </categories>
+  <provides>
+    <binary>markease</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="2.1.7" date="2026-11-29"/>
+  </releases>
+</component>

@@ -53,6 +53,23 @@ class LinuxPlatform(PlatformBase):
         os.environ.setdefault('WEBKIT_DISABLE_DMABUF_RENDERER', '1')
         return None
 
+    def on_webview_started(self, window=None):
+        """GUI 启动后显式恢复窗口的标准装饰与可缩放属性。
+
+        pywebview 的 GTK 后端在部分 GNOME / Wayland 环境下创建的
+        Gtk.ApplicationWindow 会被当成"不可缩放"窗口，GNOME 于是只画一个
+        关闭按钮（没有最小化 / 最大化）。这里强制设置回来。
+        """
+        try:
+            native = getattr(window, 'native', None)
+            w = getattr(native, 'window', native)
+            if w is not None:
+                w.set_decorated(True)
+                w.set_resizable(True)
+                w.set_deletable(True)
+        except Exception as e:
+            print(f'[MarkEase][linux] restore window decorations failed: {e}')
+
     # ---------- 剪贴板 ----------
     def read_clipboard_text(self):
         return self._read_clipboard_from_commands([
